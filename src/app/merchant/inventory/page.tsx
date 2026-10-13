@@ -26,11 +26,25 @@ export default function MerchantInventoryPage() {
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const [adjData, setAdjData] = useState({
     product_id: '',
-    branch_id: activeBranchId !== 'all' ? activeBranchId : 'br_downtown',
+    branch_id: activeBranchId !== 'all' ? activeBranchId : (branches[0]?.id || ''),
     adjustment_type: 'adjustment',
     quantity: 0,
     notes: '',
   });
+
+  // Keep branch in sync
+  useEffect(() => {
+    if (branches && branches.length > 0) {
+      setAdjData(prev => {
+        const curBranchValid = branches.some(b => b.id === prev.branch_id);
+        if (!curBranchValid) {
+          const fallback = activeBranchId !== 'all' ? activeBranchId : branches[0].id;
+          return { ...prev, branch_id: fallback };
+        }
+        return prev;
+      });
+    }
+  }, [branches, activeBranchId]);
 
   const fetchInventory = async () => {
     if (!tenant) return;
@@ -68,6 +82,11 @@ export default function MerchantInventoryPage() {
     e.preventDefault();
     if (!tenant) return;
 
+    if (!adjData.product_id) {
+      alert(lang === 'ar' ? 'يرجى اختيار الصنف' : 'Please select a product');
+      return;
+    }
+
     try {
       const res = await fetch('/api/merchant/inventory', {
         method: 'POST',
@@ -83,10 +102,10 @@ export default function MerchantInventoryPage() {
         fetchInventory();
       } else {
         const err = await res.json();
-        alert(err.error || 'Failed to adjust stock');
+        alert(err.error || (lang === 'ar' ? 'فشل تعديل المخزون' : 'Failed to adjust stock'));
       }
     } catch {
-      alert('Error updating stock');
+      alert(lang === 'ar' ? 'خطأ في الاتصال بالخادم' : 'Error updating stock');
     }
   };
 
@@ -311,6 +330,21 @@ export default function MerchantInventoryPage() {
         maxWidth="md"
       >
         <form onSubmit={handleStockAdjustment} className="space-y-4 text-xs">
+          <div>
+            <label className="block font-semibold text-[#172033] mb-1">{lang === 'ar' ? 'الفرع *' : 'Branch *'}</label>
+            <select
+              value={adjData.branch_id}
+              onChange={(e) => setAdjData({ ...adjData, branch_id: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] font-semibold focus:border-[#246BFD] focus:outline-none cursor-pointer"
+            >
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.code} - {lang === 'ar' ? b.name_ar : b.name_en}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label className="block font-semibold text-[#172033] mb-1">Product *</label>
             <select

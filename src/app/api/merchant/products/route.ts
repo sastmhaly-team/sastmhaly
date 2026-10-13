@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getProducts, getProductByBarcode, createProduct, getCategories, getUnits } from '@/lib/db/supabase-queries';
+import { getProducts, getProductByBarcode, createProduct, updateProduct, deleteProduct, getCategories, getUnits } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -69,3 +69,44 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { tenant_id, id, ...updateData } = body;
+    const tenantId = tenant_id || 'tenant_albaraka';
+
+    if (!id) {
+      return NextResponse.json({ error: 'Product ID is required' }, { status: 400 });
+    }
+
+    const product = await updateProduct(tenantId, id, updateData);
+    return NextResponse.json({ success: true, product });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Failed to update product';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    const tenantId = searchParams.get('tenantId') || 'tenant_albaraka';
+
+    if (!id) {
+      return NextResponse.json({ error: 'Product ID is required' }, { status: 400 });
+    }
+
+    const result = await deleteProduct(tenantId, id);
+    if (!result.success) {
+      return NextResponse.json({ error: result.error || 'Failed to delete product' }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Failed to delete product';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+

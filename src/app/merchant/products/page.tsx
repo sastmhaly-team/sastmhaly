@@ -40,6 +40,27 @@ export default function MerchantProductsPage() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [isCategorySubmitting, setIsCategorySubmitting] = useState(false);
 
+  // Edit product modal state
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    sku: '',
+    barcode: '',
+    additional_barcodes: '',
+    name_en: '',
+    name_ar: '',
+    category_id: '',
+    unit_id: '',
+    cost_price: 10,
+    selling_price: 15,
+    wholesale_price: 13,
+    tax_rate: 14.0,
+    min_stock_alert: 5.0,
+    is_weighted: false,
+    has_batch_tracking: false,
+    is_active: 1,
+  });
+
   // New product form
   const [formData, setFormData] = useState({
     sku: '',
@@ -136,6 +157,88 @@ export default function MerchantProductsPage() {
       }
     } catch {
       alert('Error connecting to server');
+    }
+  };
+
+  const openEditModal = (p: Product) => {
+    setEditingProductId(p.id);
+    setEditFormData({
+      sku: p.sku || '',
+      barcode: p.barcode || '',
+      additional_barcodes: p.additional_barcodes || '',
+      name_en: p.name_en || '',
+      name_ar: p.name_ar || '',
+      category_id: p.category_id || (categories[0]?.id || ''),
+      unit_id: p.unit_id || (units[0]?.id || ''),
+      cost_price: p.cost_price ?? 0,
+      selling_price: p.selling_price ?? 0,
+      wholesale_price: p.wholesale_price ?? 0,
+      tax_rate: p.tax_rate ?? 14.0,
+      min_stock_alert: p.min_stock_alert ?? 5.0,
+      is_weighted: p.is_weighted === 1,
+      has_batch_tracking: p.has_batch_tracking === 1,
+      is_active: p.is_active ?? 1,
+    });
+    setIsEditOpen(true);
+  };
+
+  const handleUpdateProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tenant || !editingProductId) return;
+
+    try {
+      const payload = {
+        tenant_id: tenant.id,
+        id: editingProductId,
+        ...editFormData,
+        cost_price: Number(editFormData.cost_price),
+        selling_price: Number(editFormData.selling_price),
+        wholesale_price: Number(editFormData.wholesale_price),
+        tax_rate: Number(editFormData.tax_rate),
+        min_stock_alert: Number(editFormData.min_stock_alert),
+        is_weighted: editFormData.is_weighted ? 1 : 0,
+        has_batch_tracking: editFormData.has_batch_tracking ? 1 : 0,
+        is_active: editFormData.is_active,
+      };
+
+      const res = await fetch('/api/merchant/products', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        setIsEditOpen(false);
+        setEditingProductId(null);
+        fetchProducts();
+      } else {
+        const err = await res.json();
+        alert(err.error || (lang === 'ar' ? 'فشل تعديل بيانات الصنف' : 'Failed to update product'));
+      }
+    } catch {
+      alert(lang === 'ar' ? 'خطأ في الاتصال بالخادم' : 'Error updating product');
+    }
+  };
+
+  const handleDeleteProduct = async (p: Product) => {
+    if (!tenant) return;
+    const confirmMsg = lang === 'ar'
+      ? `هل أنت متأكد من حذف المنتج "${p.name_ar || p.name_en}"؟`
+      : `Are you sure you want to delete "${p.name_en || p.name_ar}"?`;
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      const res = await fetch(`/api/merchant/products?id=${p.id}&tenantId=${tenant.id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        fetchProducts();
+      } else {
+        const err = await res.json();
+        alert(err.error || (lang === 'ar' ? 'فشل حذف الصنف' : 'Failed to delete product'));
+      }
+    } catch {
+      alert(lang === 'ar' ? 'خطأ في الاتصال بالخادم' : 'Error deleting product');
     }
   };
 
@@ -409,18 +512,19 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
                 <th className="px-4 py-3.5 text-right rtl:text-left">{lang === 'ar' ? 'سعر البيع' : 'Selling Price'}</th>
                 <th className="px-4 py-3.5 text-center">{lang === 'ar' ? 'رصيد الفرع' : 'Stock on Hand'}</th>
                 <th className="px-4 py-3.5 text-center">{lang === 'ar' ? 'النوع' : 'Type'}</th>
+                <th className="px-4 py-3.5 text-center">{lang === 'ar' ? 'الإجراءات' : 'Actions'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5EAF2]">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-[#687386]">
+                  <td colSpan={9} className="px-4 py-8 text-center text-[#687386]">
                     {t('loading')}
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-[#687386]">
+                  <td colSpan={9} className="px-4 py-8 text-center text-[#687386]">
                     {t('no_records')}
                   </td>
                 </tr>
@@ -471,6 +575,26 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
                         ) : (
                           <span className="text-[#687386] text-[10px]">Standard</span>
                         )}
+                      </td>
+                      <td className="px-4 py-3.5 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(p)}
+                            title={lang === 'ar' ? 'تعديل الصنف' : 'Edit Product'}
+                            className="p-1.5 rounded-lg text-[#246BFD] hover:bg-[#EEF4FF] transition-colors cursor-pointer"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProduct(p)}
+                            title={lang === 'ar' ? 'حذف الصنف' : 'Delete Product'}
+                            className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -635,6 +759,187 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
             <button
               type="button"
               onClick={() => setIsCreateOpen(false)}
+              className="px-4 py-2 rounded-lg border border-[#E5EAF2] text-xs font-bold text-[#687386]"
+            >
+              {t('cancel')}
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-lg bg-[#246BFD] hover:bg-[#1A54D4] text-white text-xs font-bold"
+            >
+              {t('save')}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Product Modal */}
+      <Modal
+        isOpen={isEditOpen}
+        onClose={() => {
+          setIsEditOpen(false);
+          setEditingProductId(null);
+        }}
+        title={lang === 'ar' ? 'تعديل بيانات الصنف' : 'Edit Product'}
+        maxWidth="xl"
+      >
+        <form onSubmit={handleUpdateProduct} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div>
+              <label className="block font-semibold text-[#172033] mb-1">{lang === 'ar' ? 'اسم الصنف (عربي) *' : 'Product Name (Arabic) *'}</label>
+              <input
+                type="text"
+                required
+                value={editFormData.name_ar}
+                onChange={(e) => setEditFormData({ ...editFormData, name_ar: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-[#172033] mb-1">{lang === 'ar' ? 'اسم الصنف (إنجليزي) *' : 'Product Name (English) *'}</label>
+              <input
+                type="text"
+                required
+                value={editFormData.name_en}
+                onChange={(e) => setEditFormData({ ...editFormData, name_en: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-[#172033] mb-1">{lang === 'ar' ? 'رمز SKU *' : 'SKU Code *'}</label>
+              <input
+                type="text"
+                required
+                value={editFormData.sku}
+                onChange={(e) => setEditFormData({ ...editFormData, sku: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] font-mono focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-[#172033] mb-1">{lang === 'ar' ? 'الباركود الرئيسي *' : 'Primary Barcode *'}</label>
+              <input
+                type="text"
+                required
+                value={editFormData.barcode}
+                onChange={(e) => setEditFormData({ ...editFormData, barcode: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] font-mono focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-[#172033] mb-1">{lang === 'ar' ? 'القسم *' : 'Category *'}</label>
+              <select
+                value={editFormData.category_id}
+                onChange={(e) => setEditFormData({ ...editFormData, category_id: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] font-semibold focus:border-[#246BFD] focus:outline-none cursor-pointer"
+              >
+                {categories.map(c => (
+                  <option key={c.id} value={c.id}>{lang === 'ar' ? c.name_ar : c.name_en}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-semibold text-[#172033] mb-1">{lang === 'ar' ? 'وحدة القياس *' : 'Unit of Measure *'}</label>
+              <select
+                value={editFormData.unit_id}
+                onChange={(e) => setEditFormData({ ...editFormData, unit_id: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] font-semibold focus:border-[#246BFD] focus:outline-none cursor-pointer"
+              >
+                {units.map(u => (
+                  <option key={u.id} value={u.id}>{lang === 'ar' ? u.name_ar : u.name_en}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-semibold text-[#172033] mb-1">{lang === 'ar' ? 'سعر الشراء / التكلفة *' : 'Purchase Cost *'}</label>
+              <input
+                type="number"
+                step="0.25"
+                required
+                value={editFormData.cost_price}
+                onChange={(e) => setEditFormData({ ...editFormData, cost_price: parseFloat(e.target.value) || 0 })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] font-mono focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-[#172033] mb-1">{lang === 'ar' ? 'سعر البيع للقطاعي *' : 'Selling Price *'}</label>
+              <input
+                type="number"
+                step="0.25"
+                required
+                value={editFormData.selling_price}
+                onChange={(e) => setEditFormData({ ...editFormData, selling_price: parseFloat(e.target.value) || 0 })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] font-mono font-bold focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-[#172033] mb-1">{lang === 'ar' ? 'سعر الجملة' : 'Wholesale Price'}</label>
+              <input
+                type="number"
+                step="0.25"
+                value={editFormData.wholesale_price}
+                onChange={(e) => setEditFormData({ ...editFormData, wholesale_price: parseFloat(e.target.value) || 0 })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] font-mono focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-[#172033] mb-1">{lang === 'ar' ? 'حد تنبيه انخفاض المخزون' : 'Low Stock Alert Threshold'}</label>
+              <input
+                type="number"
+                value={editFormData.min_stock_alert}
+                onChange={(e) => setEditFormData({ ...editFormData, min_stock_alert: parseFloat(e.target.value) || 5 })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] font-mono focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="pt-2 flex flex-wrap items-center gap-6 text-xs">
+            <label className="flex items-center gap-2 cursor-pointer font-medium">
+              <input
+                type="checkbox"
+                checked={editFormData.is_weighted}
+                onChange={(e) => setEditFormData({ ...editFormData, is_weighted: e.target.checked })}
+                className="w-4 h-4 text-[#246BFD] rounded"
+              />
+              <span>{lang === 'ar' ? 'يباع بالوزن (ميزان)' : 'Produce / Weighted Scale Item'}</span>
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer font-medium">
+              <input
+                type="checkbox"
+                checked={editFormData.has_batch_tracking}
+                onChange={(e) => setEditFormData({ ...editFormData, has_batch_tracking: e.target.checked })}
+                className="w-4 h-4 text-[#246BFD] rounded"
+              />
+              <span>{lang === 'ar' ? 'تتبع تاريخ الصلاحية والتشغيلة' : 'Batch & Expiry Tracking'}</span>
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer font-medium">
+              <input
+                type="checkbox"
+                checked={editFormData.is_active === 1}
+                onChange={(e) => setEditFormData({ ...editFormData, is_active: e.target.checked ? 1 : 0 })}
+                className="w-4 h-4 text-[#246BFD] rounded"
+              />
+              <span>{lang === 'ar' ? 'صنف نشط' : 'Active Product'}</span>
+            </label>
+          </div>
+
+          <div className="pt-3 border-t border-[#E5EAF2] flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsEditOpen(false);
+                setEditingProductId(null);
+              }}
               className="px-4 py-2 rounded-lg border border-[#E5EAF2] text-xs font-bold text-[#687386]"
             >
               {t('cancel')}

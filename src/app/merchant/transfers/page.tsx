@@ -18,11 +18,23 @@ export default function MerchantTransfersPage() {
 
   // New transfer modal
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [fromBranchId, setFromBranchId] = useState(branches[0]?.id || 'br_downtown');
-  const [toBranchId, setToBranchId] = useState(branches[1]?.id || 'br_nasrcity');
+  const [fromBranchId, setFromBranchId] = useState(branches[0]?.id || '');
+  const [toBranchId, setToBranchId] = useState(branches[1]?.id || branches[0]?.id || '');
   const [selectedProductId, setSelectedProductId] = useState('');
   const [transferQty, setTransferQty] = useState(10);
   const [notes, setNotes] = useState('');
+
+  // Keep branch selects synced with available branches
+  useEffect(() => {
+    if (branches && branches.length > 0) {
+      if (!fromBranchId || !branches.some(b => b.id === fromBranchId)) {
+        setFromBranchId(branches[0].id);
+      }
+      if (!toBranchId || !branches.some(b => b.id === toBranchId)) {
+        setToBranchId(branches.length > 1 ? branches[1].id : branches[0].id);
+      }
+    }
+  }, [branches, fromBranchId, toBranchId]);
 
   const fetchTransfers = async () => {
     if (!tenant) return;
@@ -57,8 +69,13 @@ export default function MerchantTransfersPage() {
     e.preventDefault();
     if (!tenant) return;
 
-    if (fromBranchId === toBranchId) {
-      alert('Source branch and destination branch must be different.');
+    if (!selectedProductId) {
+      alert(lang === 'ar' ? 'يرجى اختيار الصنف' : 'Please select a product');
+      return;
+    }
+
+    if (fromBranchId === toBranchId && branches.length > 1) {
+      alert(lang === 'ar' ? 'يجب اختيار فرعين مختلفين للتحويل' : 'Source and destination branches must be different.');
       return;
     }
 
@@ -72,16 +89,23 @@ export default function MerchantTransfersPage() {
           to_branch_id: toBranchId,
           notes,
           created_by: 'admin',
-          items: [{ product_id: selectedProductId, quantity: transferQty }],
+          items: [{ 
+            product_id: selectedProductId, 
+            quantity: transferQty,
+            quantity_sent: transferQty
+          }],
         }),
       });
 
       if (res.ok) {
         setIsModalOpen(false);
         fetchTransfers();
+      } else {
+        const err = await res.json();
+        alert(err.error || (lang === 'ar' ? 'فشل إنشاء التحويل المخزني' : 'Failed to create stock transfer'));
       }
     } catch {
-      alert('Error creating transfer');
+      alert(lang === 'ar' ? 'خطأ في الاتصال بالخادم' : 'Error creating transfer');
     }
   };
 

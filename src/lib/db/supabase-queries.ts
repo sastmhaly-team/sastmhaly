@@ -13,7 +13,7 @@ import {
   SubscriptionPlan
 } from '../types';
 
-function getSupabase() {
+export function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://unctfxlnmqddykxbxxyt.supabase.co';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_6e9lQ6kQ5YNEEzQk6GQAjg_v9H2VATD';
   return createClient(url, key);
@@ -620,9 +620,18 @@ export async function updateProduct(tenantId: string, id: string, data: Partial<
 
 export async function deleteProduct(tenantId: string, id: string): Promise<{ success: boolean; error?: string }> {
   const supabase = getSupabase();
-  const { error } = await supabase.from('products').update({ is_active: 0 }).eq('id', id).eq('tenant_id', tenantId);
-  if (error) return { success: false, error: error.message };
-  return { success: true };
+  try {
+    await supabase.from('inventory_balances').delete().eq('product_id', id).eq('tenant_id', tenantId);
+    await supabase.from('inventory_movements').delete().eq('product_id', id).eq('tenant_id', tenantId);
+    await supabase.from('product_batches').delete().eq('product_id', id).eq('tenant_id', tenantId);
+    const { error: delError } = await supabase.from('products').delete().eq('id', id).eq('tenant_id', tenantId);
+    if (delError) {
+      await supabase.from('products').update({ is_active: 0 }).eq('id', id).eq('tenant_id', tenantId);
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
 }
 
 // ============================================================================
@@ -679,24 +688,42 @@ export async function getStockTransfers(tenantId: string): Promise<StockTransfer
 
 export async function createStockTransfer(tenantId: string, data: {
   from_branch_id: string; to_branch_id: string; notes?: string;
-  created_by: string; items: { product_id: string; quantity_sent: number }[];
+  created_by: string; items: { product_id: string; quantity_sent?: number; quantity?: number }[];
 }): Promise<StockTransfer> {
   const supabase = getSupabase();
   const id = uid('trn');
   const transferNumber = `TRF-${Date.now().toString().slice(-6)}`;
 
+  let fromBranch = data.from_branch_id;
+  let toBranch = data.to_branch_id;
+
+  const { data: tenantBranches } = await supabase.from('branches').select('id').eq('tenant_id', tenantId);
+  if (tenantBranches && tenantBranches.length > 0) {
+    const validIds = tenantBranches.map(b => b.id);
+    if (!validIds.includes(fromBranch)) {
+      fromBranch = validIds[0];
+    }
+    if (!validIds.includes(toBranch)) {
+      toBranch = validIds.length > 1 ? (validIds.find(id => id !== fromBranch) || validIds[0]) : validIds[0];
+    }
+  }
+
   await supabase.from('stock_transfers').insert({
     id, tenant_id: tenantId, transfer_number: transferNumber,
-    from_branch_id: data.from_branch_id, to_branch_id: data.to_branch_id,
-    status: 'pending', notes: data.notes || null, created_by: data.created_by
+    from_branch_id: fromBranch, to_branch_id: toBranch,
+    status: 'pending', notes: data.notes || null, created_by: data.created_by || 'admin'
   }).throwOnError();
 
-  await supabase.from('stock_transfer_items').insert(
-    data.items.map(item => ({
-      id: uid('sti'), transfer_id: id,
-      product_id: item.product_id, quantity_sent: item.quantity_sent
-    }))
-  ).throwOnError();
+  const transferItems = (data.items || []).map(item => ({
+    id: uid('sti'),
+    transfer_id: id,
+    product_id: item.product_id,
+    quantity_sent: Number((item as any).quantity_sent ?? (item as any).quantity ?? 1)
+  }));
+
+  if (transferItems.length > 0) {
+    await supabase.from('stock_transfer_items').insert(transferItems).throwOnError();
+  }
 
   const { data: transfer } = await supabase.from('stock_transfers').select('*').eq('id', id).single();
   return transfer as StockTransfer;
@@ -708,36 +735,62 @@ export async function receiveStockTransfer(tenantId: string, transferId: string,
   if (!transfer) throw new Error('Transfer not found');
 
   for (const item of (transfer as any).stock_transfer_items || []) {
-    try {
-      await supabase.rpc('adjust_inventory', {
-        p_tenant_id: tenantId, p_branch_id: transfer.from_branch_id,
-        p_product_id: item.product_id, p_qty_delta: -item.quantity_sent
-      });
-    } catch {
-      // fallback: direct update
-    }
-    
-    await supabase.from('inventory_balances').upsert({
-      id: uid('ib'), tenant_id: tenantId,
-      branch_id: transfer.to_branch_id, product_id: item.product_id,
-      quantity: item.quantity_sent, avg_cost: 0, reserved_qty: 0
-    }, { onConflict: 'branch_id,product_id', ignoreDuplicates: false });
+    const qty = Number(item.quantity_sent || 0);
 
-    // Record movement
+    // 1. Deduct from source branch
+    const { data: fromBal } = await supabase.from('inventory_balances')
+      .select('quantity, avg_cost')
+      .eq('branch_id', transfer.from_branch_id)
+      .eq('product_id', item.product_id)
+      .maybeSingle();
+
+    if (fromBal) {
+      await supabase.from('inventory_balances').update({
+        quantity: Math.max(0, (Number(fromBal.quantity) || 0) - qty),
+        last_updated: new Date().toISOString()
+      }).eq('branch_id', transfer.from_branch_id).eq('product_id', item.product_id);
+    }
+
+    // 2. Add to destination branch
+    const { data: toBal } = await supabase.from('inventory_balances')
+      .select('quantity, avg_cost')
+      .eq('branch_id', transfer.to_branch_id)
+      .eq('product_id', item.product_id)
+      .maybeSingle();
+
+    if (toBal) {
+      await supabase.from('inventory_balances').update({
+        quantity: (Number(toBal.quantity) || 0) + qty,
+        last_updated: new Date().toISOString()
+      }).eq('branch_id', transfer.to_branch_id).eq('product_id', item.product_id);
+    } else {
+      await supabase.from('inventory_balances').insert({
+        id: `ib_${transfer.to_branch_id}_${item.product_id}`,
+        tenant_id: tenantId,
+        branch_id: transfer.to_branch_id,
+        product_id: item.product_id,
+        quantity: qty,
+        avg_cost: fromBal?.avg_cost || 0,
+        reserved_qty: 0,
+        last_updated: new Date().toISOString()
+      });
+    }
+
+    // 3. Record movement audit entries
     await supabase.from('inventory_movements').insert([
       {
         id: uid('mov'), tenant_id: tenantId, branch_id: transfer.from_branch_id,
         product_id: item.product_id, movement_type: 'transfer_out',
-        quantity: -item.quantity_sent, unit_cost: 0,
-        reference_type: 'stock_transfer', reference_id: transferId,
-        notes: 'Transfer out', created_by: receivedBy
+        quantity: -qty, unit_cost: fromBal?.avg_cost || 0,
+        reference_type: 'stock_transfer', reference_id: transfer.transfer_number || transferId,
+        notes: `Transfer out to branch ${transfer.to_branch_id}`, created_by: receivedBy || 'admin'
       },
       {
         id: uid('mov'), tenant_id: tenantId, branch_id: transfer.to_branch_id,
         product_id: item.product_id, movement_type: 'transfer_in',
-        quantity: item.quantity_sent, unit_cost: 0,
-        reference_type: 'stock_transfer', reference_id: transferId,
-        notes: 'Transfer in', created_by: receivedBy
+        quantity: qty, unit_cost: fromBal?.avg_cost || 0,
+        reference_type: 'stock_transfer', reference_id: transfer.transfer_number || transferId,
+        notes: `Transfer in from branch ${transfer.from_branch_id}`, created_by: receivedBy || 'admin'
       }
     ]);
   }
@@ -1196,26 +1249,45 @@ export async function getPurchaseOrders(tenantId: string, branchId?: string): Pr
 
 export async function createPurchaseOrder(tenantId: string, data: {
   branch_id: string; supplier_id: string; notes?: string; created_by: string;
-  items: { product_id: string; quantity_ordered: number; unit_cost: number }[];
+  items: { product_id: string; quantity_ordered?: number; quantity?: number; unit_cost?: number }[];
 }): Promise<PurchaseOrder> {
   const supabase = getSupabase();
   const id = uid('po');
   const poNumber = `PO-${Date.now().toString().slice(-6)}`;
-  const totalAmount = data.items.reduce((s, i) => s + i.quantity_ordered * i.unit_cost, 0);
+
+  let branchId = data.branch_id;
+  if (!branchId || branchId === 'all') {
+    const { data: firstB } = await supabase.from('branches').select('id').eq('tenant_id', tenantId).limit(1).maybeSingle();
+    branchId = firstB?.id || 'br_downtown';
+  }
+
+  const cleanItems = (data.items || []).map(item => ({
+    id: uid('poi'),
+    po_id: id,
+    product_id: item.product_id,
+    quantity_ordered: Number((item as any).quantity_ordered ?? (item as any).quantity ?? 1),
+    unit_cost: Number((item as any).unit_cost ?? (item as any).cost_price ?? 0),
+    quantity_received: 0
+  }));
+
+  const calcTotal = cleanItems.reduce((acc, curr) => acc + (curr.quantity_ordered * curr.unit_cost), 0);
+  const totalAmount = Number.isFinite(calcTotal) ? Number(calcTotal.toFixed(2)) : 0;
 
   await supabase.from('purchase_orders').insert({
-    id, tenant_id: tenantId, branch_id: data.branch_id, supplier_id: data.supplier_id,
-    po_number: poNumber, status: 'draft', total_amount: totalAmount,
-    notes: data.notes || null, created_by: data.created_by
+    id,
+    tenant_id: tenantId,
+    branch_id: branchId,
+    supplier_id: data.supplier_id,
+    po_number: poNumber,
+    status: 'draft',
+    total_amount: totalAmount,
+    notes: data.notes || null,
+    created_by: data.created_by || 'admin'
   }).throwOnError();
 
-  await supabase.from('purchase_order_items').insert(
-    data.items.map(item => ({
-      id: uid('poi'), po_id: id, product_id: item.product_id,
-      quantity_ordered: item.quantity_ordered, unit_cost: item.unit_cost,
-      quantity_received: 0
-    }))
-  ).throwOnError();
+  if (cleanItems.length > 0) {
+    await supabase.from('purchase_order_items').insert(cleanItems).throwOnError();
+  }
 
   const { data: po } = await supabase.from('purchase_orders').select('*').eq('id', id).single();
   return po as PurchaseOrder;

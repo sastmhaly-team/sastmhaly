@@ -114,6 +114,7 @@ export default function PurchasingManagementPage() {
           items: poItems.map(i => ({
             product_id: i.productId,
             quantity: i.quantity,
+            quantity_ordered: i.quantity,
             unit_cost: i.unitCost
           })),
           notes: poNotes,
