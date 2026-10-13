@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserByUsernameOrEmail, getTenant, getBranches } from '@/lib/db/queries';
+import { supabase } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -9,7 +10,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'No identifier provided' }, { status: 400 });
   }
 
-  const user = getUserByUsernameOrEmail(username);
+  let user = getUserByUsernameOrEmail(username);
+  if (!user) {
+    try {
+      const { data: supaUser } = await supabase
+        .from('users')
+        .select('*')
+        .or(`phone.eq.${username},username.eq.${username},email.eq.${username}`)
+        .maybeSingle();
+      if (supaUser) {
+        user = supaUser as any;
+      }
+    } catch (err) {
+      console.error('Supabase user lookup error in GET:', err);
+    }
+  }
+
   if (!user) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
@@ -42,7 +58,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Phone and password are required' }, { status: 400 });
     }
 
-    const user = getUserByUsernameOrEmail(loginId);
+    let user = getUserByUsernameOrEmail(loginId);
+    if (!user) {
+      try {
+        const { data: supaUser } = await supabase
+          .from('users')
+          .select('*')
+          .or(`phone.eq.${loginId},username.eq.${loginId},email.eq.${loginId}`)
+          .maybeSingle();
+
+        if (supaUser) {
+          user = supaUser as any;
+        }
+      } catch (err) {
+        console.error('Supabase user lookup error:', err);
+      }
+    }
+
     if (!user) {
       return NextResponse.json({ error: 'Invalid phone or password' }, { status: 401 });
     }

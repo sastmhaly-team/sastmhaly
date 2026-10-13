@@ -48,6 +48,42 @@ function getDatabase(): Database.Database {
 
     // Execute DDL schema
     db.exec(DDL_SCHEMA);
+
+    // Ensure Super Admin & Initial Plan always exist upon initialization
+    try {
+      const adminExists = db.prepare('SELECT id FROM users WHERE phone = ? OR username = ?').get('01211583961', '01211583961');
+      if (!adminExists) {
+        db.prepare(`
+          INSERT OR IGNORE INTO subscription_plans (id, code, name_en, name_ar, price_monthly, price_annual, max_branches, max_users, max_products, features)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          'plan_all_inclusive',
+          'all_inclusive',
+          'All-Inclusive Enterprise Plan',
+          'الخطة الشاملة - كافة المميزات مفعلة',
+          0.0,
+          0.0,
+          999999,
+          999999,
+          999999,
+          JSON.stringify(['all_features'])
+        );
+
+        db.prepare(`
+          INSERT OR REPLACE INTO users (id, tenant_id, branch_id, email, username, password_hash, full_name, phone, role, is_active)
+          VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, 'super_admin', 1)
+        `).run(
+          'usr_superadmin',
+          'admin@sastmhaly.com',
+          '01211583961',
+          '12345678',
+          'مدير المنصة (Super Admin)',
+          '01211583961'
+        );
+      }
+    } catch (e) {
+      console.error('Failed to seed super admin:', e);
+    }
   } catch (err) {
     console.error('Database initialization warning:', err);
   }
