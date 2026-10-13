@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTenants, createTenant, updateTenantStatus, renewSubscription, createUser, getTenantBySlug } from '@/lib/db/supabase-queries';
+import { getTenants, createTenant, updateTenantStatus, renewSubscription, createUser, getTenantBySlug, deleteTenant } from '@/lib/db/supabase-queries';
 
 export async function GET() {
   try {
@@ -107,5 +107,34 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid action or status' }, { status: 400 });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || 'Failed to update merchant' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    let id = searchParams.get('id');
+
+    if (!id) {
+      try {
+        const body = await request.json();
+        id = body.id;
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!id) {
+      return NextResponse.json({ error: 'Missing merchant id' }, { status: 400 });
+    }
+
+    const res = await deleteTenant(id);
+    if (!res.success) {
+      return NextResponse.json({ error: res.error || 'Failed to delete merchant' }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, message: 'Merchant deleted successfully' });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || 'Failed to delete merchant' }, { status: 500 });
   }
 }

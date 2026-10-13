@@ -235,6 +235,51 @@ export async function updateTenantStatus(id: string, status: 'active' | 'suspend
   await supabase.from('subscriptions').update({ status: status === 'suspended' ? 'suspended' : 'active' }).eq('tenant_id', id);
 }
 
+export async function deleteTenant(id: string): Promise<{ success: boolean; error?: string }> {
+  const supabase = getSupabase();
+  try {
+    // Delete all child data in reverse dependency order
+    await supabase.from('sale_return_items').delete().eq('tenant_id', id);
+    await supabase.from('sale_returns').delete().eq('tenant_id', id);
+    await supabase.from('sale_items').delete().eq('tenant_id', id);
+    await supabase.from('sale_payments').delete().eq('tenant_id', id);
+    await supabase.from('sales').delete().eq('tenant_id', id);
+    await supabase.from('cash_movements').delete().eq('tenant_id', id);
+    await supabase.from('cash_sessions').delete().eq('tenant_id', id);
+    await supabase.from('cash_registers').delete().eq('tenant_id', id);
+    await supabase.from('inventory_movements').delete().eq('tenant_id', id);
+    await supabase.from('inventory_balances').delete().eq('tenant_id', id);
+    await supabase.from('product_batches').delete().eq('tenant_id', id);
+    await supabase.from('products').delete().eq('tenant_id', id);
+    await supabase.from('stock_transfer_items').delete().eq('tenant_id', id);
+    await supabase.from('stock_transfers').delete().eq('tenant_id', id);
+    await supabase.from('purchase_order_items').delete().eq('tenant_id', id);
+    await supabase.from('purchase_orders').delete().eq('tenant_id', id);
+    await supabase.from('customers').delete().eq('tenant_id', id);
+    await supabase.from('suppliers').delete().eq('tenant_id', id);
+    await supabase.from('categories').delete().eq('tenant_id', id);
+    await supabase.from('units').delete().eq('tenant_id', id);
+    await supabase.from('journal_lines').delete().eq('tenant_id', id);
+    await supabase.from('journal_entries').delete().eq('tenant_id', id);
+    await supabase.from('chart_of_accounts').delete().eq('tenant_id', id);
+    await supabase.from('expenses').delete().eq('tenant_id', id);
+    await supabase.from('audit_logs').delete().eq('tenant_id', id);
+    await supabase.from('notifications').delete().eq('tenant_id', id);
+    await supabase.from('users').delete().eq('tenant_id', id);
+    await supabase.from('branches').delete().eq('tenant_id', id);
+    await supabase.from('subscription_invoices').delete().eq('tenant_id', id);
+    await supabase.from('subscriptions').delete().eq('tenant_id', id);
+    await supabase.from('tenant_settings').delete().eq('tenant_id', id);
+
+    const { error } = await supabase.from('tenants').delete().eq('id', id);
+    if (error) throw error;
+    return { success: true };
+  } catch (err: any) {
+    console.error('Failed to delete tenant:', err);
+    return { success: false, error: err.message || 'Failed to delete merchant' };
+  }
+}
+
 export async function renewSubscription(tenantId: string, options: {
   duration_months?: number;
   custom_start_date?: string;

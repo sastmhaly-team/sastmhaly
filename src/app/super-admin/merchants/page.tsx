@@ -52,6 +52,12 @@ export default function SuperAdminMerchantsPage() {
   const [renewSubmitting, setRenewSubmitting] = useState(false);
   const [renewError, setRenewError] = useState('');
 
+  // Delete Merchant Modal
+  const [merchantToDelete, setMerchantToDelete] = useState<Tenant | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [branchSubmitting, setBranchSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
@@ -374,6 +380,35 @@ export default function SuperAdminMerchantsPage() {
     }
   };
 
+  const handleOpenDeleteModal = (merchant: Tenant) => {
+    setMerchantToDelete(merchant);
+    setDeleteError('');
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!merchantToDelete) return;
+    setDeleteSubmitting(true);
+    setDeleteError('');
+    try {
+      const res = await fetch(`/api/super-admin/merchants?id=${merchantToDelete.id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setIsDeleteModalOpen(false);
+        setMerchantToDelete(null);
+        await fetchMerchants();
+      } else {
+        setDeleteError(data.error || 'Failed to delete merchant');
+      }
+    } catch {
+      setDeleteError(lang === 'ar' ? 'فشل الاتصال بالخادم' : 'Failed to communicate with server');
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  };
+
   const filtered = merchants.filter(m => {
     const matchesSearch = 
       m.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -666,6 +701,16 @@ export default function SuperAdminMerchantsPage() {
                               {lang === 'ar' ? 'إعادة تفعيل' : 'Activate'}
                             </button>
                           )}
+
+                          {/* Delete Merchant Button */}
+                          <button
+                            onClick={() => handleOpenDeleteModal(m)}
+                            className="px-2 py-1 rounded text-[11px] font-bold text-[#DC2626] bg-red-50 hover:bg-[#DC2626] hover:text-white border border-red-200 transition-all cursor-pointer flex items-center gap-1"
+                            title={lang === 'ar' ? 'حذف المتجر نهائياً' : 'Delete Merchant'}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>{lang === 'ar' ? 'حذف' : 'Delete'}</span>
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1345,6 +1390,66 @@ export default function SuperAdminMerchantsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Merchant Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => !deleteSubmitting && setIsDeleteModalOpen(false)}
+        title={lang === 'ar' ? 'تأكيد حذف المتجر نهائياً' : 'Confirm Permanent Merchant Deletion'}
+        maxWidth="md"
+      >
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl bg-red-50 border border-red-200 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-red-800 space-y-1">
+              <p className="font-bold">
+                {lang === 'ar' ? 'تحذير أمني: هذا الإجراء نهائي ولا يمكن التراجع عنه!' : 'Security Warning: This action is permanent and irreversible!'}
+              </p>
+              <p>
+                {lang === 'ar'
+                  ? `هل أنت متأكد من رغبتك في حذف المتجر "${merchantToDelete?.name}" (${merchantToDelete?.slug})؟ سيتم حذف كافة الفروع، حسابات المستخدمين، المنتجات، المبيعات، والبيانات المالية المرتبطة به فوراً من قاعدة البيانات.`
+                  : `Are you sure you want to permanently delete "${merchantToDelete?.name}" (${merchantToDelete?.slug})? All branches, users, products, sales, and financial records will be wiped from the database.`}
+              </p>
+            </div>
+          </div>
+
+          {deleteError && (
+            <div className="p-3 rounded-lg bg-red-100 text-red-700 text-xs font-semibold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{deleteError}</span>
+            </div>
+          )}
+
+          <div className="pt-3 border-t border-[#E5EAF2] flex items-center justify-end gap-2">
+            <button
+              type="button"
+              disabled={deleteSubmitting}
+              onClick={() => setIsDeleteModalOpen(false)}
+              className="px-4 py-2 rounded-lg border border-[#E5EAF2] text-xs font-bold text-[#687386] hover:bg-gray-100 cursor-pointer disabled:opacity-50"
+            >
+              {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+            </button>
+            <button
+              type="button"
+              disabled={deleteSubmitting}
+              onClick={handleConfirmDelete}
+              className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+            >
+              {deleteSubmitting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>{lang === 'ar' ? 'جارٍ حذف المتجر...' : 'Deleting Merchant...'}</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{lang === 'ar' ? 'تأكيد الحذف النهائي' : 'Confirm Delete'}</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </Modal>
