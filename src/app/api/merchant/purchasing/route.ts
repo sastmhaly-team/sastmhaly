@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPurchaseOrders, createPurchaseOrder, receivePurchaseOrderGoods } from '@/lib/db/queries';
+import { getPurchaseOrders, createPurchaseOrder, receivePurchaseOrderGoods } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     : undefined;
 
   try {
-    const purchaseOrders = getPurchaseOrders(tenantId, branchId);
+    const purchaseOrders = await getPurchaseOrders(tenantId, branchId);
     return NextResponse.json({ purchaseOrders });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch purchase orders' }, { status: 500 });
@@ -23,11 +23,11 @@ export async function POST(request: NextRequest) {
     const tenantId = createData.tenant_id || 'tenant_albaraka';
 
     if (action === 'receive') {
-      receivePurchaseOrderGoods(tenantId, poId, receivedBy || 'admin');
+      await receivePurchaseOrderGoods(tenantId, poId, receivedBy || 'admin');
       return NextResponse.json({ success: true, message: 'Goods received, inventory increased, and supplier balance updated.' });
     }
 
-    const po = createPurchaseOrder(tenantId, createData);
+    const po = await createPurchaseOrder(tenantId, createData);
     return NextResponse.json({ success: true, purchaseOrder: po });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Purchasing operation failed';

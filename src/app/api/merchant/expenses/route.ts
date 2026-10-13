@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getExpenses, createExpense } from '@/lib/db/queries';
+import { getExpenses, createExpense } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     : undefined;
 
   try {
-    const expenses = getExpenses(tenantId, branchId);
+    const expenses = await getExpenses(tenantId, branchId);
     return NextResponse.json({ expenses });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch expenses' }, { status: 500 });
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     const { tenant_id, ...expenseData } = body;
     const tenantId = tenant_id || 'tenant_albaraka';
 
-    const expense = createExpense(tenantId, expenseData);
+    const expense = await createExpense(tenantId, expenseData);
     return NextResponse.json({ success: true, expense });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Expense operation failed';

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getProducts, getProductByBarcode, createProduct, getCategories, getUnits } from '@/lib/db/queries';
+import { getProducts, getProductByBarcode, createProduct, getCategories, getUnits } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -14,13 +14,13 @@ export async function GET(request: NextRequest) {
 
   try {
     if (barcode) {
-      const product = getProductByBarcode(tenantId, barcode);
+      const product = await getProductByBarcode(tenantId, barcode);
       return NextResponse.json({ product });
     }
 
-    const products = getProducts(tenantId, { search, categoryId, branchId, lowStockOnly });
-    const categories = getCategories(tenantId);
-    const units = getUnits(tenantId);
+    const products = await getProducts(tenantId, { search, categoryId, branchId, lowStockOnly });
+    const categories = await getCategories(tenantId);
+    const units = await getUnits(tenantId);
 
     return NextResponse.json({ products, categories, units });
   } catch (error) {
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
             errors.push(`Row missing required fields: ${JSON.stringify(item)}`);
             continue;
           }
-          createProduct(tenantId, item);
+          await createProduct(tenantId, item);
           successCount++;
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : 'Error';
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Single Product Creation
-    const product = createProduct(tenantId, singleProduct);
+    const product = await createProduct(tenantId, singleProduct);
     return NextResponse.json({ success: true, product });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Failed to create product';

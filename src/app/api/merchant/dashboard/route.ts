@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getMerchantDashboardKpis } from '@/lib/db/queries';
+import { getMerchantDashboardKpis } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     : undefined;
 
   try {
-    const kpis = getMerchantDashboardKpis(tenantId, branchId);
+    const kpis = await getMerchantDashboardKpis(tenantId, branchId);
     return NextResponse.json(kpis);
   } catch (error) {
     console.error('Failed to get dashboard kpis', error);

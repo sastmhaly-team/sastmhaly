@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTenants, createTenant, updateTenantStatus, renewSubscription, createUser, getTenantBySlug } from '@/lib/db/queries';
+import { getTenants, createTenant, updateTenantStatus, renewSubscription, createUser, getTenantBySlug } from '@/lib/db/supabase-queries';
 
 export async function GET() {
   try {
-    const tenants = getTenants();
+    const tenants = await getTenants();
     return NextResponse.json({ tenants });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch merchants' }, { status: 500 });
@@ -38,14 +38,14 @@ export async function POST(request: NextRequest) {
 
     const tenantSlug = rawSlug || `merchant-${cleanedPhone.slice(-6)}`;
 
-    const existingSlug = getTenantBySlug(tenantSlug);
+    const existingSlug = await getTenantBySlug(tenantSlug);
     const finalSlug = existingSlug ? `${tenantSlug}-${Date.now().toString().slice(-4)}` : tenantSlug;
 
     const tenantId = `tenant_${Date.now()}`;
     const merchantEmail = email || `owner_${cleanedPhone}@sastmhaly.com`;
 
     // 1. Create Tenant with unified All-Inclusive Plan & selected subscription duration
-    const newTenant = createTenant({
+    const newTenant = await createTenant({
       id: tenantId,
       slug: finalSlug,
       name,
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 2. Create Main Owner Account (username is 11-digit phone number, branch_id is undefined/null so they oversee ALL branches)
-    createUser({
+    await createUser({
       tenant_id: tenantId,
       branch_id: undefined,
       email: merchantEmail,
@@ -91,7 +91,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === 'renew') {
-      const updated = renewSubscription(id, {
+      const updated = await renewSubscription(id, {
         duration_months: duration_months ? Number(duration_months) : undefined,
         custom_start_date,
         custom_end_date,
@@ -100,7 +100,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (status) {
-      updateTenantStatus(id, status);
+      await updateTenantStatus(id, status);
       return NextResponse.json({ success: true });
     }
 

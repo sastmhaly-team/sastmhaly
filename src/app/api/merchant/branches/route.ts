@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getBranches } from '@/lib/db/queries';
+import { getBranches } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const branches = getBranches(tenantId);
+    const branches = await getBranches(tenantId);
     return NextResponse.json({ branches });
   } catch {
     return NextResponse.json({ error: 'Failed to fetch branches' }, { status: 500 });

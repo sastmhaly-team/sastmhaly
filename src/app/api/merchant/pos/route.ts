@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { commitSaleTransaction, getActiveCashSession, getCustomers, getProducts, getTenantSettings } from '@/lib/db/queries';
+import { commitSaleTransaction, getActiveCashSession, getCustomers, getProducts, getTenantSettings } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -7,10 +7,10 @@ export async function GET(request: NextRequest) {
   const branchId = searchParams.get('branchId') || 'br_downtown';
 
   try {
-    const products = getProducts(tenantId, { branchId });
-    const customers = getCustomers(tenantId);
-    const activeSession = getActiveCashSession(tenantId, branchId);
-    const { tenant, settings } = getTenantSettings(tenantId);
+    const products = await getProducts(tenantId, { branchId });
+    const customers = await getCustomers(tenantId);
+    const activeSession = await getActiveCashSession(tenantId, branchId);
+    const { tenant, settings } = await getTenantSettings(tenantId);
 
     return NextResponse.json({
       products,
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Atomic transaction execution
-    const sale = commitSaleTransaction({
+    const sale = await commitSaleTransaction({
       tenant_id: tenant_id || 'tenant_albaraka',
       branch_id,
       register_id: register_id || '',

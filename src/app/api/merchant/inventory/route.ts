@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getInventoryBalances, getInventoryMovements } from '@/lib/db/queries';
-import { db } from '@/lib/db';
+import { getInventoryBalances, getInventoryMovements } from '@/lib/db/supabase-queries';
+import { supabase } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -10,8 +10,8 @@ export async function GET(request: NextRequest) {
     : undefined;
 
   try {
-    const balances = getInventoryBalances(tenantId, branchId);
-    const movements = getInventoryMovements(tenantId, { branchId, limit: 100 });
+    const balances = await getInventoryBalances(tenantId, branchId);
+    const movements = await getInventoryMovements(tenantId, { branchId, limit: 100 });
     return NextResponse.json({ balances, movements });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch inventory' }, { status: 500 });
@@ -26,22 +26,38 @@ export async function POST(request: NextRequest) {
     const tenantId = tenant_id || 'tenant_albaraka';
     const adjQty = Number(quantity);
 
-    const txn = db.transaction(() => {
-      // Update balance
-      db.prepare(`
-        UPDATE inventory_balances
-        SET quantity = quantity + ?, last_updated = datetime('now')
-        WHERE branch_id = ? AND product_id = ?
-      `).run(adjQty, branch_id, product_id);
+    const { data: ib } = await supabase.from('inventory_balances').select('quantity').eq('branch_id', branch_id).eq('product_id', product_id).single();
+    if (ib) {
+      await supabase.from('inventory_balances').update({
+        quantity: (ib.quantity || 0) + adjQty,
+        last_updated: new Date().toISOString()
+      }).eq('branch_id', branch_id).eq('product_id', product_id);
+    } else {
+      await supabase.from('inventory_balances').insert({
+        id: `ib_${Date.now()}`,
+        tenant_id: tenantId,
+        branch_id,
+        product_id,
+        quantity: Math.max(0, adjQty),
+        avg_cost: unit_cost || 0,
+        last_updated: new Date().toISOString()
+      });
+    }
 
-      // Audit movement
-      db.prepare(`
-        INSERT INTO inventory_movements (id, tenant_id, branch_id, product_id, movement_type, quantity, unit_cost, reference_type, reference_id, notes, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'stock_adjustment', ?, ?, ?)
-      `).run(`mov_${Date.now()}`, tenantId, branch_id, product_id, adjustment_type || 'adjustment', adjQty, unit_cost || 0, `ADJ-${Date.now().toString().slice(-6)}`, notes || 'Manual adjustment', user_id || 'admin');
+    await supabase.from('inventory_movements').insert({
+      id: `mov_${Date.now()}`,
+      tenant_id: tenantId,
+      branch_id,
+      product_id,
+      movement_type: adjustment_type || 'adjustment',
+      quantity: adjQty,
+      unit_cost: unit_cost || 0,
+      reference_type: 'stock_adjustment',
+      reference_id: `ADJ-${Date.now().toString().slice(-6)}`,
+      notes: notes || 'Manual adjustment',
+      created_by: user_id || 'admin'
     });
 
-    txn();
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Adjustment failed';

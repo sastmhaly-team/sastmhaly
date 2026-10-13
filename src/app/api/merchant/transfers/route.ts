@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getStockTransfers, createStockTransfer, receiveStockTransfer } from '@/lib/db/queries';
+import { getStockTransfers, createStockTransfer, receiveStockTransfer } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const tenantId = searchParams.get('tenantId') || 'tenant_albaraka';
 
   try {
-    const transfers = getStockTransfers(tenantId);
+    const transfers = await getStockTransfers(tenantId);
     return NextResponse.json({ transfers });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch transfers' }, { status: 500 });
@@ -20,11 +20,11 @@ export async function POST(request: NextRequest) {
     const tenantId = createData.tenant_id || 'tenant_albaraka';
 
     if (action === 'receive') {
-      receiveStockTransfer(tenantId, transferId, receivedBy || 'admin');
+      await receiveStockTransfer(tenantId, transferId, receivedBy || 'admin');
       return NextResponse.json({ success: true, message: 'Transfer received and stock added to destination branch.' });
     }
 
-    const transfer = createStockTransfer(tenantId, createData);
+    const transfer = await createStockTransfer(tenantId, createData);
     return NextResponse.json({ success: true, transfer });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Transfer operation failed';

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { updateTenantSettings } from '@/lib/db/queries';
+import { updateTenantSettings } from '@/lib/db/supabase-queries';
 
 export const BUCKET_NAME = 'merchant-logos';
 
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     const logoUrl = publicUrlData.publicUrl;
 
     // Update database tenant logo_url
-    updateTenantSettings(tenantId, { logo_url: logoUrl });
+    await updateTenantSettings(tenantId, { logo_url: logoUrl });
 
     return NextResponse.json({
       success: true,

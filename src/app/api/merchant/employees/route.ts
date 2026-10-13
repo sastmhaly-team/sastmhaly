@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUsers, createUser, updateUser, deleteUser } from '@/lib/db/queries';
+import { getUsers, createUser, updateUser, deleteUser } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const users = getUsers(tenantId, branchId);
+    const users = await getUsers(tenantId, branchId);
     return NextResponse.json({ users });
   } catch {
     return NextResponse.json({ error: 'Failed to fetch users' }, { status: 500 });
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     const employeeEmail = email || `emp_${cleanedPhone}@sastmhaly.com`;
     const employeeUsername = username || cleanedPhone;
 
-    const user = createUser({
+    const user = await createUser({
       tenant_id,
       branch_id: branch_id || undefined,
       email: employeeEmail,
@@ -83,7 +83,7 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    const updated = updateUser(id, tenant_id, {
+    const updated = await updateUser(id, tenant_id, {
       full_name,
       phone: cleanedPhone,
       role,
@@ -113,7 +113,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'User ID and tenant ID are required' }, { status: 400 });
     }
 
-    const deleted = deleteUser(id, tenantId);
+    const deleted = await deleteUser(id, tenantId);
     return NextResponse.json({ success: deleted });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'User deletion failed';

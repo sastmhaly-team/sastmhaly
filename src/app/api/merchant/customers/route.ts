@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCustomers, createCustomer } from '@/lib/db/queries';
-import { db } from '@/lib/db';
+import { getCustomers, createCustomer } from '@/lib/db/supabase-queries';
+import { supabase } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const customers = getCustomers(tenantId);
+    const customers = await getCustomers(tenantId);
     return NextResponse.json({ customers });
   } catch {
     return NextResponse.json({ error: 'Failed to fetch customers' }, { status: 500 });
@@ -33,14 +33,18 @@ export async function POST(request: NextRequest) {
     // 1. Debt collection (Paying off debt)
     if (action === 'collect') {
       const payAmount = Number(payment_amount);
-      const txn = db.transaction(() => {
-        db.prepare('UPDATE customers SET current_balance = current_balance - ? WHERE id = ?').run(payAmount, customer_id);
-        db.prepare(`
-          INSERT INTO customer_payments (id, tenant_id, customer_id, payment_number, amount, payment_method, created_by)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(`cpay_${Date.now()}`, tenant_id, customer_id, `PAY-CUST-${Date.now().toString().slice(-6)}`, payAmount, payment_method || 'cash', 'cashier');
+      const { data: cust } = await supabase.from('customers').select('current_balance').eq('id', customer_id).single();
+      const currentBal = Number(cust?.current_balance) || 0;
+      await supabase.from('customers').update({ current_balance: currentBal - payAmount }).eq('id', customer_id);
+      await supabase.from('customer_payments').insert({
+        id: `cpay_${Date.now()}`,
+        tenant_id,
+        customer_id,
+        payment_number: `PAY-CUST-${Date.now().toString().slice(-6)}`,
+        amount: payAmount,
+        payment_method: payment_method || 'cash',
+        created_by: 'cashier'
       });
-      txn();
       return NextResponse.json({ success: true, message: 'Customer debt payment recorded and balance updated.' });
     }
 
@@ -50,7 +54,9 @@ export async function POST(request: NextRequest) {
       if (isNaN(debtVal) || debtVal <= 0) {
         return NextResponse.json({ error: 'Valid debt amount is required' }, { status: 400 });
       }
-      db.prepare('UPDATE customers SET current_balance = current_balance + ? WHERE id = ?').run(debtVal, customer_id);
+      const { data: cust } = await supabase.from('customers').select('current_balance').eq('id', customer_id).single();
+      const currentBal = Number(cust?.current_balance) || 0;
+      await supabase.from('customers').update({ current_balance: currentBal + debtVal }).eq('id', customer_id);
       return NextResponse.json({ success: true, message: 'Customer debt charged successfully.' });
     }
 
@@ -60,12 +66,12 @@ export async function POST(request: NextRequest) {
       if (isNaN(newLimit) || newLimit < 0) {
         return NextResponse.json({ error: 'Valid credit limit amount is required' }, { status: 400 });
       }
-      db.prepare('UPDATE customers SET credit_limit = ? WHERE id = ?').run(newLimit, customer_id);
+      await supabase.from('customers').update({ credit_limit: newLimit }).eq('id', customer_id);
       return NextResponse.json({ success: true, message: 'Credit limit updated successfully.' });
     }
 
     // 4. Create new customer
-    const customer = createCustomer(tenant_id, customerData);
+    const customer = await createCustomer(tenant_id, customerData);
     return NextResponse.json({ success: true, customer });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Customer operation failed';

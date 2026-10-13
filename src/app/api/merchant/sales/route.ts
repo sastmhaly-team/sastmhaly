@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSales, getSale, processSaleReturn, getTenantSettings } from '@/lib/db/queries';
+import { getSales, getSale, processSaleReturn, getTenantSettings } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -10,14 +10,14 @@ export async function GET(request: NextRequest) {
     : undefined;
 
   try {
-    const { tenant, settings } = getTenantSettings(tenantId);
+    const { tenant, settings } = await getTenantSettings(tenantId);
 
     if (saleId) {
-      const sale = getSale(tenantId, saleId);
+      const sale = await getSale(tenantId, saleId);
       return NextResponse.json({ sale, tenant, settings });
     }
 
-    const sales = getSales(tenantId, { branchId, limit: 100 });
+    const sales = await getSales(tenantId, { branchId, limit: 100 });
     return NextResponse.json({ sales, tenant, settings });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch sales' }, { status: 500 });
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     const tenantId = tenant_id || 'tenant_albaraka';
 
     if (action === 'return') {
-      const result = processSaleReturn(tenantId, {
+      const result = await processSaleReturn(tenantId, {
         saleId,
         refundAmount: Number(refundAmount),
         refundMethod: refundMethod || 'cash',

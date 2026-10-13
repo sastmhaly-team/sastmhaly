@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getChartOfAccounts, getJournalEntries } from '@/lib/db/queries';
+import { getChartOfAccounts, getJournalEntries } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const tenantId = searchParams.get('tenantId') || 'tenant_albaraka';
 
   try {
-    const accounts = getChartOfAccounts(tenantId);
-    const journalEntries = getJournalEntries(tenantId);
+    const accounts = await getChartOfAccounts(tenantId);
+    const journalEntries = await getJournalEntries(tenantId);
 
     return NextResponse.json({ accounts, journalEntries });
   } catch (error) {

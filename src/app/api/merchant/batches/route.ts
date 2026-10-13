@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getBatches } from '@/lib/db/queries';
+import { getBatches } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     : undefined;
 
   try {
-    const batches = getBatches(tenantId, branchId);
+    const batches = await getBatches(tenantId, branchId);
     return NextResponse.json({ batches });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch batches' }, { status: 500 });

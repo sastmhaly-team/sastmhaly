@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getPlatformOverviewMetrics } from '@/lib/db/queries';
+import { getPlatformOverviewMetrics } from '@/lib/db/supabase-queries';
 
 export async function GET() {
   try {
-    const metrics = getPlatformOverviewMetrics();
+    const metrics = await getPlatformOverviewMetrics();
     return NextResponse.json(metrics);
   } catch (error) {
     console.error('Error fetching platform metrics', error);

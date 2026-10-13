@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserByUsernameOrEmail, getTenant, getBranches } from '@/lib/db/queries';
+import { getUserByUsernameOrEmail, getTenant, getBranches } from '@/lib/db/supabase-queries';
 import { supabase } from '@/lib/supabase';
+import { Branch } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -10,7 +11,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'No identifier provided' }, { status: 400 });
   }
 
-  let user = getUserByUsernameOrEmail(username);
+  let user = await getUserByUsernameOrEmail(username);
   if (!user) {
     try {
       const { data: supaUser } = await supabase
@@ -34,11 +35,11 @@ export async function GET(request: NextRequest) {
   const { password_hash, ...safeUser } = user;
 
   let tenant = null;
-  let branches: ReturnType<typeof getBranches> = [];
+  let branches: Branch[] = [];
 
   if (safeUser.tenant_id) {
-    tenant = getTenant(safeUser.tenant_id);
-    branches = getBranches(safeUser.tenant_id);
+    tenant = await getTenant(safeUser.tenant_id);
+    branches = await getBranches(safeUser.tenant_id);
   }
 
   return NextResponse.json({
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Phone and password are required' }, { status: 400 });
     }
 
-    let user = getUserByUsernameOrEmail(loginId);
+    let user = await getUserByUsernameOrEmail(loginId);
     if (!user) {
       try {
         const { data: supaUser } = await supabase
@@ -86,11 +87,11 @@ export async function POST(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password_hash, ...safeUser } = user;
     let tenant = null;
-    let branches: ReturnType<typeof getBranches> = [];
+    let branches: Branch[] = [];
 
     if (safeUser.tenant_id) {
-      tenant = getTenant(safeUser.tenant_id);
-      branches = getBranches(safeUser.tenant_id);
+      tenant = await getTenant(safeUser.tenant_id);
+      branches = await getBranches(safeUser.tenant_id);
     }
 
     let redirectUrl = '/merchant/dashboard';

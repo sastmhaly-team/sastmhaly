@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getBranches, createBranch, deleteBranch, getTenant } from '@/lib/db/queries';
+import { getBranches, createBranch, deleteBranch, getTenant } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const branches = getBranches(tenantId);
+    const branches = await getBranches(tenantId);
     return NextResponse.json({ branches });
   } catch {
     return NextResponse.json({ error: 'Failed to fetch branches' }, { status: 500 });
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const tenant = getTenant(tenant_id);
+    const tenant = await getTenant(tenant_id);
     if (!tenant) {
       return NextResponse.json({ error: 'Merchant tenant not found' }, { status: 404 });
     }
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const branch = createBranch(tenant_id, {
+    const branch = await createBranch(tenant_id, {
       code,
       name_en: name_en || name_ar,
       name_ar,
@@ -73,7 +73,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'tenantId and branchId are required' }, { status: 400 });
     }
 
-    const result = deleteBranch(tenantId, branchId);
+    const result = await deleteBranch(tenantId, branchId);
     if (!result.success) {
       return NextResponse.json({ error: result.error || 'Failed to delete branch' }, { status: 400 });
     }
