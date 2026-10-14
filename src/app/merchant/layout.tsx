@@ -144,7 +144,7 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
       <AppHeader />
       <div className="flex flex-1 w-full min-h-0 overflow-hidden">
         <AppSidebar />
-        <main className="flex-1 min-w-0 h-full overflow-y-auto overscroll-contain">
+        <main className="flex-1 min-w-0 h-full overflow-y-auto overscroll-contain transition-all duration-300 ease-in-out">
           <div className={isPos ? "w-full h-full p-2 sm:p-3" : "p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full"}>
             {/* Warning Banner when subscription is about to end (within 7 days) */}
             {tenant && tenant.days_remaining !== undefined && tenant.days_remaining <= 7 && tenant.days_remaining > 0 && (

@@ -69,7 +69,6 @@ body {
 }
 
 /* Print styles for POS Thermal Receipt (58mm / 80mm) */
-/* Print styles for POS Thermal Receipt (58mm / 80mm) */
 @media print {
   html, body {
     background: white !important;
@@ -80,47 +79,34 @@ body {
     height: auto !important;
     overflow: visible !important;
   }
-  body * {
-    visibility: hidden;
+  body > *:not(#print-mount) {
+    display: none !important;
   }
-  div:has(#printable-receipt) {
-    overflow: visible !important;
-    position: static !important;
-    visibility: visible !important;
-    height: auto !important;
-    max-height: none !important;
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-  }
-  #printable-receipt {
-    visibility: visible !important;
+  #print-mount {
     display: block !important;
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
     width: 80mm !important;
     max-width: 80mm !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
     padding: 3mm !important;
-    font-size: 11px !important;
+    box-sizing: border-box !important;
     background: white !important;
     color: black !important;
-    box-shadow: none !important;
-    border: none !important;
-    z-index: 999999999 !important;
+    font-size: 11px !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
   }
-  #printable-receipt * {
-    visibility: visible !important;
+  #print-mount * {
     color: black !important;
-  }
-  #printable-receipt img {
     visibility: visible !important;
+  }
+  #print-mount img {
     display: inline-block !important;
     max-width: 100% !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
+
   @page {
     size: 80mm auto;
     margin: 0mm;

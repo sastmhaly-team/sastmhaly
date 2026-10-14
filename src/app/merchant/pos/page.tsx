@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { useAuth } from '@/lib/auth/context';
 import { useLanguage } from '@/lib/i18n/context';
+import { useNav } from '@/lib/nav-context';
 import { Modal } from '@/components/ui/Modal';
 import { Product, Customer, CashSession, PosCartItem, PosHeldSale, Sale, SaleItem } from '@/lib/types';
 import { posAudio } from '@/lib/audio';
@@ -11,12 +12,13 @@ import {
   Search, Barcode, ShoppingCart, Trash2, Plus, Minus, 
   CreditCard, Banknote, Smartphone, User, Pause, Play, 
   Printer, CheckCircle2, Scale, ArrowRight, X, AlertCircle,
-  UserCheck, Users, ChevronRight
+  UserCheck, Users, ChevronRight, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 
 export default function PosPage() {
   const { tenant, user, activeBranchId, branches } = useAuth();
   const { lang, t } = useLanguage();
+  const { isSidebarCollapsed, toggleSidebar } = useNav();
 
   // State
   const [products, setProducts] = useState<Product[]>([]);
@@ -49,10 +51,73 @@ export default function PosPage() {
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   const currentBranch = branches.find(b => b.id === activeBranchId) || branches[0];
 
+  // Quick Add Customer Modal State
+  const [isQuickCustomerOpen, setIsQuickCustomerOpen] = useState(false);
+  const [quickCustomerName, setQuickCustomerName] = useState('');
+  const [quickCustomerPhone, setQuickCustomerPhone] = useState('');
+  const [savingQuickCustomer, setSavingQuickCustomer] = useState(false);
+
   // Store live settings and tenant details
   const [vatEnabled, setVatEnabled] = useState<boolean>(true);
   const [receiptFooter, setReceiptFooter] = useState<string>('شكراً لتعاملكم معنا');
   const [liveTenant, setLiveTenant] = useState<{ id: string; name: string; logo_url?: string } | null>(null);
+
+  const handlePrintReceipt = () => {
+    const receipt = document.getElementById('printable-receipt');
+    if (!receipt) {
+      window.print();
+      return;
+    }
+    let mount = document.getElementById('print-mount');
+    if (!mount) {
+      mount = document.createElement('div');
+      mount.id = 'print-mount';
+      document.body.appendChild(mount);
+    }
+    mount.innerHTML = receipt.innerHTML;
+    window.print();
+  };
+
+  const handleSaveQuickCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tenant) return;
+    if (!quickCustomerName.trim() || !quickCustomerPhone.trim()) {
+      alert(lang === 'ar' ? 'يرجى إدخال اسم ورقم هاتف العميل' : 'Please enter customer name and phone');
+      return;
+    }
+    try {
+      setSavingQuickCustomer(true);
+      const res = await fetch('/api/merchant/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenant.id,
+          name: quickCustomerName.trim(),
+          phone: quickCustomerPhone.trim(),
+          code: `CUST-${Date.now().toString().slice(-4)}`,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const created = data.customer;
+        if (created) {
+          setCustomers(prev => [created, ...prev]);
+          setSelectedCustomer(created);
+        }
+        alert(lang === 'ar' ? 'تم تسجيل وحفظ العميل بنجاح!' : 'Customer registered successfully!');
+        setIsQuickCustomerOpen(false);
+        setQuickCustomerName('');
+        setQuickCustomerPhone('');
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to save customer');
+      }
+    } catch {
+      alert('Error saving customer');
+    } finally {
+      setSavingQuickCustomer(false);
+    }
+  };
 
   // Fetch initial products, customers, active session, and merchant settings
   const loadPosData = useCallback(async () => {
@@ -495,7 +560,31 @@ export default function PosPage() {
       <div className={`flex-1 flex flex-col bg-white rounded-xl border border-[#E5EAF2] shadow-2xs overflow-hidden ${mobileTab === 'products' ? 'flex' : 'hidden lg:flex'}`}>
         
         {/* Barcode Search & Fast Scanner Input */}
-        <div className="p-3.5 border-b border-[#E5EAF2] bg-[#F7F9FC] flex flex-col sm:flex-row gap-2.5">
+        <div className="p-3.5 border-b border-[#E5EAF2] bg-[#F7F9FC] flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
+          {/* Quick Collapse/Expand Sidebar Button in POS */}
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className={`hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0 border ${
+              isSidebarCollapsed
+                ? 'bg-[#246BFD] text-white border-[#246BFD] hover:bg-[#1A54D4]'
+                : 'bg-white text-[#172033] border-[#CBD5E1] hover:bg-[#F1F5F9]'
+            }`}
+            title={isSidebarCollapsed ? (lang === 'ar' ? 'إظهار القائمة الجانبية' : 'Show Sidebar Menu') : (lang === 'ar' ? 'إغلاق القائمة الجانبية لتوسيع شاشة الكاشير' : 'Hide Menu / Expand POS')}
+          >
+            {isSidebarCollapsed ? (
+              <>
+                <PanelLeftOpen className="w-4 h-4 rtl:rotate-180" />
+                <span>{lang === 'ar' ? 'إظهار القائمة' : 'Show Menu'}</span>
+              </>
+            ) : (
+              <>
+                <PanelLeftClose className="w-4 h-4 rtl:rotate-180" />
+                <span>{lang === 'ar' ? 'توسيع الشاشة' : 'Expand Screen'}</span>
+              </>
+            )}
+          </button>
+
           <form onSubmit={handleBarcodeSubmit} className="flex-1 relative">
             <input
               ref={barcodeInputRef}
@@ -948,25 +1037,35 @@ export default function PosPage() {
             </div>
           )}
 
-          <div className="pt-3 border-t border-[#E5EAF2] flex justify-end gap-2">
+          <div className="pt-3 border-t border-[#E5EAF2] flex items-center justify-between gap-2">
             <button
-              onClick={() => setIsCheckoutOpen(false)}
-              className="px-4 py-2 rounded-lg border border-[#E5EAF2] text-xs font-bold text-[#687386]"
+              type="button"
+              onClick={() => setIsQuickCustomerOpen(true)}
+              className="px-3 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
-              {t('cancel')}
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>{lang === 'ar' ? '+ تسجيل كعميل جديد' : '+ New Customer'}</span>
             </button>
-            <button
-              onClick={handleFinalizeSale}
-              disabled={isSubmitting || (paymentMethod === 'customer_credit' && !selectedCustomer)}
-              className="px-5 py-2.5 rounded-lg bg-[#246BFD] hover:bg-[#1A54D4] text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-2"
-            >
-              {isSubmitting ? t('loading') : (
-                <>
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>{t('pos_complete')}</span>
-                </>
-              )}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsCheckoutOpen(false)}
+                className="px-4 py-2 rounded-lg border border-[#E5EAF2] text-xs font-bold text-[#687386]"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                onClick={handleFinalizeSale}
+                disabled={isSubmitting || (paymentMethod === 'customer_credit' && !selectedCustomer)}
+                className="px-5 py-2.5 rounded-lg bg-[#246BFD] hover:bg-[#1A54D4] text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-2"
+              >
+                {isSubmitting ? t('loading') : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{t('pos_complete')}</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </Modal>
@@ -1019,12 +1118,12 @@ export default function PosPage() {
           {/* Printable Receipt Area */}
           <div 
             id="printable-receipt"
-            className="p-4 bg-white border border-dashed border-gray-300 rounded-lg text-black font-mono text-[11px] space-y-3"
+            dir="rtl"
+            className="p-4 bg-white border border-dashed border-gray-300 rounded-lg text-black font-mono text-[11px] space-y-3 text-right"
             style={{ width: '80mm', margin: '0 auto' }}
           >
             {/* Header */}
             <div className="text-center space-y-1">
-              {/* Merchant's Logo: FIRST thing in invoice (clean, without square box) */}
               <div className="flex items-center justify-center mb-1">
                 {(liveTenant?.logo_url || tenant?.logo_url) ? (
                   <img 
@@ -1042,36 +1141,53 @@ export default function PosPage() {
                   />
                 )}
               </div>
-              <h3 className="font-bold text-sm tracking-tight">{liveTenant?.name || tenant?.name || 'Al-Baraka Supermarket'}</h3>
-              <p className="text-[10px] text-gray-600">{currentBranch?.address}</p>
-              <p className="text-[10px] text-gray-600">Tel: {currentBranch?.phone}</p>
+              <h3 className="font-bold text-sm tracking-tight">{liveTenant?.name || tenant?.name || currentBranch?.name_ar || 'سستمهالي'}</h3>
+              <p className="text-[10px] text-gray-600">{currentBranch?.address || 'القاهرة، مصر'}</p>
+              <p className="text-[10px] text-gray-600">{currentBranch?.phone || '01203356780'}</p>
+              <div className="font-bold pt-1 text-xs">{completedSale?.sale_number}</div>
               <div className="border-t border-dashed border-black my-1.5"></div>
             </div>
 
             {/* Meta */}
             <div className="text-[10px] space-y-0.5">
-              <p>Receipt: <strong>{completedSale?.sale_number}</strong></p>
-              <p>Date: {completedSale?.created_at || new Date().toLocaleString()}</p>
-              <p>Cashier: {user?.full_name}</p>
-              {selectedCustomer && <p>Customer: {selectedCustomer.name}</p>}
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">التاريخ:</span>
+                <span className="font-sans">{new Date(completedSale?.created_at || Date.now()).toLocaleDateString('ar-EG')}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">الكاشير:</span>
+                <span>{user?.full_name || 'الكاشير'}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">العميل:</span>
+                <span>{selectedCustomer ? selectedCustomer.name : 'عميل نقدي'}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">طريقة الدفع:</span>
+                <span>
+                  {completedSale?.payment_method === 'card' ? 'بطاقة بنكية' :
+                   completedSale?.payment_method === 'mobile_wallet' ? 'محفظة إلكترونية' :
+                   completedSale?.payment_method === 'customer_credit' ? 'آجل (على الحساب)' : 'نقدي'}
+                </span>
+              </div>
               <div className="border-t border-dashed border-black my-1.5"></div>
             </div>
 
             {/* Line Items */}
-            <table className="w-full text-[10px] text-left rtl:text-right border-collapse">
+            <table className="w-full text-[10px] text-right border-collapse">
               <thead>
                 <tr className="border-b border-black">
-                  <th className="py-1">Item</th>
-                  <th className="py-1 text-center">Qty</th>
-                  <th className="py-1 text-right rtl:text-left">Total</th>
+                  <th className="py-1 text-right">الصنف</th>
+                  <th className="py-1 text-center">الكمية</th>
+                  <th className="py-1 text-left">الإجمالي</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-dotted divide-gray-300">
                 {completedSale?.items?.map((it: SaleItem, idx: number) => (
                   <tr key={idx}>
-                    <td className="py-1">{lang === 'ar' ? it.product_name_ar : it.product_name_en}</td>
+                    <td className="py-1 font-semibold">{it.product_name_ar || it.product_name_en}</td>
                     <td className="py-1 text-center">{it.quantity}</td>
-                    <td className="py-1 text-right rtl:text-left">{it.line_total}</td>
+                    <td className="py-1 text-left font-bold">{it.line_total}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1081,34 +1197,34 @@ export default function PosPage() {
 
             {/* Totals */}
             <div className="space-y-0.5 text-[11px]">
-              <div className="flex justify-between">
-                <span>Subtotal:</span>
-                <span>{completedSale?.subtotal} EGP</span>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">المجموع الفرعي:</span>
+                <span className="font-bold">{completedSale?.subtotal} ج.م</span>
               </div>
               {completedSale?.discount_amount ? (
-                <div className="flex justify-between">
-                  <span>Discount:</span>
-                  <span>-{completedSale.discount_amount} EGP</span>
+                <div className="flex justify-between items-center text-emerald-600">
+                  <span>الخصم:</span>
+                  <span>-{completedSale.discount_amount} ج.م</span>
                 </div>
               ) : null}
               {vatEnabled && completedSale && Number(completedSale.tax_amount) > 0 ? (
-                <div className="flex justify-between">
-                  <span>VAT (14%):</span>
-                  <span>{completedSale.tax_amount} EGP</span>
+                <div className="flex justify-between items-center text-gray-600">
+                  <span>ضريبة القيمة المضافة (14%):</span>
+                  <span>{completedSale.tax_amount} ج.م</span>
                 </div>
               ) : null}
-              <div className="flex justify-between font-bold text-xs pt-1 border-t border-black">
-                <span>TOTAL:</span>
-                <span>{completedSale?.total_amount} EGP</span>
+              <div className="flex justify-between items-center font-bold text-xs pt-1 border-t border-black">
+                <span>الإجمالي النهائي:</span>
+                <span>{completedSale?.total_amount} ج.م</span>
               </div>
-              <div className="flex justify-between text-[10px] pt-1">
-                <span>Payment ({completedSale?.payment_method}):</span>
-                <span>{completedSale?.paid_amount} EGP</span>
+              <div className="flex justify-between items-center text-[10px] text-gray-600 pt-1">
+                <span>المدفوع:</span>
+                <span>{completedSale?.paid_amount} ج.م</span>
               </div>
               {completedSale?.change_amount ? (
-                <div className="flex justify-between text-[10px]">
-                  <span>Change:</span>
-                  <span>{completedSale.change_amount} EGP</span>
+                <div className="flex justify-between items-center text-[10px]">
+                  <span>الباقي:</span>
+                  <span>{completedSale.change_amount} ج.م</span>
                 </div>
               ) : null}
             </div>
@@ -1130,23 +1246,88 @@ export default function PosPage() {
           </div>
 
           {/* Action buttons */}
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              onClick={() => setIsReceiptOpen(false)}
-              className="px-4 py-2 rounded-lg border border-[#E5EAF2] text-xs font-bold text-[#687386]"
-            >
-              {lang === 'ar' ? 'إغلاق ومتابعة البيع' : 'Close & Next Sale'}
-            </button>
-            <button
-              onClick={() => window.print()}
-              className="px-4 py-2 rounded-lg bg-[#246BFD] text-white text-xs font-bold flex items-center gap-1.5"
-            >
-              <Printer className="w-4 h-4" />
-              <span>{t('print')}</span>
-            </button>
+          <div className="flex items-center justify-between gap-2 pt-2">
+            {!selectedCustomer && (
+              <button
+                type="button"
+                onClick={() => setIsQuickCustomerOpen(true)}
+                className="px-3 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <UserCheck className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? 'تسجيل هذا العميل' : 'Save as Customer'}</span>
+              </button>
+            )}
+            <div className="flex items-center gap-2 ms-auto">
+              <button
+                onClick={() => setIsReceiptOpen(false)}
+                className="px-4 py-2 rounded-lg border border-[#E5EAF2] text-xs font-bold text-[#687386] cursor-pointer"
+              >
+                {lang === 'ar' ? 'إغلاق ومتابعة البيع' : 'Close & Next Sale'}
+              </button>
+              <button
+                onClick={handlePrintReceipt}
+                className="px-4 py-2 rounded-lg bg-[#246BFD] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Printer className="w-4 h-4" />
+                <span>{t('print')}</span>
+              </button>
+            </div>
           </div>
 
         </div>
+      </Modal>
+
+      {/* Quick Register Customer Modal (Name & Phone only) */}
+      <Modal
+        isOpen={isQuickCustomerOpen}
+        onClose={() => setIsQuickCustomerOpen(false)}
+        title={lang === 'ar' ? 'تسجيل عميل جديد' : 'Register New Customer'}
+        maxWidth="sm"
+      >
+        <form onSubmit={handleSaveQuickCustomer} className="space-y-4 text-xs">
+          <div>
+            <label className="block font-bold text-[#0B1730] mb-1">
+              {lang === 'ar' ? 'اسم العميل' : 'Customer Name'} *
+            </label>
+            <input
+              type="text"
+              required
+              value={quickCustomerName}
+              onChange={(e) => setQuickCustomerName(e.target.value)}
+              placeholder={lang === 'ar' ? 'مثال: محمد مصطفى' : 'Customer Name'}
+              className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#246BFD]"
+            />
+          </div>
+          <div>
+            <label className="block font-bold text-[#0B1730] mb-1">
+              {lang === 'ar' ? 'رقم الهاتف' : 'Phone Number'} *
+            </label>
+            <input
+              type="tel"
+              required
+              value={quickCustomerPhone}
+              onChange={(e) => setQuickCustomerPhone(e.target.value)}
+              placeholder="01XXXXXXXXX"
+              className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#246BFD]"
+            />
+          </div>
+          <div className="pt-2 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsQuickCustomerOpen(false)}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-600 font-semibold"
+            >
+              {t('cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={savingQuickCustomer}
+              className="px-4 py-1.5 bg-[#246BFD] hover:bg-[#1A54D4] text-white font-bold rounded-lg shadow-xs cursor-pointer"
+            >
+              {savingQuickCustomer ? t('loading') : (lang === 'ar' ? 'حفظ العميل فوراً' : 'Save Customer')}
+            </button>
+          </div>
+        </form>
       </Modal>
 
       {/* Customer Selection Modal with Live Search */}

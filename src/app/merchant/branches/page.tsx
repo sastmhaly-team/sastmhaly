@@ -18,6 +18,11 @@ export default function BranchesPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [visibleCount, setVisibleCount] = useState(20);
+
+  useEffect(() => {
+    setVisibleCount(20);
+  }, [searchTerm]);
 
   const fetchBranches = async () => {
     if (!tenantId) {
@@ -126,7 +131,7 @@ export default function BranchesPage() {
           <div className="col-span-full p-8 text-center text-xs text-[#687386] bg-white rounded-xl border border-[#E5EAF2]">
             {isRtl ? 'لا توجد فروع مسجلة لهذا الحساب حالياً' : 'No branches assigned yet.'}
           </div>
-        ) : filteredBranches.map((branch) => (
+        ) : filteredBranches.slice(0, visibleCount).map((branch) => (
           <div key={branch.id} className="bg-white p-5 rounded-xl border border-[#E5EAF2] shadow-xs space-y-4 hover:border-[#246BFD]/50 transition-all">
             <div className="flex justify-between items-start">
               <div>
@@ -184,6 +189,17 @@ export default function BranchesPage() {
           </div>
         ))}
       </div>
+
+      {visibleCount < filteredBranches.length && (
+        <div className="p-4 flex justify-center">
+          <button
+            onClick={() => setVisibleCount(prev => prev + 20)}
+            className="px-6 py-2 bg-[#246BFD] hover:bg-[#1A54D4] text-white text-xs font-bold rounded-lg shadow-sm transition-all"
+          >
+            {isRtl ? `عرض المزيد (تحميل 20 إضافية - متبقي ${filteredBranches.length - visibleCount})` : `Load More (+20 items - ${filteredBranches.length - visibleCount} remaining)`}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

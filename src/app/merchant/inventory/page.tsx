@@ -21,6 +21,13 @@ export default function MerchantInventoryPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'balances' | 'movements'>('balances');
   const [search, setSearch] = useState('');
+  const [visibleBalancesCount, setVisibleBalancesCount] = useState(20);
+  const [visibleMovementsCount, setVisibleMovementsCount] = useState(20);
+
+  useEffect(() => {
+    setVisibleBalancesCount(20);
+    setVisibleMovementsCount(20);
+  }, [search]);
 
   // Adjustment Modal
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
@@ -243,7 +250,7 @@ export default function MerchantInventoryPage() {
                     <td colSpan={7} className="px-4 py-8 text-center text-[#687386]">{t('no_records')}</td>
                   </tr>
                 ) : (
-                  filteredBalances.map((b, idx) => (
+                  filteredBalances.slice(0, visibleBalancesCount).map((b, idx) => (
                     <tr key={b.id} className="hover:bg-[#F7F9FC] transition-colors">
                       <td className="px-4 py-3.5 font-mono text-[#687386]">{idx + 1}</td>
                       <td className="px-4 py-3.5 font-bold text-[#0B1730]">
@@ -270,6 +277,17 @@ export default function MerchantInventoryPage() {
               </tbody>
             </table>
           </div>
+
+          {visibleBalancesCount < filteredBalances.length && (
+            <div className="p-4 border-t border-[#E5EAF2] flex justify-center bg-[#FAFCFF]">
+              <button
+                onClick={() => setVisibleBalancesCount(prev => prev + 20)}
+                className="px-6 py-2 bg-[#246BFD] hover:bg-[#1A54D4] text-white text-xs font-bold rounded-lg shadow-sm transition-all"
+              >
+                {lang === 'ar' ? `عرض المزيد (تحميل 20 إضافية - متبقي ${filteredBalances.length - visibleBalancesCount})` : `Load More (+20 items - ${filteredBalances.length - visibleBalancesCount} remaining)`}
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         /* Movements Ledger Table */
@@ -288,7 +306,7 @@ export default function MerchantInventoryPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E5EAF2]">
-                {movements.map((m) => {
+                {movements.slice(0, visibleMovementsCount).map((m) => {
                   const isPositive = m.quantity > 0;
                   return (
                     <tr key={m.id} className="hover:bg-[#F7F9FC]">
@@ -319,6 +337,17 @@ export default function MerchantInventoryPage() {
               </tbody>
             </table>
           </div>
+
+          {visibleMovementsCount < movements.length && (
+            <div className="p-4 border-t border-[#E5EAF2] flex justify-center bg-[#FAFCFF]">
+              <button
+                onClick={() => setVisibleMovementsCount(prev => prev + 20)}
+                className="px-6 py-2 bg-[#246BFD] hover:bg-[#1A54D4] text-white text-xs font-bold rounded-lg shadow-sm transition-all"
+              >
+                {lang === 'ar' ? `عرض المزيد (تحميل 20 إضافية - متبقي ${movements.length - visibleMovementsCount})` : `Load More (+20 items - ${movements.length - visibleMovementsCount} remaining)`}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

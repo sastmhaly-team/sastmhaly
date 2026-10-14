@@ -9,12 +9,12 @@ import { LanguageToggle } from './LanguageToggle';
 import { BranchSelector } from './BranchSelector';
 import { NotificationBell } from './NotificationBell';
 import { useNav } from '@/lib/nav-context';
-import { LogOut, ShieldCheck, ShoppingCart, User as UserIcon, Menu } from 'lucide-react';
+import { LogOut, ShieldCheck, ShoppingCart, User as UserIcon, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 export function AppHeader() {
   const { user, tenant, logout } = useAuth();
   const { t, lang } = useLanguage();
-  const { toggleMobileMenu } = useNav();
+  const { toggleMobileMenu, isSidebarCollapsed, toggleSidebar } = useNav();
 
   return (
     <header className="sticky top-0 z-40 shrink-0 w-full bg-white border-b border-[#E5EAF2] shadow-2xs">
@@ -27,10 +27,31 @@ export function AppHeader() {
             <button
               type="button"
               onClick={toggleMobileMenu}
-              className="md:hidden p-1.5 -ms-1 text-[#172033] hover:bg-[#F7F9FC] rounded-lg transition-colors"
+              className="md:hidden p-1.5 -ms-1 text-[#172033] hover:bg-[#F7F9FC] rounded-lg transition-colors cursor-pointer"
               aria-label="Toggle Menu"
             >
               <Menu className="w-5 h-5 text-[#246BFD]" />
+            </button>
+          )}
+
+          {/* Desktop Sidebar Toggle Button */}
+          {user && (
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className={`hidden md:flex items-center justify-center p-2 rounded-lg border transition-all cursor-pointer ${
+                isSidebarCollapsed 
+                  ? 'bg-blue-50 border-blue-200 text-[#246BFD] hover:bg-blue-100 shadow-2xs' 
+                  : 'bg-white border-[#E5EAF2] text-[#687386] hover:text-[#0B1730] hover:bg-[#F7F9FC]'
+              }`}
+              title={isSidebarCollapsed ? (lang === 'ar' ? 'إظهار القائمة الجانبية' : 'Open Sidebar') : (lang === 'ar' ? 'إخفاء القائمة الجانبية لتوسيع الشاشة' : 'Close Sidebar')}
+              aria-label="Toggle Desktop Sidebar"
+            >
+              {isSidebarCollapsed ? (
+                <PanelLeftOpen className="w-4 h-4 text-[#246BFD] rtl:rotate-180" />
+              ) : (
+                <PanelLeftClose className="w-4 h-4 text-[#687386] rtl:rotate-180" />
+              )}
             </button>
           )}
 

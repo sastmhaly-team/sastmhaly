@@ -19,6 +19,11 @@ export default function CustomersManagementPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [visibleCount, setVisibleCount] = useState(20);
+
+  useEffect(() => {
+    setVisibleCount(20);
+  }, [searchTerm]);
 
   // Add Customer Modal
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -294,7 +299,7 @@ export default function CustomersManagementPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E5EAF2]">
-                {filteredCustomers.map((customer) => (
+                {filteredCustomers.slice(0, visibleCount).map((customer) => (
                   <tr key={customer.id} className="hover:bg-[#F7F9FC]/60 transition-colors">
                     <td className="py-3 px-4 font-bold text-[#0B1730]">
                       {customer.code}
@@ -369,6 +374,17 @@ export default function CustomersManagementPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {visibleCount < filteredCustomers.length && (
+          <div className="p-4 border-t border-[#E5EAF2] flex justify-center bg-[#FAFCFF]">
+            <button
+              onClick={() => setVisibleCount(prev => prev + 20)}
+              className="px-6 py-2 bg-[#246BFD] hover:bg-[#1A54D4] text-white text-xs font-bold rounded-lg shadow-sm transition-all"
+            >
+              {isRtl ? `عرض المزيد (تحميل 20 إضافية - متبقي ${filteredCustomers.length - visibleCount})` : `Load More (+20 items - ${filteredCustomers.length - visibleCount} remaining)`}
+            </button>
           </div>
         )}
       </div>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getStockTransfers, createStockTransfer, receiveStockTransfer } from '@/lib/db/supabase-queries';
+import { getStockTransfers, createStockTransfer, receiveStockTransfer, cancelStockTransfer } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -19,9 +19,14 @@ export async function POST(request: NextRequest) {
     const { action, transferId, receivedBy, ...createData } = body;
     const tenantId = createData.tenant_id || 'tenant_albaraka';
 
-    if (action === 'receive') {
+    if (action === 'receive' || action === 'finish') {
       await receiveStockTransfer(tenantId, transferId, receivedBy || 'admin');
-      return NextResponse.json({ success: true, message: 'Transfer received and stock added to destination branch.' });
+      return NextResponse.json({ success: true, message: 'Transfer received and stock successfully transferred.' });
+    }
+
+    if (action === 'cancel') {
+      await cancelStockTransfer(tenantId, transferId, receivedBy || 'admin');
+      return NextResponse.json({ success: true, message: 'Transfer canceled.' });
     }
 
     const transfer = await createStockTransfer(tenantId, createData);

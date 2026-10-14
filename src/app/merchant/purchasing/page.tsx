@@ -24,6 +24,11 @@ export default function PurchasingManagementPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [visibleCount, setVisibleCount] = useState(20);
+
+  useEffect(() => {
+    setVisibleCount(20);
+  }, [searchTerm, statusFilter]);
 
   // Create PO Modal
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -278,7 +283,7 @@ export default function PurchasingManagementPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E5EAF2]">
-                {filteredOrders.map((po) => (
+                {filteredOrders.slice(0, visibleCount).map((po) => (
                   <tr key={po.id} className="hover:bg-[#F7F9FC]/60 transition-colors">
                     <td className="py-3 px-4 font-bold text-[#0B1730]">
                       {po.po_number}
@@ -324,6 +329,17 @@ export default function PurchasingManagementPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {visibleCount < filteredOrders.length && (
+          <div className="p-4 border-t border-[#E5EAF2] flex justify-center bg-[#FAFCFF]">
+            <button
+              onClick={() => setVisibleCount(prev => prev + 20)}
+              className="px-6 py-2 bg-[#246BFD] hover:bg-[#1A54D4] text-white text-xs font-bold rounded-lg shadow-sm transition-all"
+            >
+              {isRtl ? `عرض المزيد (تحميل 20 إضافية - متبقي ${filteredOrders.length - visibleCount})` : `Load More (+20 items - ${filteredOrders.length - visibleCount} remaining)`}
+            </button>
           </div>
         )}
       </div>

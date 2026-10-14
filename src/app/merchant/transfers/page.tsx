@@ -109,25 +109,74 @@ export default function MerchantTransfersPage() {
     }
   };
 
-  const handleReceiveTransfer = async (transferId: string) => {
+  const [visibleCount, setVisibleCount] = useState(20);
+  const [processingId, setProcessingId] = useState<string | null>(null);
+
+  const handleFinishTransfer = async (transferId: string) => {
     if (!tenant) return;
+    const confirmMsg = lang === 'ar' 
+      ? 'هل أنت متأكد من إنهاء التحويل وتأكيد نقل البضاعة فعلياً إلى رصيد الفرع المستلم؟' 
+      : 'Are you sure you want to finish this transfer and transfer stock to the destination branch?';
+    if (!window.confirm(confirmMsg)) return;
+
     try {
+      setProcessingId(transferId);
       const res = await fetch('/api/merchant/transfers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tenant_id: tenant.id,
-          action: 'receive',
+          action: 'finish',
           transferId,
-          receivedBy: 'branch_manager',
+          receivedBy: 'merchant_owner',
         }),
       });
 
       if (res.ok) {
+        alert(lang === 'ar' ? 'تم إنهاء التحويل بنجاح وتم تحديث أرصدة المخزون للفرعين فوراً!' : 'Transfer finished and inventory successfully moved!');
         fetchTransfers();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to finish transfer');
       }
     } catch {
       alert('Error confirming transfer');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleCancelTransfer = async (transferId: string) => {
+    if (!tenant) return;
+    const confirmMsg = lang === 'ar' 
+      ? 'هل أنت متأكد من إلغاء هذا التحويل؟' 
+      : 'Are you sure you want to cancel this transfer?';
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      setProcessingId(transferId);
+      const res = await fetch('/api/merchant/transfers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenant.id,
+          action: 'cancel',
+          transferId,
+          receivedBy: 'merchant_owner',
+        }),
+      });
+
+      if (res.ok) {
+        alert(lang === 'ar' ? 'تم إلغاء التحويل.' : 'Transfer canceled.');
+        fetchTransfers();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to cancel transfer');
+      }
+    } catch {
+      alert('Error canceling transfer');
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -140,6 +189,8 @@ export default function MerchantTransfersPage() {
     { header: 'Notes', key: 'notes' as const },
   ];
 
+  const visibleTransfers = transfers.slice(0, visibleCount);
+
   return (
     <div className="space-y-6">
       
@@ -151,8 +202,8 @@ export default function MerchantTransfersPage() {
           </h2>
           <p className="text-xs text-[#687386] mt-0.5">
             {lang === 'ar' 
-              ? 'إنشاء طلبات التحويل، مراقبة البضاعة المنقولة (In Transit)، وتأكيد الاستلام بالمقصد' 
-              : 'Transfer inventory between shops, track transit stages, and reconcile received stock'}
+              ? 'إنشاء طلبات التحويل، مراقبة البضاعة المنقولة (In Transit)، وتأكيد الاستلام بالمقصد مع نقل المخزون الفعلي' 
+              : 'Transfer inventory between shops, track transit stages, and reconcile received stock with actual ledger updates'}
           </p>
         </div>
 
@@ -199,7 +250,7 @@ export default function MerchantTransfersPage() {
                   <td colSpan={8} className="px-4 py-8 text-center text-[#687386]">{t('no_records')}</td>
                 </tr>
               ) : (
-                transfers.map((trf, idx) => (
+                visibleTransfers.map((trf, idx) => (
                   <tr key={trf.id} className="hover:bg-[#F7F9FC]">
                     <td className="px-4 py-3.5 font-mono text-[#687386]">{idx + 1}</td>
                     <td className="px-4 py-3.5 font-mono font-bold text-[#246BFD]">
@@ -212,32 +263,47 @@ export default function MerchantTransfersPage() {
                       {trf.to_branch_name}
                     </td>
                     <td className="px-4 py-3.5 text-center font-bold text-[#0B1730]">
-                      {trf.items_count || 1}
+                      {trf.items?.length || trf.items_count || 1}
                     </td>
                     <td className="px-4 py-3.5 text-center">
-                      {trf.status === 'received' ? (
+                      {trf.status === 'received' || trf.status === 'completed' ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#ECFDF5] text-[#10B981] border border-[#A7F3D0]">
                           <CheckCircle2 className="w-3 h-3" />
-                          Received
+                          <span>{lang === 'ar' ? 'مكتمل وتم النقل' : 'Received & Done'}</span>
+                        </span>
+                      ) : trf.status === 'canceled' ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#FEF2F2] text-[#EF4444] border border-[#FECACA]">
+                          <span>{lang === 'ar' ? 'ملغي' : 'Canceled'}</span>
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#FFFBEB] text-[#D97706] border border-[#FDE68A]">
                           <Truck className="w-3 h-3" />
-                          In Transit
+                          <span>{lang === 'ar' ? 'قيد الشحن (In Transit)' : 'In Transit'}</span>
                         </span>
                       )}
                     </td>
                     <td className="px-4 py-3.5 text-[#687386] text-[11px] font-mono">
-                      {trf.created_at}
+                      {new Date(trf.created_at).toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US')}
                     </td>
                     <td className="px-4 py-3.5 text-center">
-                      {trf.status === 'in_transit' && (
-                        <button
-                          onClick={() => handleReceiveTransfer(trf.id)}
-                          className="px-3 py-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-[11px] font-bold shadow-xs cursor-pointer"
-                        >
-                          {lang === 'ar' ? 'تأكيد الاستلام' : 'Confirm Receipt'}
-                        </button>
+                      {trf.status !== 'received' && trf.status !== 'completed' && trf.status !== 'canceled' && (
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => handleFinishTransfer(trf.id)}
+                            disabled={processingId === trf.id}
+                            className="px-2.5 py-1 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-[11px] font-bold shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                          >
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>{processingId === trf.id ? t('loading') : (lang === 'ar' ? 'إنهاء واستلام' : 'Finish Transfer')}</span>
+                          </button>
+                          <button
+                            onClick={() => handleCancelTransfer(trf.id)}
+                            disabled={processingId === trf.id}
+                            className="px-2 py-1 rounded-lg bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-600 border border-gray-200 text-[11px] font-semibold cursor-pointer"
+                          >
+                            {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -246,6 +312,21 @@ export default function MerchantTransfersPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Load More Pagination (20 by 20) */}
+        {transfers.length > visibleCount && (
+          <div className="p-3 border-t border-[#E5EAF2] bg-[#F7F9FC] flex justify-center">
+            <button
+              type="button"
+              onClick={() => setVisibleCount(prev => prev + 20)}
+              className="px-4 py-2 bg-white hover:bg-gray-100 border border-[#CBD5E1] text-[#0B1730] text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
+            >
+              {lang === 'ar' 
+                ? `عرض المزيد (تحميل 20 إضافية) • متبقي ${transfers.length - visibleCount}` 
+                : `Load More (20 more) • ${transfers.length - visibleCount} remaining`}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* New Stock Transfer Modal */}

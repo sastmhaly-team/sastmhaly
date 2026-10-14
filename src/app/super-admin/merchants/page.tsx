@@ -32,6 +32,11 @@ export default function SuperAdminMerchantsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [visibleCount, setVisibleCount] = useState(20);
+
+  useEffect(() => {
+    setVisibleCount(20);
+  }, [search, statusFilter]);
   
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -645,7 +650,7 @@ export default function SuperAdminMerchantsPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((m, idx) => {
+                filtered.slice(0, visibleCount).map((m, idx) => {
                   const isSuspended = m.status === 'suspended';
                   const isExpired = m.is_expired;
                   const isExpiringSoon = !isExpired && !isSuspended && m.days_remaining !== undefined && m.days_remaining <= 7;
@@ -800,6 +805,17 @@ export default function SuperAdminMerchantsPage() {
             </tbody>
           </table>
         </div>
+
+        {visibleCount < filtered.length && (
+          <div className="p-4 border-t border-[#E5EAF2] flex justify-center bg-[#FAFCFF]">
+            <button
+              onClick={() => setVisibleCount(prev => prev + 20)}
+              className="px-6 py-2 bg-[#246BFD] hover:bg-[#1A54D4] text-white text-xs font-bold rounded-lg shadow-sm transition-all"
+            >
+              {lang === 'ar' ? `عرض المزيد (تحميل 20 إضافية - متبقي ${filtered.length - visibleCount})` : `Load More (+20 items - ${filtered.length - visibleCount} remaining)`}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Provision New Merchant Modal (Unified Plan, 11-digit phone) */}

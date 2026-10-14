@@ -9,6 +9,7 @@ export default function SuperAdminSubscriptionsPage() {
   const { lang, t } = useLanguage();
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(20);
 
   useEffect(() => {
     const fetchPlans = async () => {
@@ -41,7 +42,7 @@ export default function SuperAdminSubscriptionsPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {plans.map((p) => (
+        {plans.slice(0, visibleCount).map((p) => (
           <div key={p.id} className="bg-white rounded-xl border border-[#E5EAF2] p-6 shadow-xs flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-3">
@@ -96,6 +97,17 @@ export default function SuperAdminSubscriptionsPage() {
           </div>
         ))}
       </div>
+
+      {visibleCount < plans.length && (
+        <div className="p-4 flex justify-center">
+          <button
+            onClick={() => setVisibleCount(prev => prev + 20)}
+            className="px-6 py-2 bg-[#246BFD] hover:bg-[#1A54D4] text-white text-xs font-bold rounded-lg shadow-sm transition-all"
+          >
+            {lang === 'ar' ? `عرض المزيد (تحميل 20 إضافية - متبقي ${plans.length - visibleCount})` : `Load More (+20 items - ${plans.length - visibleCount} remaining)`}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -10,14 +10,14 @@ import {
   LayoutDashboard, ShoppingCart, Package, Layers, CalendarDays, 
   ArrowLeftRight, Truck, Users, Receipt, Landmark, Banknote,
   BookOpen, BarChart3, Building2, UserCog, Settings, Sparkles,
-  ShieldAlert, CreditCard, X
+  ShieldAlert, CreditCard, X, PanelLeftClose, ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 export function AppSidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
   const { t, lang } = useLanguage();
-  const { isMobileMenuOpen, closeMobileMenu } = useNav();
+  const { isMobileMenuOpen, closeMobileMenu, isSidebarCollapsed, toggleSidebar } = useNav();
 
   if (!user) return null;
 
@@ -245,9 +245,32 @@ export function AppSidebar() {
 
   return (
     <>
-      {/* Desktop Sidebar (hidden on mobile, visible from md up) */}
-      <aside className="hidden md:flex w-64 bg-white border-r rtl:border-r-0 rtl:border-l border-[#E5EAF2] flex-col shrink-0 h-full min-h-0 overflow-hidden">
-        {renderNavList()}
+      {/* Desktop Sidebar with slick smooth width/opacity transition */}
+      <aside 
+        className={`hidden md:flex flex-col shrink-0 h-full min-h-0 bg-white border-r rtl:border-r-0 rtl:border-l border-[#E5EAF2] transition-all duration-300 ease-in-out relative overflow-hidden ${
+          isSidebarCollapsed 
+            ? 'w-0 opacity-0 -translate-x-6 rtl:translate-x-6 border-r-0 rtl:border-l-0 pointer-events-none' 
+            : 'w-64 opacity-100 translate-x-0'
+        }`}
+      >
+        <div className="w-64 flex flex-col h-full min-h-0">
+          {renderNavList()}
+          
+          {/* Quick Collapse Footer */}
+          <div className="p-3 border-t border-[#E5EAF2] bg-[#FAFCFF] flex items-center justify-between">
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className="flex items-center justify-between w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[#687386] hover:text-[#0B1730] hover:bg-gray-100 transition-colors cursor-pointer"
+              title={lang === 'ar' ? 'طي القائمة الجانبية' : 'Collapse Sidebar'}
+            >
+              <span className="flex items-center gap-2">
+                <PanelLeftClose className="w-4 h-4 text-[#246BFD] rtl:rotate-180" />
+                <span>{lang === 'ar' ? 'طي القائمة الجانبية' : 'Collapse Sidebar'}</span>
+              </span>
+            </button>
+          </div>
+        </div>
       </aside>
 
       {/* Mobile Drawer Navigation (slides out when menu button is clicked) */}

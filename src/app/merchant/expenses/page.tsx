@@ -22,6 +22,11 @@ export default function ExpensesManagementPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [visibleCount, setVisibleCount] = useState(20);
+
+  useEffect(() => {
+    setVisibleCount(20);
+  }, [searchTerm, categoryFilter]);
 
   // Add Expense Modal
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -266,7 +271,7 @@ export default function ExpensesManagementPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E5EAF2]">
-                {filteredExpenses.map((exp) => (
+                {filteredExpenses.slice(0, visibleCount).map((exp) => (
                   <tr key={exp.id} className="hover:bg-[#F7F9FC]/60 transition-colors">
                     <td className="py-3 px-4 font-bold text-[#0B1730]">
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-[#F0F9FF] text-[#246BFD] border border-[#BAE6FD]">
@@ -296,6 +301,17 @@ export default function ExpensesManagementPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {visibleCount < filteredExpenses.length && (
+          <div className="p-4 border-t border-[#E5EAF2] flex justify-center bg-[#FAFCFF]">
+            <button
+              onClick={() => setVisibleCount(prev => prev + 20)}
+              className="px-6 py-2 bg-[#246BFD] hover:bg-[#1A54D4] text-white text-xs font-bold rounded-lg shadow-sm transition-all"
+            >
+              {isRtl ? `عرض المزيد (تحميل 20 إضافية - متبقي ${filteredExpenses.length - visibleCount})` : `Load More (+20 items - ${filteredExpenses.length - visibleCount} remaining)`}
+            </button>
           </div>
         )}
       </div>

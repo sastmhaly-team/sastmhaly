@@ -805,7 +805,7 @@ export async function createStockTransfer(tenantId: string, data: {
   await supabase.from('stock_transfers').insert({
     id, tenant_id: tenantId, transfer_number: transferNumber,
     from_branch_id: fromBranch, to_branch_id: toBranch,
-    status: 'pending', notes: data.notes || null, created_by: data.created_by || 'admin'
+    status: 'in_transit', notes: data.notes || null, created_by: data.created_by || 'admin'
   }).throwOnError();
 
   const transferItems = (data.items || []).map(item => ({
@@ -825,8 +825,15 @@ export async function createStockTransfer(tenantId: string, data: {
 
 export async function receiveStockTransfer(tenantId: string, transferId: string, receivedBy: string) {
   const supabase = getSupabase();
-  const { data: transfer } = await supabase.from('stock_transfers').select('*, stock_transfer_items(*)').eq('id', transferId).single();
+  const { data: transfer } = await supabase.from('stock_transfers')
+    .select('*, stock_transfer_items(*)')
+    .eq('id', transferId)
+    .single();
+    
   if (!transfer) throw new Error('Transfer not found');
+  if (transfer.status === 'received') {
+    return { success: true, message: 'Transfer already completed and received' };
+  }
 
   for (const item of (transfer as any).stock_transfer_items || []) {
     const qty = Number(item.quantity_sent || 0);
@@ -892,6 +899,21 @@ export async function receiveStockTransfer(tenantId: string, transferId: string,
   await supabase.from('stock_transfers').update({
     status: 'received', received_at: new Date().toISOString(), approved_by: receivedBy
   }).eq('id', transferId);
+
+  return { success: true };
+}
+
+export async function cancelStockTransfer(tenantId: string, transferId: string, canceledBy: string) {
+  const supabase = getSupabase();
+  const { data: transfer } = await supabase.from('stock_transfers').select('status').eq('id', transferId).single();
+  if (!transfer) throw new Error('Transfer not found');
+  if (transfer.status === 'received') throw new Error('Cannot cancel an already completed transfer');
+
+  await supabase.from('stock_transfers').update({
+    status: 'canceled', approved_by: canceledBy
+  }).eq('id', transferId);
+
+  return { success: true };
 }
 
 // ============================================================================
@@ -1002,89 +1024,37 @@ export interface CreateSaleInput {
   notes?: string;
 }
 
-export async function commitSaleTransaction(input: CreateSaleInput): Promise<Sale> {
+export async function commitSaleTransaction(input: CreateSaleInput): Promise<Sale & { items?: any[] }> {
   const supabase = getSupabase();
   const saleId = `sale_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
-  // 1. Resolve branch
+  // 1. Fetch branch & tenant settings in parallel
+  const [branchRes, settingsRes] = await Promise.all([
+    supabase.from('branches').select('id, code, name_en, name_ar').eq('id', input.branch_id).maybeSingle(),
+    supabase.from('tenant_settings').select('vat_enabled').eq('tenant_id', input.tenant_id).maybeSingle()
+  ]);
+
   let branchId = input.branch_id;
-  const { data: branchData } = await supabase.from('branches').select('id, code').eq('id', branchId).single();
-  if (!branchData) {
-    const { data: defaultBranch } = await supabase.from('branches').select('id, code').eq('tenant_id', input.tenant_id).order('is_main', { ascending: false }).limit(1).single();
+  let branchCode = branchRes.data?.code || 'BR';
+  if (!branchRes.data) {
+    const { data: defaultBranch } = await supabase.from('branches').select('id, code, name_en, name_ar').eq('tenant_id', input.tenant_id).order('is_main', { ascending: false }).limit(1).maybeSingle();
     if (defaultBranch) {
       branchId = defaultBranch.id;
-    } else {
-      branchId = `br_${input.tenant_id}_main`;
-      await supabase.from('branches').insert({
-        id: branchId, tenant_id: input.tenant_id, code: 'MAIN',
-        name_en: 'Main Branch', name_ar: 'الفرع الرئيسي',
-        phone: '01000000000', address: 'Main Address',
-        city: 'Cairo', is_active: 1, is_main: 1
-      });
+      branchCode = defaultBranch.code || 'BR';
     }
   }
-  const { data: branchRow } = await supabase.from('branches').select('code').eq('id', branchId).single();
-  const branchCode = branchRow?.code || 'BR';
   const saleNumber = `INV-${branchCode}-${Date.now().toString().slice(-6)}`;
 
-  // 2. Resolve cashier
-  let cashierId = input.cashier_id;
-  const { data: cashierData } = await supabase.from('users').select('id').eq('id', cashierId).single();
-  if (!cashierData) {
-    const { data: tenantUser } = await supabase.from('users').select('id').eq('tenant_id', input.tenant_id).limit(1).single();
-    cashierId = tenantUser?.id || 'usr_superadmin_01';
-  }
+  const cashierId = input.cashier_id || 'admin';
+  const registerId = input.register_id || `reg_${branchId}_01`;
+  const sessionId = input.session_id || `sess_${branchId}_open`;
+  const customerId = input.customer_id || null;
 
-  // 3. Resolve register
-  let registerId = input.register_id;
-  const { data: regData } = await supabase.from('cash_registers').select('id').eq('id', registerId).single();
-  if (!regData) {
-    const { data: foundReg } = await supabase.from('cash_registers').select('id').eq('tenant_id', input.tenant_id).eq('branch_id', branchId).limit(1).single();
-    if (foundReg) {
-      registerId = foundReg.id;
-    } else {
-      registerId = `reg_${branchId}_01`;
-      await supabase.from('cash_registers').upsert({
-        id: registerId, tenant_id: input.tenant_id, branch_id: branchId,
-        code: 'POS-01', name: 'نقطة البيع الرئيسية', is_active: 1
-      }, { onConflict: 'id', ignoreDuplicates: true });
-    }
-  }
-
-  // 4. Resolve session
-  let sessionId = input.session_id;
-  const { data: sessData } = await supabase.from('cash_sessions').select('id').eq('id', sessionId).single();
-  if (!sessData) {
-    const { data: activeSess } = await supabase.from('cash_sessions')
-      .select('id').eq('tenant_id', input.tenant_id).eq('branch_id', branchId).eq('status', 'open')
-      .order('opened_at', { ascending: false }).limit(1).single();
-    if (activeSess) {
-      sessionId = activeSess.id;
-    } else {
-      sessionId = `sess_${branchId}_${Date.now()}`;
-      await supabase.from('cash_sessions').insert({
-        id: sessionId, tenant_id: input.tenant_id, branch_id: branchId,
-        register_id: registerId, cashier_id: cashierId,
-        session_number: `SES-${Date.now().toString().slice(-6)}`,
-        opened_at: new Date().toISOString(), opening_float: 0, status: 'open'
-      });
-    }
-  }
-
-  // 5. Resolve customer
-  let customerId: string | null = input.customer_id || null;
-  if (customerId) {
-    const { data: custData } = await supabase.from('customers').select('id').eq('id', customerId).single();
-    if (!custData) customerId = null;
-  }
-
-  // 6. Check VAT setting
-  const { data: tenantSettings } = await supabase.from('tenant_settings').select('vat_enabled').eq('tenant_id', input.tenant_id).single();
-  const isVatEnabled = tenantSettings ? tenantSettings.vat_enabled === 1 : true;
+  const isVatEnabled = settingsRes.data ? settingsRes.data.vat_enabled === 1 : true;
   const finalTaxAmount = isVatEnabled ? input.tax_amount : 0;
   const finalTotalAmount = isVatEnabled ? input.total_amount : Math.max(0, input.subtotal - input.discount_amount);
 
-  // 7. Insert sale header
+  // 2. Insert sale header
   await supabase.from('sales').insert({
     id: saleId, tenant_id: input.tenant_id, branch_id: branchId,
     register_id: registerId, session_id: sessionId,
@@ -1097,110 +1067,59 @@ export async function commitSaleTransaction(input: CreateSaleInput): Promise<Sal
     created_at: new Date().toISOString()
   }).throwOnError();
 
-  // 8. Insert sale items & update inventory
+  // 3. Prepare bulk sale items and movements
   let totalCogs = 0;
-  for (const item of input.items) {
-    const itemId = `si_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const saleItems = input.items.map(item => {
+    const itemId = `si_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const itemTaxAmount = isVatEnabled ? item.tax_amount : 0;
     const itemLineTotal = isVatEnabled ? item.line_total : (item.unit_price * item.quantity - item.discount_amount);
-
-    // Validate batch
-    let validBatchId: string | null = null;
-    if (item.batch_id) {
-      const { data: batchData } = await supabase.from('product_batches').select('id').eq('id', item.batch_id).single();
-      if (batchData) validBatchId = item.batch_id;
-    }
-
-    await supabase.from('sale_items').insert({
+    totalCogs += (item.cost_price || 0) * item.quantity;
+    return {
       id: itemId, sale_id: saleId, product_id: item.product_id,
-      batch_id: validBatchId, quantity: item.quantity, unit_price: item.unit_price,
-      cost_price: item.cost_price, discount_amount: item.discount_amount,
+      batch_id: item.batch_id || null, quantity: item.quantity, unit_price: item.unit_price,
+      cost_price: item.cost_price || 0, discount_amount: item.discount_amount || 0,
       tax_amount: itemTaxAmount, line_total: itemLineTotal
-    });
-
-    totalCogs += item.cost_price * item.quantity;
-
-    // Ensure inventory_balances row exists
-    await supabase.from('inventory_balances').upsert({
-      id: `ib_${branchId}_${item.product_id}`, tenant_id: input.tenant_id,
-      branch_id: branchId, product_id: item.product_id,
-      quantity: 0, reserved_qty: 0, avg_cost: item.cost_price,
-      last_updated: new Date().toISOString()
-    }, { onConflict: 'branch_id,product_id', ignoreDuplicates: true });
-
-    // Deduct stock
-    try {
-      const { error: rpcErr } = await supabase.rpc('decrement_inventory', {
-        p_branch_id: branchId, p_product_id: item.product_id, p_qty: item.quantity
-      });
-      if (rpcErr) {
-        const { data: ib } = await supabase.from('inventory_balances').select('quantity').eq('branch_id', branchId).eq('product_id', item.product_id).single();
-        if (ib) {
-          await supabase.from('inventory_balances').update({
-            quantity: Math.max(0, (ib.quantity || 0) - item.quantity),
-            last_updated: new Date().toISOString()
-          }).eq('branch_id', branchId).eq('product_id', item.product_id);
-        }
-      }
-    } catch {
-      const { data: ib } = await supabase.from('inventory_balances').select('quantity').eq('branch_id', branchId).eq('product_id', item.product_id).single();
-      if (ib) {
-        await supabase.from('inventory_balances').update({
-          quantity: Math.max(0, (ib.quantity || 0) - item.quantity),
-          last_updated: new Date().toISOString()
-        }).eq('branch_id', branchId).eq('product_id', item.product_id);
-      }
-    }
-
-    // Record movement
-    await supabase.from('inventory_movements').insert({
-      id: `mov_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      tenant_id: input.tenant_id, branch_id: branchId,
-      product_id: item.product_id, movement_type: 'sale',
-      quantity: -item.quantity, unit_cost: item.cost_price,
-      reference_type: 'sale_invoice', reference_id: saleNumber,
-      notes: 'POS Checkout sale', created_by: cashierId
-    });
-
-    if (validBatchId) {
-      const { data: batchRow } = await supabase.from('product_batches').select('quantity').eq('id', validBatchId).single();
-      if (batchRow) {
-        await supabase.from('product_batches').update({ quantity: Math.max(0, batchRow.quantity - item.quantity) }).eq('id', validBatchId);
-      }
-    }
-  }
-
-  // 9. Payment record
-  await supabase.from('sale_payments').insert({
-    id: `sp_${Date.now()}`, sale_id: saleId,
-    payment_method: input.payment_method, amount: input.paid_amount
+    };
   });
 
-  // 10. Customer credit & loyalty
-  if (customerId) {
-    if (input.payment_method === 'customer_credit') {
-      const { data: custRow } = await supabase.from('customers').select('current_balance').eq('id', customerId).single();
-      if (custRow) {
-        await supabase.from('customers').update({ current_balance: (custRow.current_balance || 0) + finalTotalAmount }).eq('id', customerId);
-      }
-    }
-    const earnedPoints = Math.floor(finalTotalAmount / 10);
-    const { data: custRow } = await supabase.from('customers').select('loyalty_points').eq('id', customerId).single();
-    if (custRow) {
-      await supabase.from('customers').update({ loyalty_points: (custRow.loyalty_points || 0) + earnedPoints }).eq('id', customerId);
-    }
-  }
+  const movements = input.items.map(item => ({
+    id: `mov_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+    tenant_id: input.tenant_id, branch_id: branchId,
+    product_id: item.product_id, movement_type: 'sale',
+    quantity: -item.quantity, unit_cost: item.cost_price || 0,
+    reference_type: 'sale_invoice', reference_id: saleNumber,
+    notes: 'POS Checkout sale', created_by: cashierId
+  }));
 
-  // 11. Journal entry
+  // 4. Parallel batch writes: sale_items, inventory_movements, inventory_balances
+  const productIds = input.items.map(i => i.product_id);
+  const balancesPromise = (async () => {
+    const { data: currentBalances } = await supabase.from('inventory_balances')
+      .select('product_id, quantity, avg_cost')
+      .eq('branch_id', branchId)
+      .in('product_id', productIds);
+
+    const balanceMap = new Map((currentBalances || []).map((b: any) => [b.product_id, Number(b.quantity) || 0]));
+    const balanceUpserts = input.items.map(item => {
+      const currentQty = balanceMap.get(item.product_id) ?? 0;
+      return {
+        id: `ib_${branchId}_${item.product_id}`,
+        tenant_id: input.tenant_id,
+        branch_id: branchId,
+        product_id: item.product_id,
+        quantity: Math.max(0, currentQty - item.quantity),
+        avg_cost: item.cost_price || 0,
+        last_updated: new Date().toISOString()
+      };
+    });
+
+    if (balanceUpserts.length > 0) {
+      await supabase.from('inventory_balances').upsert(balanceUpserts, { onConflict: 'branch_id,product_id' });
+    }
+  })();
+
+  // 5. Ancillary writes in parallel
   const journalId = `je_${Date.now()}`;
-  await supabase.from('journal_entries').insert({
-    id: journalId, tenant_id: input.tenant_id, branch_id: branchId,
-    entry_number: `JE-SALE-${Date.now().toString().slice(-6)}`,
-    entry_date: new Date().toISOString().split('T')[0],
-    description: 'POS Sale Revenue and COGS',
-    reference_type: 'sale', reference_id: saleId
-  });
-
   const paymentAccount = input.payment_method === 'customer_credit' ? '1030' : (input.payment_method === 'card' || input.payment_method === 'mobile_wallet' ? '1020' : '1010');
   const journalLines = [
     { id: `jl_${Date.now()}_1`, entry_id: journalId, account_code: paymentAccount, debit: finalTotalAmount, credit: 0 },
@@ -1211,16 +1130,71 @@ export async function commitSaleTransaction(input: CreateSaleInput): Promise<Sal
     journalLines.push({ id: `jl_${Date.now()}_4`, entry_id: journalId, account_code: '5010', debit: totalCogs, credit: 0 });
     journalLines.push({ id: `jl_${Date.now()}_5`, entry_id: journalId, account_code: '1200', debit: 0, credit: totalCogs });
   }
-  await supabase.from('journal_lines').insert(journalLines);
 
-  // 12. Audit log
-  await supabase.from('audit_logs').insert({
-    id: `aud_${Date.now()}`, tenant_id: input.tenant_id, branch_id: branchId,
-    user_id: cashierId, action: 'POS_SALE', entity_type: 'sale',
-    entity_id: saleId, new_values: JSON.stringify({ saleNumber, total: finalTotalAmount })
-  });
+  const ancillaryPromises: PromiseLike<any>[] = [
+    supabase.from('sale_items').insert(saleItems),
+    supabase.from('inventory_movements').insert(movements),
+    balancesPromise,
+    supabase.from('sale_payments').insert({
+      id: `sp_${Date.now()}`, sale_id: saleId,
+      payment_method: input.payment_method, amount: input.paid_amount
+    }),
+    supabase.from('journal_entries').insert({
+      id: journalId, tenant_id: input.tenant_id, branch_id: branchId,
+      entry_number: `JE-SALE-${Date.now().toString().slice(-6)}`,
+      entry_date: new Date().toISOString().split('T')[0],
+      description: 'POS Sale Revenue and COGS',
+      reference_type: 'sale', reference_id: saleId
+    }).then(() => supabase.from('journal_lines').insert(journalLines)),
+    supabase.from('audit_logs').insert({
+      id: `aud_${Date.now()}`, tenant_id: input.tenant_id, branch_id: branchId,
+      user_id: cashierId, action: 'POS_SALE', entity_type: 'sale',
+      entity_id: saleId, new_values: JSON.stringify({ saleNumber, total: finalTotalAmount })
+    })
+  ];
 
-  return (await getSale(input.tenant_id, saleId))!;
+  if (customerId && input.payment_method === 'customer_credit') {
+    ancillaryPromises.push((async () => {
+      const { data: custRow } = await supabase.from('customers').select('current_balance').eq('id', customerId).single();
+      if (custRow) {
+        await supabase.from('customers').update({ current_balance: (custRow.current_balance || 0) + finalTotalAmount }).eq('id', customerId);
+      }
+    })());
+  }
+
+  await Promise.all(ancillaryPromises);
+
+  // Return constructed sale immediately for lightning-fast response
+  const completedSale: Sale & { items: any[] } = {
+    id: saleId,
+    tenant_id: input.tenant_id,
+    branch_id: branchId,
+    branch_name_ar: branchRes.data?.name_ar,
+    branch_name_en: branchRes.data?.name_en,
+    register_id: registerId,
+    session_id: sessionId,
+    cashier_id: cashierId,
+    customer_id: customerId || undefined,
+    sale_number: saleNumber,
+    subtotal: input.subtotal,
+    discount_amount: input.discount_amount,
+    tax_amount: finalTaxAmount,
+    total_amount: finalTotalAmount,
+    paid_amount: input.paid_amount,
+    change_amount: input.change_amount,
+    payment_method: input.payment_method,
+    status: 'completed',
+    notes: input.notes || undefined,
+    created_at: new Date().toISOString(),
+    items: saleItems.map((si, idx) => ({
+      ...si,
+      product_name_en: (input.items[idx] as any)?.name_en || (input.items[idx] as any)?.product_name_en || '',
+      product_name_ar: (input.items[idx] as any)?.name_ar || (input.items[idx] as any)?.product_name_ar || '',
+      sku: (input.items[idx] as any)?.sku || '',
+    }))
+  };
+
+  return completedSale;
 }
 
 export async function getSales(tenantId: string, options?: { branchId?: string; limit?: number }): Promise<Sale[]> {

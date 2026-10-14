@@ -25,6 +25,11 @@ export default function MerchantProductsPage() {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [lowStockFilter, setLowStockFilter] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(20);
+
+  useEffect(() => {
+    setVisibleCount(20);
+  }, [search, selectedCategory, lowStockFilter]);
 
   // Modals
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -577,7 +582,7 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
                   </td>
                 </tr>
               ) : (
-                filtered.map((p, idx) => {
+                filtered.slice(0, visibleCount).map((p, idx) => {
                   const isLow = p.current_stock !== undefined && p.current_stock <= p.min_stock_alert;
                   return (
                     <tr key={p.id} className="hover:bg-[#F7F9FC] transition-colors">
@@ -651,6 +656,17 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
             </tbody>
           </table>
         </div>
+
+        {visibleCount < filtered.length && (
+          <div className="p-4 border-t border-[#E5EAF2] flex justify-center bg-[#FAFCFF]">
+            <button
+              onClick={() => setVisibleCount(prev => prev + 20)}
+              className="px-6 py-2 bg-[#246BFD] hover:bg-[#1A54D4] text-white text-xs font-bold rounded-lg shadow-sm transition-all"
+            >
+              {lang === 'ar' ? `عرض المزيد (تحميل 20 إضافية - متبقي ${filtered.length - visibleCount})` : `Load More (+20 items - ${filtered.length - visibleCount} remaining)`}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Add Product Modal */}

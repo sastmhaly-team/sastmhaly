@@ -213,7 +213,7 @@ export interface StockTransfer {
   transfer_number: string;
   from_branch_id: string;
   to_branch_id: string;
-  status: 'pending' | 'in_transit' | 'received' | 'canceled';
+  status: 'pending' | 'in_transit' | 'received' | 'completed' | 'canceled';
   notes?: string;
   created_by: string;
   approved_by?: string;
@@ -223,6 +223,7 @@ export interface StockTransfer {
   from_branch_name?: string;
   to_branch_name?: string;
   items_count?: number;
+  items?: StockTransferItem[];
 }
 
 export interface StockTransferItem {

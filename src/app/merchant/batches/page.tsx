@@ -28,6 +28,7 @@ export default function MerchantBatchesPage() {
 
   const [batches, setBatches] = useState<BatchItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(20);
 
   useEffect(() => {
     if (!tenant) return;
@@ -124,7 +125,7 @@ export default function MerchantBatchesPage() {
                   <td colSpan={8} className="px-4 py-8 text-center text-[#687386]">{t('no_records')}</td>
                 </tr>
               ) : (
-                batches.map((b, idx) => {
+                batches.slice(0, visibleCount).map((b, idx) => {
                   const isExpired = b.days_until_expiry < 0;
                   const isCritical = b.days_until_expiry >= 0 && b.days_until_expiry <= 15;
                   const isWarning = b.days_until_expiry > 15 && b.days_until_expiry <= 30;
@@ -176,6 +177,17 @@ export default function MerchantBatchesPage() {
             </tbody>
           </table>
         </div>
+
+        {visibleCount < batches.length && (
+          <div className="p-4 border-t border-[#E5EAF2] flex justify-center bg-[#FAFCFF]">
+            <button
+              onClick={() => setVisibleCount(prev => prev + 20)}
+              className="px-6 py-2 bg-[#246BFD] hover:bg-[#1A54D4] text-white text-xs font-bold rounded-lg shadow-sm transition-all"
+            >
+              {lang === 'ar' ? `عرض المزيد (تحميل 20 إضافية - متبقي ${batches.length - visibleCount})` : `Load More (+20 items - ${batches.length - visibleCount} remaining)`}
+            </button>
+          </div>
+        )}
       </div>
 
     </div>

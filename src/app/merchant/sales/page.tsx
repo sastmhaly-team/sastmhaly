@@ -37,6 +37,23 @@ export default function SalesManagementPage() {
   const [submittingReturn, setSubmittingReturn] = useState(false);
   const [liveTenant, setLiveTenant] = useState<{ id: string; name: string; logo_url?: string } | null>(null);
   const [receiptFooter, setReceiptFooter] = useState<string>('');
+  const [visibleCount, setVisibleCount] = useState<number>(20);
+
+  const handlePrintReceipt = () => {
+    const receipt = document.getElementById('printable-receipt');
+    if (!receipt) {
+      window.print();
+      return;
+    }
+    let mount = document.getElementById('print-mount');
+    if (!mount) {
+      mount = document.createElement('div');
+      mount.id = 'print-mount';
+      document.body.appendChild(mount);
+    }
+    mount.innerHTML = receipt.innerHTML;
+    window.print();
+  };
 
   const fetchSales = async () => {
     setLoading(true);
@@ -260,7 +277,7 @@ export default function SalesManagementPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E5EAF2]">
-                {filteredSales.map((sale) => (
+                {filteredSales.slice(0, visibleCount).map((sale) => (
                   <tr key={sale.id} className="hover:bg-[#F7F9FC]/60 transition-colors">
                     <td className="py-3 px-4 font-bold text-[#0B1730]">
                       {sale.sale_number}
@@ -317,6 +334,21 @@ export default function SalesManagementPage() {
                 ))}
               </tbody>
             </table>
+
+            {/* Load More Pagination (20 by 20) */}
+            {filteredSales.length > visibleCount && (
+              <div className="p-3 border-t border-[#E5EAF2] bg-[#F7F9FC] flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount(prev => prev + 20)}
+                  className="px-4 py-2 bg-white hover:bg-gray-100 border border-[#CBD5E1] text-[#0B1730] text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
+                >
+                  {isRtl 
+                    ? `عرض المزيد (تحميل 20 إضافية) • متبقي ${filteredSales.length - visibleCount}` 
+                    : `Load More (20 more) • ${filteredSales.length - visibleCount} remaining`}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -340,11 +372,11 @@ export default function SalesManagementPage() {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0B1730] text-white rounded-lg text-xs font-semibold hover:bg-[#172033]"
+                  onClick={handlePrintReceipt}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0B1730] text-white rounded-lg text-xs font-semibold hover:bg-[#172033] cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5 text-[#246BFD]" />
-                  <span>{isRtl ? 'طباعة الإيصال (80mm)' : 'Print Receipt (80mm)'}</span>
+                  <span>طباعة الإيصال (80mm)</span>
                 </button>
               </div>
             </div>
@@ -353,10 +385,11 @@ export default function SalesManagementPage() {
             <div className="bg-[#F7F9FC] p-4 rounded-xl border border-[#E5EAF2]">
               <div 
                 id="printable-receipt"
-                className="max-w-[340px] mx-auto bg-white p-4 rounded-lg shadow-sm font-mono text-[11px] text-[#172033] space-y-3"
+                dir="rtl"
+                className="max-w-[340px] mx-auto bg-white p-4 rounded-lg shadow-sm font-mono text-[11px] text-[#172033] space-y-3 text-right"
               >
                 <div className="text-center space-y-1 pb-2 border-b border-dashed border-gray-300">
-                  {/* Merchant Logo: FIRST thing in invoice (clean, without square box) */}
+                  {/* Merchant Logo */}
                   <div className="flex items-center justify-center mb-1.5">
                     {(liveTenant?.logo_url || tenant?.logo_url) ? (
                       <img
@@ -375,40 +408,48 @@ export default function SalesManagementPage() {
                     )}
                   </div>
                   <h3 className="font-bold text-sm text-[#0B1730]">
-                    {liveTenant?.name || tenant?.name || (isRtl ? selectedSale.branch_name_ar : selectedSale.branch_name_en || 'Al-Baraka Supermarket')}
+                    {liveTenant?.name || tenant?.name || selectedSale.branch_name_ar || 'سستمهالي'}
                   </h3>
-                  <p className="text-[10px] text-gray-500">{selectedSale.branch_address || 'Cairo, Egypt'}</p>
-                  <p className="text-[10px] text-gray-500">{selectedSale.branch_phone || '01012345678'}</p>
+                  <p className="text-[10px] text-gray-500">{selectedSale.branch_address || 'القاهرة، مصر'}</p>
+                  <p className="text-[10px] text-gray-500">{selectedSale.branch_phone || '01203356780'}</p>
                   <div className="font-bold pt-1 text-xs">{selectedSale.sale_number}</div>
                 </div>
 
                 <div className="space-y-1 text-[10px]">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">{isRtl ? 'التاريخ:' : 'Date:'}</span>
-                    <span>{new Date(selectedSale.created_at).toLocaleDateString()}</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-500">التاريخ:</span>
+                    <span className="font-sans">{new Date(selectedSale.created_at).toLocaleDateString('ar-EG')}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">{isRtl ? 'الكاشير:' : 'Cashier:'}</span>
-                    <span>{selectedSale.cashier_name || 'Cashier 1'}</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-500">الكاشير:</span>
+                    <span>{selectedSale.cashier_name || 'الكاشير'}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">{isRtl ? 'العميل:' : 'Customer:'}</span>
-                    <span>{selectedSale.customer_name || (isRtl ? 'عميل نقدي' : 'Cash Customer')}</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-500">العميل:</span>
+                    <span>{selectedSale.customer_name || 'عميل نقدي'}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-500">طريقة الدفع:</span>
+                    <span>
+                      {selectedSale.payment_method === 'card' ? 'بطاقة بنكية' :
+                       selectedSale.payment_method === 'mobile_wallet' ? 'محفظة إلكترونية' :
+                       selectedSale.payment_method === 'customer_credit' ? 'آجل (على الحساب)' : 'نقدي'}
+                    </span>
                   </div>
                 </div>
 
                 {/* Items */}
                 <div className="pt-2 border-t border-dashed border-gray-300 space-y-2">
                   <div className="flex justify-between font-bold text-[10px] text-gray-500 border-b pb-1">
-                    <span>{isRtl ? 'الصنف' : 'Item'}</span>
-                    <span>{isRtl ? 'الإجمالي' : 'Total'}</span>
+                    <span>الصنف</span>
+                    <span>الإجمالي</span>
                   </div>
                   {selectedSale.items?.map((item, idx) => (
                     <div key={idx} className="flex justify-between items-start text-[11px]">
                       <div>
-                        <div>{isRtl ? item.product_name_ar : item.product_name_en}</div>
+                        <div className="font-semibold">{item.product_name_ar || item.product_name_en}</div>
                         <div className="text-[9px] text-gray-500">
-                          {item.quantity} × {item.unit_price.toFixed(2)} {isRtl ? 'ج.م' : 'EGP'}
+                          {item.quantity} × {item.unit_price.toFixed(2)} ج.م
                         </div>
                       </div>
                       <span className="font-bold">{item.line_total.toFixed(2)}</span>
@@ -418,38 +459,38 @@ export default function SalesManagementPage() {
 
                 {/* Totals */}
                 <div className="pt-2 border-t border-dashed border-gray-300 space-y-1 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">{isRtl ? 'المجموع الفرعي:' : 'Subtotal:'}</span>
-                    <span>{selectedSale.subtotal.toFixed(2)}</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-500">المجموع الفرعي:</span>
+                    <span className="font-bold">{selectedSale.subtotal.toFixed(2)}</span>
                   </div>
                   {selectedSale.discount_amount > 0 && (
-                    <div className="flex justify-between text-emerald-600">
-                      <span>{isRtl ? 'الخصم:' : 'Discount:'}</span>
+                    <div className="flex justify-between items-center text-emerald-600">
+                      <span>الخصم:</span>
                       <span>-{selectedSale.discount_amount.toFixed(2)}</span>
                     </div>
                   )}
                   {selectedSale.tax_amount > 0 && (
-                    <div className="flex justify-between text-gray-500">
-                      <span>{isRtl ? 'ضريبة القيمة المضافة (14%):' : 'VAT (14%):'}</span>
+                    <div className="flex justify-between items-center text-gray-500">
+                      <span>ضريبة القيمة المضافة (14%):</span>
                       <span>{selectedSale.tax_amount.toFixed(2)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between font-bold text-sm text-[#0B1730] pt-1 border-t">
-                    <span>{isRtl ? 'الإجمالي النهائي:' : 'Net Total:'}</span>
-                    <span>{selectedSale.total_amount.toFixed(2)} {isRtl ? 'ج.م' : 'EGP'}</span>
+                  <div className="flex justify-between items-center font-bold text-sm text-[#0B1730] pt-1 border-t">
+                    <span>الإجمالي النهائي:</span>
+                    <span>{selectedSale.total_amount.toFixed(2)} ج.م</span>
                   </div>
-                  <div className="flex justify-between text-[10px] text-gray-500 pt-1">
-                    <span>{isRtl ? 'المدفوع:' : 'Paid:'}</span>
+                  <div className="flex justify-between items-center text-[10px] text-gray-500 pt-1">
+                    <span>المدفوع:</span>
                     <span>{selectedSale.paid_amount.toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between text-[10px] text-gray-500">
-                    <span>{isRtl ? 'الباقي:' : 'Change:'}</span>
+                  <div className="flex justify-between items-center text-[10px] text-gray-500">
+                    <span>الباقي:</span>
                     <span>{selectedSale.change_amount.toFixed(2)}</span>
                   </div>
                 </div>
 
-                <div className="text-center pt-2 text-[9px] text-gray-500 border-t border-dashed space-y-2">
-                  <p>{receiptFooter || (isRtl ? 'شكراً لتعاملكم معنا' : 'Thank you for shopping with us')}</p>
+                <div className="text-center pt-2 text-[10px] text-gray-500 border-t border-dashed space-y-2">
+                  <p>{receiptFooter || 'شكراً لتعاملكم معنا'}</p>
                   <div className="flex flex-col items-center justify-center pt-2 border-t border-dotted border-gray-300 space-y-1.5">
                     <Image src="/logo.png" alt="Sastmhaly Logo" width={38} height={38} className="object-contain" />
                     <p className="font-bold text-[11px] tracking-wider text-gray-700">Powered by Sastmhaly</p>
