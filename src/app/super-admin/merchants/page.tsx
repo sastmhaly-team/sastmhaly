@@ -8,7 +8,7 @@ import { Tenant } from '@/lib/types';
 import { 
   Building2, Plus, Search, Filter, CheckCircle2, 
   Ban, ShieldCheck, ArrowUpRight, Store, Phone, Mail, Sparkles, MapPin, AlertCircle,
-  Calendar, Clock, RefreshCw, AlertTriangle, Trash2, Loader2
+  Calendar, Clock, RefreshCw, AlertTriangle, Trash2, Loader2, Edit2
 } from 'lucide-react';
 
 const DURATION_PRESETS = [
@@ -72,6 +72,8 @@ export default function SuperAdminMerchantsPage() {
     email: '',
     owner_name: '',
     password: '',
+    branch_address: '',
+    branch_city: 'Cairo',
   });
 
   // Provisioning duration state
@@ -94,6 +96,24 @@ export default function SuperAdminMerchantsPage() {
     manager_name: '',
     is_main: false
   });
+
+  // Branch Edit state for Super Admin editing any branch
+  const [editingBranch, setEditingBranch] = useState<any | null>(null);
+  const [isEditBranchOpen, setIsEditBranchOpen] = useState(false);
+  const [editBranchData, setEditBranchData] = useState({
+    code: '',
+    name_ar: '',
+    name_en: '',
+    phone: '',
+    address: '',
+    city: 'Cairo',
+    opening_hours: '09:00 - 23:00',
+    manager_name: '',
+    is_main: 0,
+    is_active: 1
+  });
+  const [editBranchSubmitting, setEditBranchSubmitting] = useState(false);
+  const [editBranchError, setEditBranchError] = useState('');
 
   const fetchMerchants = async () => {
     try {
@@ -182,6 +202,8 @@ export default function SuperAdminMerchantsPage() {
           email: '',
           owner_name: '',
           password: '',
+          branch_address: '',
+          branch_city: 'Cairo',
         });
         setDurationType('preset');
         setDurationMonths(1);
@@ -362,6 +384,64 @@ export default function SuperAdminMerchantsPage() {
       setBranchError('Failed to communicate with server');
     } finally {
       setBranchSubmitting(false);
+    }
+  };
+
+  const handleOpenEditBranch = (b: any) => {
+    setEditingBranch(b);
+    setEditBranchData({
+      code: b.code || '',
+      name_ar: b.name_ar || '',
+      name_en: b.name_en || '',
+      phone: b.phone ? b.phone.replace(/\D/g, '').slice(0, 11) : '',
+      address: b.address || '',
+      city: b.city || 'Cairo',
+      opening_hours: b.opening_hours || '09:00 - 23:00',
+      manager_name: b.manager_name || '',
+      is_main: b.is_main === 1 ? 1 : 0,
+      is_active: b.is_active === 0 ? 0 : 1
+    });
+    setEditBranchError('');
+    setIsEditBranchOpen(true);
+  };
+
+  const handleUpdateBranch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMerchantForBranch || !editingBranch) return;
+    setEditBranchError('');
+
+    if (editBranchData.phone.length !== 11) {
+      setEditBranchError(
+        lang === 'ar'
+          ? 'رقم هاتف الفرع يجب أن يتكون من 11 رقماً بالضبط'
+          : 'Branch phone number must be exactly 11 digits'
+      );
+      return;
+    }
+
+    setEditBranchSubmitting(true);
+    try {
+      const res = await fetch('/api/super-admin/branches', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: selectedMerchantForBranch.id,
+          branch_id: editingBranch.id,
+          ...editBranchData
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setIsEditBranchOpen(false);
+        setEditingBranch(null);
+        await fetchMerchantBranches(selectedMerchantForBranch.id);
+      } else {
+        setEditBranchError(data.error || 'Failed to update branch');
+      }
+    } catch {
+      setEditBranchError(lang === 'ar' ? 'فشل الاتصال بالخادم' : 'Server communication error');
+    } finally {
+      setEditBranchSubmitting(false);
     }
   };
 
@@ -854,6 +934,42 @@ export default function SuperAdminMerchantsPage() {
               />
             </div>
 
+            {/* Main Branch Location */}
+            <div className="sm:col-span-2 pt-2 border-t border-[#E5EAF2]">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[#0B1730] mb-2">
+                <MapPin className="w-4 h-4 text-[#246BFD]" />
+                <span>{lang === 'ar' ? 'بيانات وموقع الفرع الرئيسي الأولي للمتجر' : 'Main Branch Location & Details'}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#172033] mb-1">
+                    {lang === 'ar' ? 'عنوان / موقع الفرع الرئيسي *' : 'Main Branch Address / Location *'}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.branch_address}
+                    onChange={(e) => setFormData({ ...formData, branch_address: e.target.value })}
+                    placeholder={lang === 'ar' ? 'شارع عباس العقاد، مدينة نصر' : '15 Abbas El Akkad, Nasr City'}
+                    className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] text-xs focus:border-[#246BFD] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#172033] mb-1">
+                    {lang === 'ar' ? 'المدينة *' : 'City *'}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.branch_city}
+                    onChange={(e) => setFormData({ ...formData, branch_city: e.target.value })}
+                    placeholder={lang === 'ar' ? 'القاهرة' : 'Cairo'}
+                    className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] text-xs focus:border-[#246BFD] focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="sm:col-span-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] flex items-center gap-2 text-[11px] text-[#475569]">
               <ShieldCheck className="w-4 h-4 text-[#246BFD] shrink-0" />
               <span>
@@ -1201,7 +1317,7 @@ export default function SuperAdminMerchantsPage() {
                       <th className="py-2.5 px-3 text-start">{lang === 'ar' ? 'الهاتف' : 'Phone'}</th>
                       <th className="py-2.5 px-3 text-start">{lang === 'ar' ? 'العنوان / المدينة' : 'Location'}</th>
                       <th className="py-2.5 px-3 text-start">{lang === 'ar' ? 'النوع' : 'Type'}</th>
-                      <th className="py-2.5 px-3 text-center">{lang === 'ar' ? 'حذف' : 'Remove'}</th>
+                      <th className="py-2.5 px-3 text-center">{lang === 'ar' ? 'الإجراءات' : 'Actions'}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E5EAF2]">
@@ -1234,28 +1350,39 @@ export default function SuperAdminMerchantsPage() {
                           )}
                         </td>
                         <td className="py-2.5 px-3 text-center">
-                          {b.is_main === 1 ? (
-                            <span 
-                              title={lang === 'ar' ? 'الفرع الرئيسي لا يمكن حذفه' : 'Main branch cannot be deleted'} 
-                              className="text-gray-300 inline-block p-1 cursor-not-allowed"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </span>
-                          ) : (
+                          <div className="flex items-center justify-center gap-1">
                             <button
                               type="button"
-                              onClick={() => handleDeleteBranch(b.id, b.name_ar)}
-                              disabled={deletingBranchId === b.id}
-                              title={lang === 'ar' ? 'حذف هذا الفرع' : 'Remove this branch'}
-                              className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                              onClick={() => handleOpenEditBranch(b)}
+                              title={lang === 'ar' ? 'تعديل بيانات الفرع' : 'Edit branch'}
+                              className="p-1.5 text-[#246BFD] hover:text-[#1A54D4] hover:bg-[#EEF4FF] rounded-lg transition-colors cursor-pointer"
                             >
-                              {deletingBranchId === b.id ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin text-red-500" />
-                              ) : (
-                                <Trash2 className="w-3.5 h-3.5" />
-                              )}
+                              <Edit2 className="w-3.5 h-3.5" />
                             </button>
-                          )}
+
+                            {b.is_main === 1 ? (
+                              <span 
+                                title={lang === 'ar' ? 'الفرع الرئيسي لا يمكن حذفه' : 'Main branch cannot be deleted'} 
+                                className="text-gray-300 inline-block p-1 cursor-not-allowed"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteBranch(b.id, b.name_ar)}
+                                disabled={deletingBranchId === b.id}
+                                title={lang === 'ar' ? 'حذف هذا الفرع' : 'Remove this branch'}
+                                className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                              >
+                                {deletingBranchId === b.id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-red-500" />
+                                ) : (
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1392,6 +1519,189 @@ export default function SuperAdminMerchantsPage() {
             </form>
           </div>
         </div>
+      </Modal>
+
+      {/* Edit Branch Modal for Super Admin (Can edit ANY branch, even the main one) */}
+      <Modal
+        isOpen={isEditBranchOpen}
+        onClose={() => {
+          setIsEditBranchOpen(false);
+          setEditingBranch(null);
+        }}
+        title={
+          lang === 'ar'
+            ? `تعديل بيانات الفرع: ${editingBranch?.name_ar || editingBranch?.name_en || ''} (${editingBranch?.is_main === 1 ? 'الفرع الرئيسي' : 'فرع إضافي'})`
+            : `Edit Branch: ${editingBranch?.name_en || editingBranch?.name_ar || ''} (${editingBranch?.is_main === 1 ? 'Main Branch' : 'Branch'})`
+        }
+        maxWidth="lg"
+      >
+        <form onSubmit={handleUpdateBranch} className="space-y-4">
+          {editBranchError && (
+            <div className="p-3 rounded-xl bg-[#FEF2F2] border border-[#FECACA] flex items-start gap-2 text-xs text-[#DC2626]">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{editBranchError}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div>
+              <label className="block text-xs font-semibold text-[#172033] mb-1">
+                {lang === 'ar' ? 'اسم الفرع (عربي) *' : 'Branch Name (Arabic) *'}
+              </label>
+              <input
+                type="text"
+                required
+                value={editBranchData.name_ar}
+                onChange={(e) => setEditBranchData({ ...editBranchData, name_ar: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] text-xs focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-[#172033] mb-1">
+                {lang === 'ar' ? 'اسم الفرع (إنجليزي)' : 'Branch Name (English)'}
+              </label>
+              <input
+                type="text"
+                value={editBranchData.name_en}
+                onChange={(e) => setEditBranchData({ ...editBranchData, name_en: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] text-xs focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-[#172033] mb-1">
+                {lang === 'ar' ? 'كود الفرع *' : 'Branch Code *'}
+              </label>
+              <input
+                type="text"
+                required
+                value={editBranchData.code}
+                onChange={(e) => setEditBranchData({ ...editBranchData, code: e.target.value.toUpperCase() })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] text-xs font-mono font-bold focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-[#172033] mb-1">
+                {lang === 'ar' ? 'هاتف الفرع (11 رقماً) *' : 'Branch Phone (11 digits) *'}
+              </label>
+              <input
+                type="tel"
+                required
+                value={editBranchData.phone}
+                onChange={(e) => setEditBranchData({ ...editBranchData, phone: e.target.value.replace(/\D/g, '').slice(0, 11) })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] text-xs font-mono focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-[#172033] mb-1">
+                {lang === 'ar' ? 'العنوان / الموقع *' : 'Address / Location *'}
+              </label>
+              <input
+                type="text"
+                required
+                value={editBranchData.address}
+                onChange={(e) => setEditBranchData({ ...editBranchData, address: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] text-xs focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-[#172033] mb-1">
+                {lang === 'ar' ? 'المدينة *' : 'City *'}
+              </label>
+              <input
+                type="text"
+                required
+                value={editBranchData.city}
+                onChange={(e) => setEditBranchData({ ...editBranchData, city: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] text-xs focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-[#172033] mb-1">
+                {lang === 'ar' ? 'ساعات العمل' : 'Opening Hours'}
+              </label>
+              <input
+                type="text"
+                value={editBranchData.opening_hours}
+                onChange={(e) => setEditBranchData({ ...editBranchData, opening_hours: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] text-xs focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-[#172033] mb-1">
+                {lang === 'ar' ? 'اسم مدير الفرع' : 'Branch Manager'}
+              </label>
+              <input
+                type="text"
+                value={editBranchData.manager_name}
+                onChange={(e) => setEditBranchData({ ...editBranchData, manager_name: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] text-xs focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="pt-2 flex flex-wrap items-center gap-6 text-xs">
+            <label className="flex items-center gap-2 cursor-pointer font-medium">
+              <input
+                type="checkbox"
+                checked={editBranchData.is_main === 1}
+                onChange={(e) => setEditBranchData({ ...editBranchData, is_main: e.target.checked ? 1 : 0 })}
+                className="w-4 h-4 text-[#246BFD] rounded"
+              />
+              <span className="font-semibold text-[#0B1730]">
+                {lang === 'ar' ? 'تعيين كفرع رئيسي للمتجر (Main Branch)' : 'Set as Main Branch'}
+              </span>
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer font-medium">
+              <input
+                type="checkbox"
+                checked={editBranchData.is_active === 1}
+                onChange={(e) => setEditBranchData({ ...editBranchData, is_active: e.target.checked ? 1 : 0 })}
+                className="w-4 h-4 text-[#246BFD] rounded"
+              />
+              <span className="font-semibold text-[#0B1730]">
+                {lang === 'ar' ? 'الفرع نشط ومفعل' : 'Branch Active'}
+              </span>
+            </label>
+          </div>
+
+          <div className="pt-3 border-t border-[#E5EAF2] flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsEditBranchOpen(false);
+                setEditingBranch(null);
+              }}
+              className="px-4 py-2 rounded-lg border border-[#E5EAF2] text-xs font-bold text-[#687386] hover:bg-gray-100 cursor-pointer"
+            >
+              {t('cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={editBranchSubmitting}
+              className="px-4 py-2 rounded-lg bg-[#246BFD] hover:bg-[#1A54D4] text-white text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+            >
+              {editBranchSubmitting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>{t('loading')}</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{lang === 'ar' ? 'حفظ التعديلات' : 'Save Changes'}</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
       </Modal>
 
       {/* Delete Merchant Confirmation Modal */}

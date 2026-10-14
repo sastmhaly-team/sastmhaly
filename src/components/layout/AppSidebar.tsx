@@ -179,7 +179,7 @@ export function AppSidebar() {
   const visibleGroups = getVisibleNavGroups();
 
   const renderNavList = (onItemClick?: () => void) => (
-    <div className="flex-1 py-4 px-3 space-y-6 overflow-y-auto">
+    <div className="flex-1 py-4 px-3 space-y-6 overflow-y-auto overscroll-contain">
       {isSuperAdmin ? (
         <div className="space-y-1">
           <div className="px-3 py-1 text-[11px] font-bold text-[#687386] uppercase tracking-wider">
@@ -246,7 +246,7 @@ export function AppSidebar() {
   return (
     <>
       {/* Desktop Sidebar (hidden on mobile, visible from md up) */}
-      <aside className="hidden md:flex w-64 bg-white border-r rtl:border-r-0 rtl:border-l border-[#E5EAF2] flex-col shrink-0 min-h-[calc(100vh-4rem)]">
+      <aside className="hidden md:flex w-64 bg-white border-r rtl:border-r-0 rtl:border-l border-[#E5EAF2] flex-col shrink-0 h-full min-h-0 overflow-hidden">
         {renderNavList()}
       </aside>
 

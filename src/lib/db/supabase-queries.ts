@@ -103,6 +103,8 @@ export async function createTenant(data: {
   owner_full_name?: string;
   owner_username?: string;
   owner_password?: string;
+  main_branch_address?: string;
+  main_branch_city?: string;
 }): Promise<Tenant> {
   const supabase = getSupabase();
   const currency = data.currency || 'EGP';
@@ -157,12 +159,14 @@ export async function createTenant(data: {
     payment_method: 'provisioning', notes: 'Initial Subscription'
   }).throwOnError();
 
-  // 5. Default Main Branch
+  // 5. Default Main Branch (with Super Admin specified location)
   const branchId = `br_${data.id}_main`;
   await supabase.from('branches').insert({
     id: branchId, tenant_id: data.id, code: 'BR-01',
     name_en: 'Main Branch', name_ar: 'الفرع الرئيسي',
-    phone: data.phone, address: 'Cairo Head Office', city: 'Cairo',
+    phone: data.phone,
+    address: data.main_branch_address || 'Cairo Head Office',
+    city: data.main_branch_city || 'Cairo',
     is_active: 1, is_main: 1
   }).throwOnError();
 
@@ -372,6 +376,36 @@ export async function createBranch(tenantId: string, data: {
     manager_name: data.manager_name || null,
     is_active: 1, is_main: 0
   }).select().single();
+  if (error) throw new Error(error.message);
+  return branch as Branch;
+}
+
+export async function updateBranch(tenantId: string, branchId: string, data: Partial<{
+  code: string; name_en: string; name_ar: string; phone: string;
+  address: string; city: string; opening_hours: string; manager_name: string;
+  is_active: number; is_main: number;
+}>): Promise<Branch> {
+  const supabase = getSupabase();
+  const updates: any = {};
+  if (data.code !== undefined) updates.code = data.code.toUpperCase();
+  if (data.name_en !== undefined) updates.name_en = data.name_en;
+  if (data.name_ar !== undefined) updates.name_ar = data.name_ar;
+  if (data.phone !== undefined) updates.phone = data.phone;
+  if (data.address !== undefined) updates.address = data.address;
+  if (data.city !== undefined) updates.city = data.city;
+  if (data.opening_hours !== undefined) updates.opening_hours = data.opening_hours;
+  if (data.manager_name !== undefined) updates.manager_name = data.manager_name;
+  if (data.is_active !== undefined) updates.is_active = data.is_active;
+  if (data.is_main !== undefined) {
+    updates.is_main = data.is_main;
+    // If setting this branch as main, unmark other main branches for this tenant
+    if (data.is_main === 1) {
+      await supabase.from('branches').update({ is_main: 0 }).eq('tenant_id', tenantId);
+    }
+  }
+
+  const { data: branch, error } = await supabase.from('branches').update(updates)
+    .eq('id', branchId).eq('tenant_id', tenantId).select().single();
   if (error) throw new Error(error.message);
   return branch as Branch;
 }
@@ -610,11 +644,71 @@ export async function updateProduct(tenantId: string, id: string, data: Partial<
   wholesale_price: number; min_selling_price: number; tax_rate: number;
   min_stock_alert: number; is_weighted: number; has_batch_tracking: number;
   is_active: number; image_url: string;
-}>): Promise<Product> {
+}>, stockOptions?: { current_stock?: number; branch_id?: string }): Promise<Product> {
   const supabase = getSupabase();
   const { data: product, error } = await supabase.from('products').update(data)
     .eq('id', id).eq('tenant_id', tenantId).select().single();
   if (error) throw new Error(error.message);
+
+  if (stockOptions && stockOptions.current_stock !== undefined) {
+    const targetStock = Math.max(0, Number(stockOptions.current_stock));
+    let targetBranchId = stockOptions.branch_id;
+    if (!targetBranchId || targetBranchId === 'all') {
+      const { data: br } = await supabase.from('branches')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .order('is_main', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      targetBranchId = br?.id;
+    }
+
+    if (targetBranchId) {
+      const { data: existingBal } = await supabase.from('inventory_balances')
+        .select('id, quantity')
+        .eq('branch_id', targetBranchId)
+        .eq('product_id', id)
+        .maybeSingle();
+
+      const oldQty = Number(existingBal?.quantity || 0);
+      const diff = targetStock - oldQty;
+
+      if (existingBal) {
+        await supabase.from('inventory_balances').update({
+          quantity: targetStock,
+          last_updated: new Date().toISOString()
+        }).eq('id', existingBal.id);
+      } else {
+        await supabase.from('inventory_balances').insert({
+          id: `inv_${id}_${targetBranchId}`,
+          tenant_id: tenantId,
+          branch_id: targetBranchId,
+          product_id: id,
+          quantity: targetStock,
+          avg_cost: (product as any).cost_price || 0,
+          reserved_qty: 0,
+          last_updated: new Date().toISOString()
+        });
+      }
+
+      if (diff !== 0) {
+        await supabase.from('inventory_movements').insert({
+          id: `mov_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+          tenant_id: tenantId,
+          branch_id: targetBranchId,
+          product_id: id,
+          movement_type: 'adjustment',
+          quantity: diff,
+          unit_cost: (product as any).cost_price || 0,
+          reference_type: 'product_edit',
+          reference_id: `EDT-${id.slice(-6)}`,
+          notes: 'تعديل الرصيد من شاشة تعديل الصنف',
+          created_by: 'system'
+        });
+      }
+    }
+  }
+
   return product as Product;
 }
 

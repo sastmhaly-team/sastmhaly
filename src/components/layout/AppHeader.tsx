@@ -17,7 +17,7 @@ export function AppHeader() {
   const { toggleMobileMenu } = useNav();
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-white border-b border-[#E5EAF2] shadow-2xs">
+    <header className="sticky top-0 z-40 shrink-0 w-full bg-white border-b border-[#E5EAF2] shadow-2xs">
       <div className="px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         
         {/* Brand Logo & Name */}

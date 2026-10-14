@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getBranches, createBranch, deleteBranch, getTenant } from '@/lib/db/supabase-queries';
+import { getBranches, createBranch, updateBranch, deleteBranch, getTenant } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -59,6 +59,27 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Failed to create branch';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { tenant_id, branch_id, ...updates } = body;
+
+    if (!tenant_id || !branch_id) {
+      return NextResponse.json({ error: 'tenant_id and branch_id are required' }, { status: 400 });
+    }
+
+    if (updates.phone) {
+      updates.phone = updates.phone.replace(/\D/g, '').trim().slice(0, 11);
+    }
+
+    const branch = await updateBranch(tenant_id, branch_id, updates);
+    return NextResponse.json({ success: true, branch, message: 'Branch updated successfully' });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Failed to update branch';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

@@ -15,7 +15,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { 
       name, legal_name, phone, email, slug, owner_name, password,
-      duration_months, custom_start_date, custom_end_date 
+      duration_months, custom_start_date, custom_end_date,
+      branch_address, branch_city, main_branch_address, main_branch_city
     } = body;
 
     if (!name || !phone || !password) {
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
     const tenantId = `tenant_${Date.now()}`;
     const merchantEmail = email || `owner_${cleanedPhone}@sastmhaly.com`;
 
-    // 1. Create Tenant with unified All-Inclusive Plan & selected subscription duration
+    // 1. Create Tenant with unified All-Inclusive Plan & selected subscription duration & main branch location
     const newTenant = await createTenant({
       id: tenantId,
       slug: finalSlug,
@@ -56,6 +57,8 @@ export async function POST(request: NextRequest) {
       duration_months: duration_months ? Number(duration_months) : 1,
       custom_start_date: custom_start_date || undefined,
       custom_end_date: custom_end_date || undefined,
+      main_branch_address: branch_address || main_branch_address || undefined,
+      main_branch_city: branch_city || main_branch_city || undefined,
     });
 
     // 2. Create Main Owner Account (username is 11-digit phone number, branch_id is undefined/null so they oversee ALL branches)

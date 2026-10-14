@@ -137,31 +137,35 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
     );
   }
 
-  return (
-    <div className="min-h-screen flex flex-col bg-[#F7F9FC]">
-      <AppHeader />
-      <div className="flex flex-1 w-full overflow-x-hidden">
-        <AppSidebar />
-        <main className="flex-1 p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full min-w-0">
-          {/* Warning Banner when subscription is about to end (within 7 days) */}
-          {tenant && tenant.days_remaining !== undefined && tenant.days_remaining <= 7 && tenant.days_remaining > 0 && (
-            <div className="mb-4 p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
-              <div className="flex items-center gap-2.5">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span className="font-medium">
-                  تنبيه هام: اشتراك متجرك ينتهي خلال <strong>{tenant.days_remaining} أيام</strong> (بتاريخ {tenant.sub_expires_at ? new Date(tenant.sub_expires_at).toLocaleDateString('ar-EG') : ''}). يرجى التواصل مع الإدارة لتجديد الاشتراك قبل توقف نقاط البيع والخدمات.
-                </span>
-              </div>
-              <a
-                href="tel:01211583961"
-                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shrink-0 transition-colors self-start sm:self-auto"
-              >
-                تواصل للتجديد (01211583961)
-              </a>
-            </div>
-          )}
+  const isPos = pathname === '/merchant/pos';
 
-          {children}
+  return (
+    <div className="h-screen h-[100dvh] flex flex-col bg-[#F7F9FC] overflow-hidden">
+      <AppHeader />
+      <div className="flex flex-1 w-full min-h-0 overflow-hidden">
+        <AppSidebar />
+        <main className="flex-1 min-w-0 h-full overflow-y-auto overscroll-contain">
+          <div className={isPos ? "w-full h-full p-2 sm:p-3" : "p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full"}>
+            {/* Warning Banner when subscription is about to end (within 7 days) */}
+            {tenant && tenant.days_remaining !== undefined && tenant.days_remaining <= 7 && tenant.days_remaining > 0 && (
+              <div className="mb-4 p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
+                <div className="flex items-center gap-2.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span className="font-medium">
+                    تنبيه هام: اشتراك متجرك ينتهي خلال <strong>{tenant.days_remaining} أيام</strong> (بتاريخ {tenant.sub_expires_at ? new Date(tenant.sub_expires_at).toLocaleDateString('ar-EG') : ''}). يرجى التواصل مع الإدارة لتجديد الاشتراك قبل توقف نقاط البيع والخدمات.
+                  </span>
+                </div>
+                <a
+                  href="tel:01211583961"
+                  className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shrink-0 transition-colors self-start sm:self-auto"
+                >
+                  تواصل للتجديد (01211583961)
+                </a>
+              </div>
+            )}
+
+            {children}
+          </div>
         </main>
       </div>
     </div>

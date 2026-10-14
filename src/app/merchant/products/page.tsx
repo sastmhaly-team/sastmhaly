@@ -56,6 +56,7 @@ export default function MerchantProductsPage() {
     wholesale_price: 13,
     tax_rate: 14.0,
     min_stock_alert: 5.0,
+    current_stock: 0,
     is_weighted: false,
     has_batch_tracking: false,
     is_active: 1,
@@ -175,6 +176,7 @@ export default function MerchantProductsPage() {
       wholesale_price: p.wholesale_price ?? 0,
       tax_rate: p.tax_rate ?? 14.0,
       min_stock_alert: p.min_stock_alert ?? 5.0,
+      current_stock: p.current_stock ?? 0,
       is_weighted: p.is_weighted === 1,
       has_batch_tracking: p.has_batch_tracking === 1,
       is_active: p.is_active ?? 1,
@@ -190,7 +192,9 @@ export default function MerchantProductsPage() {
       const payload = {
         tenant_id: tenant.id,
         id: editingProductId,
+        branch_id: activeBranchId !== 'all' ? activeBranchId : undefined,
         ...editFormData,
+        current_stock: Number(editFormData.current_stock),
         cost_price: Number(editFormData.cost_price),
         selling_price: Number(editFormData.selling_price),
         wholesale_price: Number(editFormData.wholesale_price),
@@ -219,6 +223,50 @@ export default function MerchantProductsPage() {
       alert(lang === 'ar' ? 'خطأ في الاتصال بالخادم' : 'Error updating product');
     }
   };
+
+  // Hardware Barcode Scanner Auto-Detection on Products Page
+  // When Add Product or Edit Product modal is open, scanner input automatically populates barcode field without needing focus
+  useEffect(() => {
+    let scanBuffer = '';
+    let lastKeyTime = 0;
+
+    const handleGlobalScan = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || (e.key.startsWith('F') && e.key.length > 1)) return;
+
+      const now = Date.now();
+      const timeDiff = now - lastKeyTime;
+
+      if (e.key === 'Enter') {
+        if (scanBuffer.length >= 3 && timeDiff < 80) {
+          e.preventDefault();
+          e.stopPropagation();
+          const scannedCode = scanBuffer.trim();
+          scanBuffer = '';
+
+          if (isCreateOpen) {
+            setFormData(prev => ({ ...prev, barcode: scannedCode }));
+          } else if (isEditOpen) {
+            setEditFormData(prev => ({ ...prev, barcode: scannedCode }));
+          }
+          return;
+        }
+        scanBuffer = '';
+        return;
+      }
+
+      if (e.key.length === 1) {
+        if (timeDiff > 80) {
+          scanBuffer = e.key;
+        } else {
+          scanBuffer += e.key;
+        }
+        lastKeyTime = now;
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalScan, true);
+    return () => window.removeEventListener('keydown', handleGlobalScan, true);
+  }, [isCreateOpen, isEditOpen]);
 
   const handleDeleteProduct = async (p: Product) => {
     if (!tenant) return;
@@ -651,7 +699,14 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
             </div>
 
             <div>
-              <label className="block font-semibold text-[#172033] mb-1">Primary Barcode *</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-semibold text-[#172033]">
+                  {lang === 'ar' ? 'الباركود الرئيسي *' : 'Primary Barcode *'}
+                </label>
+                <span className="text-[10px] text-[#246BFD] font-medium bg-[#EEF4FF] px-1.5 py-0.5 rounded">
+                  {lang === 'ar' ? 'يدعم المسح المباشر بالماسح' : 'Scanner auto-detects'}
+                </span>
+              </div>
               <input
                 type="text"
                 required
@@ -819,7 +874,14 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
             </div>
 
             <div>
-              <label className="block font-semibold text-[#172033] mb-1">{lang === 'ar' ? 'الباركود الرئيسي *' : 'Primary Barcode *'}</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-semibold text-[#172033]">
+                  {lang === 'ar' ? 'الباركود الرئيسي *' : 'Primary Barcode *'}
+                </label>
+                <span className="text-[10px] text-[#246BFD] font-medium bg-[#EEF4FF] px-1.5 py-0.5 rounded">
+                  {lang === 'ar' ? 'يدعم المسح المباشر بالماسح' : 'Scanner auto-detects'}
+                </span>
+              </div>
               <input
                 type="text"
                 required
@@ -897,6 +959,20 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
                 value={editFormData.min_stock_alert}
                 onChange={(e) => setEditFormData({ ...editFormData, min_stock_alert: parseFloat(e.target.value) || 5 })}
                 className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] font-mono focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-[#172033] mb-1">
+                {lang === 'ar' ? 'رصيد المخزون الحالي بالفرع (Stock on Hand) *' : 'Current Stock on Hand *'}
+              </label>
+              <input
+                type="number"
+                step="1"
+                required
+                value={editFormData.current_stock}
+                onChange={(e) => setEditFormData({ ...editFormData, current_stock: parseFloat(e.target.value) || 0 })}
+                className="w-full px-3 py-2 rounded-lg border border-[#246BFD]/40 font-mono font-bold text-[#0B1730] bg-[#EEF4FF]/30 focus:border-[#246BFD] focus:outline-none"
               />
             </div>
           </div>

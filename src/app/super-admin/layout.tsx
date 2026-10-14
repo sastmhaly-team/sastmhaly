@@ -40,12 +40,14 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F7F9FC]">
+    <div className="h-screen h-[100dvh] flex flex-col bg-[#F7F9FC] overflow-hidden">
       <AppHeader />
-      <div className="flex flex-1 w-full overflow-x-hidden">
+      <div className="flex flex-1 w-full min-h-0 overflow-hidden">
         <AppSidebar />
-        <main className="flex-1 p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full min-w-0">
-          {children}
+        <main className="flex-1 min-w-0 h-full overflow-y-auto overscroll-contain">
+          <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
+            {children}
+          </div>
         </main>
       </div>
     </div>

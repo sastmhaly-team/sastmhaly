@@ -102,13 +102,12 @@ export default function PosPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [cart]);
 
-  // Barcode Scanning / Search logic (Handles standard barcodes + Supermarket Weighted scale format e.g. 21XXXXXWWWWWC)
-  const handleBarcodeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const query = searchQuery.trim();
+  // Barcode / Product lookup and cart addition (Supports standard barcodes + scale formats e.g. 21XXXXXWWWWWC)
+  const addProductByScannedCode = async (rawCode: string) => {
+    const query = rawCode.trim();
     if (!query) return;
 
-    // Check for supermarket scale barcode format (e.g. Prefix "21", 5 digits item code, 5 digits weight in grams)
+    // 1. Supermarket scale barcode format (Prefix "21", 5 digits item code, 5 digits weight in grams)
     if (query.startsWith('21') && query.length >= 12) {
       const itemCode = query.slice(2, 7);
       const weightGrams = parseInt(query.slice(7, 12), 10);
@@ -122,7 +121,7 @@ export default function PosPage() {
       }
     }
 
-    // Standard barcode or SKU lookup
+    // 2. Direct match in local catalog
     const matched = products.find(p => 
       p.barcode === query || 
       (p.additional_barcodes && p.additional_barcodes.includes(query)) ||
@@ -138,10 +137,84 @@ export default function PosPage() {
         addToCart(matched, 1);
       }
       setSearchQuery('');
-    } else {
-      // Keep search filter active
+      return;
+    }
+
+    // 3. Fallback: Query server directly if product wasn't loaded in local batch
+    if (tenant) {
+      try {
+        const res = await fetch(`/api/merchant/products?tenantId=${tenant.id}&barcode=${encodeURIComponent(query)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.product) {
+            if (data.product.is_weighted) {
+              promptWeight(data.product);
+            } else {
+              addToCart(data.product, 1);
+            }
+            setSearchQuery('');
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching scanned product', err);
+      }
+    }
+
+    posAudio.playVoid();
+    alert(
+      lang === 'ar'
+        ? `عفواً، الصنف ذو الباركود (${query}) غير مسجل في الكتالوج!`
+        : `Product with barcode (${query}) was not found in catalog!`
+    );
+  };
+
+  const handleBarcodeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      addProductByScannedCode(searchQuery.trim());
     }
   };
+
+  // Global Hardware Barcode Scanner Auto-Detection
+  // Captures scanner keystrokes anywhere on the POS page without needing to click or focus the search field
+  useEffect(() => {
+    let scanBuffer = '';
+    let lastKeyTime = 0;
+
+    const handleGlobalScan = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || (e.key.startsWith('F') && e.key.length > 1)) return;
+
+      const now = Date.now();
+      const timeDiff = now - lastKeyTime;
+
+      if (e.key === 'Enter') {
+        if (scanBuffer.length >= 3 && timeDiff < 80) {
+          e.preventDefault();
+          e.stopPropagation();
+          const scanned = scanBuffer.trim();
+          scanBuffer = '';
+          setSearchQuery('');
+          addProductByScannedCode(scanned);
+          return;
+        }
+        scanBuffer = '';
+        return;
+      }
+
+      if (e.key.length === 1) {
+        if (timeDiff > 80) {
+          scanBuffer = e.key;
+        } else {
+          scanBuffer += e.key;
+        }
+        lastKeyTime = now;
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalScan, true);
+    return () => window.removeEventListener('keydown', handleGlobalScan, true);
+  }, [products, cart, tenant, lang]);
 
   const promptWeight = (product: Product) => {
     setActiveWeightedProduct(product);
@@ -393,7 +466,7 @@ export default function PosPage() {
     });
 
   return (
-    <div className="h-[calc(100vh-6rem)] flex flex-col lg:flex-row gap-4 overflow-hidden">
+    <div className="h-full min-h-[550px] flex flex-col lg:flex-row gap-4 overflow-hidden">
       
       {/* Mobile Tab Switcher */}
       <div className="lg:hidden flex items-center bg-gray-100 p-1 rounded-xl shrink-0 gap-1">

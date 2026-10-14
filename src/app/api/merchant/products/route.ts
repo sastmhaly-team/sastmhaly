@@ -73,14 +73,17 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { tenant_id, id, ...updateData } = body;
+    const { tenant_id, id, current_stock, branch_id, ...updateData } = body;
     const tenantId = tenant_id || 'tenant_albaraka';
 
     if (!id) {
       return NextResponse.json({ error: 'Product ID is required' }, { status: 400 });
     }
 
-    const product = await updateProduct(tenantId, id, updateData);
+    const product = await updateProduct(tenantId, id, updateData, {
+      current_stock: current_stock !== undefined ? Number(current_stock) : undefined,
+      branch_id: branch_id || undefined,
+    });
     return NextResponse.json({ success: true, product });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Failed to update product';
