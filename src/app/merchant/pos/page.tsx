@@ -9,6 +9,7 @@ import { Product, Customer, CashSession, PosCartItem, PosHeldSale, Sale, SaleIte
 import { posAudio } from '@/lib/audio';
 import { supabase } from '@/lib/supabase';
 import { Modal } from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Search, Barcode, ShoppingCart, Trash2, Plus, Minus, 
@@ -21,6 +22,7 @@ export default function PosPage() {
   const { tenant, user, activeBranchId, branches } = useAuth();
   const { lang, t } = useLanguage();
   const { isSidebarCollapsed, toggleSidebar } = useNav();
+  const confirm = useConfirm();
 
   // State
   const [products, setProducts] = useState<Product[]>([]);
@@ -468,6 +470,18 @@ export default function PosPage() {
     setCart([]);
     setSelectedCustomer(null);
     setSaleDiscount(0);
+  };
+
+  const handleManualClearCart = async () => {
+    if (cart.length === 0) return;
+    const ok = await confirm({
+      title: lang === 'ar' ? 'مسح سلة المشتريات' : 'Clear Cart',
+      message: lang === 'ar' ? 'هل أنت متأكد من مسح جميع المنتجات من السلة؟' : 'Are you sure you want to clear all items in the cart?',
+      type: 'danger',
+      confirmText: lang === 'ar' ? 'نعم، مسح السلة' : 'Clear Cart'
+    });
+    if (!ok) return;
+    clearCart();
   };
 
   // Calculations
@@ -929,7 +943,7 @@ export default function PosPage() {
             </button>
 
             <button
-              onClick={clearCart}
+              onClick={handleManualClearCart}
               disabled={cart.length === 0}
               className="py-2.5 rounded-lg border border-[#FECACA] bg-[#FEF2F2] text-xs font-bold text-[#EF4444] hover:bg-[#FEE2E2] disabled:opacity-50 transition-colors cursor-pointer flex flex-col items-center justify-center gap-0.5"
               title="Void Cart"

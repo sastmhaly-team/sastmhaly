@@ -7,6 +7,7 @@ import { Product, Category, Unit } from '@/lib/types';
 import { ExportButton } from '@/components/reports/ExportButton';
 import { Modal } from '@/components/ui/Modal';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Package, Plus, Search, Filter, Upload, Barcode, 
@@ -17,6 +18,7 @@ import {
 export default function MerchantProductsPage() {
   const { tenant, activeBranchId } = useAuth();
   const { lang, t } = useLanguage();
+  const confirm = useConfirm();
 
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -295,7 +297,8 @@ export default function MerchantProductsPage() {
     const confirmMsg = lang === 'ar'
       ? `هل أنت متأكد من حذف المنتج "${p.name_ar || p.name_en}"؟`
       : `Are you sure you want to delete "${p.name_en || p.name_ar}"?`;
-    if (!confirm(confirmMsg)) return;
+    const ok = await confirm(confirmMsg);
+    if (!ok) return;
 
     try {
       const res = await fetch(`/api/merchant/products?id=${p.id}&tenantId=${tenant.id}`, {
@@ -423,7 +426,8 @@ export default function MerchantProductsPage() {
     const confirmMsg = lang === 'ar'
       ? `هل أنت متأكد من حذف قسم "${cat.name_ar}"؟`
       : `Are you sure you want to delete category "${cat.name_en}"?`;
-    if (!confirm(confirmMsg)) return;
+    const ok = await confirm(confirmMsg);
+    if (!ok) return;
 
     try {
       const res = await fetch(`/api/merchant/categories?id=${cat.id}&tenantId=${tenant.id}`, {

@@ -8,6 +8,7 @@ import { Modal } from '@/components/ui/Modal';
 import { exportToCsv } from '@/lib/export/csv';
 import { ExportButton } from '@/components/reports/ExportButton';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   UserCog, Plus, Search, Download, 
@@ -18,6 +19,7 @@ import {
 export default function EmployeesManagementPage() {
   const { tenant, user, activeBranchId } = useAuth();
   const { t, isRtl, lang } = useLanguage();
+  const confirm = useConfirm();
   const tenantId = user?.tenant_id || tenant?.id || '';
   const effectiveBranchId = activeBranchId && activeBranchId !== 'all' ? activeBranchId : user?.branch_id;
 
@@ -289,9 +291,9 @@ export default function EmployeesManagementPage() {
   };
 
   const handleDeleteEmployee = async (emp: User) => {
-    if (!confirm(lang === 'ar' ? `هل أنت متأكد من حذف حساب الموظف "${emp.full_name}"؟` : `Are you sure you want to delete "${emp.full_name}"?`)) {
-      return;
-    }
+    const msg = lang === 'ar' ? `هل أنت متأكد من حذف حساب الموظف "${emp.full_name}"؟` : `Are you sure you want to delete "${emp.full_name}"?`;
+    const ok = await confirm(msg);
+    if (!ok) return;
 
     try {
       const res = await fetch(`/api/merchant/employees?id=${emp.id}&tenantId=${tenantId}`, {

@@ -40,7 +40,12 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'lg', size 
   }[effectiveWidth];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs overflow-y-auto overscroll-contain"
+      onClick={onClose}
+      onWheel={(e) => e.stopPropagation()}
+      onTouchMove={(e) => e.stopPropagation()}
+    >
       <div 
         className={`bg-white rounded-xl shadow-xl border border-[#E5EAF2] w-full ${maxWidthClasses} overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150`}
         onClick={(e) => e.stopPropagation()}

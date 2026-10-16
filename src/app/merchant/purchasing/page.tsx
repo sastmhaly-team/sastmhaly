@@ -8,6 +8,7 @@ import { Modal } from '@/components/ui/Modal';
 import { exportToCsv } from '@/lib/export/csv';
 import { ExportButton } from '@/components/reports/ExportButton';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Truck, Plus, Search, Filter, Download, 
@@ -17,6 +18,7 @@ import {
 export default function PurchasingManagementPage() {
   const { user, activeBranchId } = useAuth();
   const { t, isRtl } = useLanguage();
+  const confirm = useConfirm();
   const tenantId = user?.tenant_id || 'tenant_albaraka';
   const effectiveBranchId = activeBranchId && activeBranchId !== 'all' ? activeBranchId : user?.branch_id;
 
@@ -174,7 +176,13 @@ export default function PurchasingManagementPage() {
   };
 
   const handleReceiveGoods = async (poId: string) => {
-    if (!confirm(isRtl ? 'تأكيد استلام بضاعة أمر الشراء وزيادة المخزون في الفرع؟' : 'Confirm receiving goods and updating branch inventory?')) return;
+    const ok = await confirm({
+      title: isRtl ? 'تأكيد استلام الشحنة' : 'Confirm Receiving Goods',
+      message: isRtl ? 'تأكيد استلام بضاعة أمر الشراء وزيادة المخزون في الفرع؟' : 'Confirm receiving goods and updating branch inventory?',
+      type: 'success',
+      confirmText: isRtl ? 'تأكيد الاستلام والتوريد' : 'Confirm Receipt'
+    });
+    if (!ok) return;
     setReceivingPoId(poId);
     try {
       const res = await fetch('/api/merchant/purchasing', {

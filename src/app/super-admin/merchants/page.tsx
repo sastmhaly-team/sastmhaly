@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useLanguage } from '@/lib/i18n/context';
 import { ExportButton } from '@/components/reports/ExportButton';
 import { Modal } from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Tenant } from '@/lib/types';
 import { 
   Building2, Plus, Search, Filter, CheckCircle2, 
@@ -28,6 +29,7 @@ const DURATION_PRESETS = [
 
 export default function SuperAdminMerchantsPage() {
   const { lang, t } = useLanguage();
+  const confirm = useConfirm();
   const [merchants, setMerchants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -318,7 +320,8 @@ export default function SuperAdminMerchantsPage() {
     const confirmMsg = lang === 'ar'
       ? `هل أنت متأكد من حذف الفرع "${branchName}" لهذا التاجر؟`
       : `Are you sure you want to delete branch "${branchName}" for this merchant?`;
-    if (!window.confirm(confirmMsg)) return;
+    const ok = await confirm(confirmMsg);
+    if (!ok) return;
 
     setDeletingBranchId(branchId);
     setBranchError('');

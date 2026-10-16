@@ -7,12 +7,14 @@ import { StockTransfer, Product, Branch } from '@/lib/types';
 import { ExportButton } from '@/components/reports/ExportButton';
 import { Modal } from '@/components/ui/Modal';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { ArrowLeftRight, Plus, CheckCircle2, Truck, Clock, ShieldCheck } from 'lucide-react';
 
 export default function MerchantTransfersPage() {
   const { tenant, branches } = useAuth();
   const { lang, t } = useLanguage();
+  const confirm = useConfirm();
 
   const [transfers, setTransfers] = useState<StockTransfer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -139,7 +141,13 @@ export default function MerchantTransfersPage() {
     const confirmMsg = lang === 'ar' 
       ? 'هل أنت متأكد من إنهاء التحويل وتأكيد نقل البضاعة فعلياً إلى رصيد الفرع المستلم؟' 
       : 'Are you sure you want to finish this transfer and transfer stock to the destination branch?';
-    if (!window.confirm(confirmMsg)) return;
+    const ok = await confirm({
+      title: lang === 'ar' ? 'تأكيد إنهاء التحويل' : 'Confirm Finish Transfer',
+      message: confirmMsg,
+      type: 'success',
+      confirmText: lang === 'ar' ? 'نعم، إنهاء ونقل المخزون' : 'Finish & Move Stock'
+    });
+    if (!ok) return;
 
     try {
       setProcessingId(transferId);
@@ -173,7 +181,13 @@ export default function MerchantTransfersPage() {
     const confirmMsg = lang === 'ar' 
       ? 'هل أنت متأكد من إلغاء هذا التحويل؟' 
       : 'Are you sure you want to cancel this transfer?';
-    if (!window.confirm(confirmMsg)) return;
+    const ok = await confirm({
+      title: lang === 'ar' ? 'تأكيد إلغاء التحويل' : 'Cancel Transfer',
+      message: confirmMsg,
+      type: 'danger',
+      confirmText: lang === 'ar' ? 'نعم، إلغاء التحويل' : 'Yes, Cancel'
+    });
+    if (!ok) return;
 
     try {
       setProcessingId(transferId);

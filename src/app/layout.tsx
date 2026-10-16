@@ -3,6 +3,7 @@ import "./globals.css";
 import { LanguageProvider } from "@/lib/i18n/context";
 import { AuthProvider } from "@/lib/auth/context";
 import { NavProvider } from "@/lib/nav-context";
+import { ConfirmProvider } from "@/components/ui/ConfirmDialog";
 
 export const metadata: Metadata = {
   title: "Sastmhaly | سستمهالي - Multi-Tenant Retail & Supermarket Management SaaS",
@@ -33,7 +34,9 @@ export default function RootLayout({
         <LanguageProvider>
           <AuthProvider>
             <NavProvider>
-              {children}
+              <ConfirmProvider>
+                {children}
+              </ConfirmProvider>
             </NavProvider>
           </AuthProvider>
         </LanguageProvider>
