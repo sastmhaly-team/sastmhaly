@@ -6,6 +6,8 @@ import { useLanguage } from '@/lib/i18n/context';
 import { StockTransfer, Product, Branch } from '@/lib/types';
 import { ExportButton } from '@/components/reports/ExportButton';
 import { Modal } from '@/components/ui/Modal';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { ArrowLeftRight, Plus, CheckCircle2, Truck, Clock, ShieldCheck } from 'lucide-react';
 
 export default function MerchantTransfersPage() {
@@ -15,6 +17,9 @@ export default function MerchantTransfersPage() {
   const [transfers, setTransfers] = useState<StockTransfer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [visibleCount, setVisibleCount] = useState(20);
 
   // New transfer modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -39,21 +44,39 @@ export default function MerchantTransfersPage() {
   const fetchTransfers = async () => {
     if (!tenant) return;
     try {
-      setLoading(true);
-      const res = await fetch(`/api/merchant/transfers?tenantId=${tenant.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setTransfers(data.transfers || []);
+      const transferUrl = `/api/merchant/transfers?tenantId=${tenant.id}`;
+      const prodUrl = `/api/merchant/products?tenantId=${tenant.id}`;
+
+      const cachedTransfers = getCachedData<any>(transferUrl);
+      if (cachedTransfers?.transfers) {
+        setTransfers(cachedTransfers.transfers);
+        setLoading(false);
+      } else if (transfers.length === 0) {
+        setLoading(true);
       }
 
-      const prodRes = await fetch(`/api/merchant/products?tenantId=${tenant.id}`);
-      if (prodRes.ok) {
-        const prodData = await prodRes.json();
-        setProducts(prodData.products || []);
-        if (prodData.products?.length > 0 && !selectedProductId) {
-          setSelectedProductId(prodData.products[0].id);
+      const cachedProducts = getCachedData<any>(prodUrl);
+      if (cachedProducts?.products) {
+        setProducts(cachedProducts.products);
+        if (cachedProducts.products.length > 0 && !selectedProductId) {
+          setSelectedProductId(cachedProducts.products[0].id);
         }
       }
+
+      await Promise.all([
+        fetchWithCache<any>(transferUrl, (data) => {
+          if (data.transfers) setTransfers(data.transfers);
+          setLoading(false);
+        }),
+        fetchWithCache<any>(prodUrl, (prodData) => {
+          if (prodData.products) {
+            setProducts(prodData.products);
+            if (prodData.products.length > 0 && !selectedProductId) {
+              setSelectedProductId(prodData.products[0].id);
+            }
+          }
+        })
+      ]);
     } catch (e) {
       console.error(e);
     } finally {
@@ -109,7 +132,6 @@ export default function MerchantTransfersPage() {
     }
   };
 
-  const [visibleCount, setVisibleCount] = useState(20);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   const handleFinishTransfer = async (transferId: string) => {
@@ -189,7 +211,15 @@ export default function MerchantTransfersPage() {
     { header: 'Notes', key: 'notes' as const },
   ];
 
-  const visibleTransfers = transfers.slice(0, visibleCount);
+  const filteredTransfers = transfers.filter(tr => {
+    if (!startDate && !endDate) return true;
+    const trDate = tr.created_at ? tr.created_at.split('T')[0] : '';
+    if (startDate && trDate < startDate) return false;
+    if (endDate && trDate > endDate) return false;
+    return true;
+  });
+
+  const visibleTransfers = filteredTransfers.slice(0, visibleCount);
 
   return (
     <div className="space-y-6">
@@ -210,7 +240,7 @@ export default function MerchantTransfersPage() {
         <div className="flex items-center gap-2.5">
           <ExportButton
             filename="sastmhaly_stock_transfers"
-            data={transfers}
+            data={filteredTransfers}
             columns={exportColumns}
           />
 
@@ -223,6 +253,16 @@ export default function MerchantTransfersPage() {
           </button>
         </div>
       </div>
+
+      {/* Date Range Filter */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onChange={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
+      />
 
       {/* Transfers List Table */}
       <div className="bg-white rounded-xl border border-[#E5EAF2] overflow-hidden shadow-2xs">

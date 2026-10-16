@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth/context';
 import { useLanguage } from '@/lib/i18n/context';
 import { ExportButton } from '@/components/reports/ExportButton';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { CalendarDays, Clock, AlertTriangle, CheckCircle2, ShieldAlert } from 'lucide-react';
 
 interface BatchItem {
@@ -28,19 +30,29 @@ export default function MerchantBatchesPage() {
 
   const [batches, setBatches] = useState<BatchItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [visibleCount, setVisibleCount] = useState(20);
 
   useEffect(() => {
     if (!tenant) return;
     const fetchBatches = async () => {
       try {
-        setLoading(true);
         const branchParam = activeBranchId !== 'all' ? `&branchId=${activeBranchId}` : '';
-        const res = await fetch(`/api/merchant/batches?tenantId=${tenant.id}${branchParam}`);
-        if (res.ok) {
-          const data = await res.json();
-          setBatches(data.batches || []);
+        const url = `/api/merchant/batches?tenantId=${tenant.id}${branchParam}`;
+        
+        const cached = getCachedData<any>(url);
+        if (cached?.batches) {
+          setBatches(cached.batches);
+          setLoading(false);
+        } else if (batches.length === 0) {
+          setLoading(true);
         }
+
+        await fetchWithCache<any>(url, (data) => {
+          if (data.batches) setBatches(data.batches);
+          setLoading(false);
+        });
       } catch (e) {
         console.error(e);
       } finally {
@@ -49,6 +61,14 @@ export default function MerchantBatchesPage() {
     };
     fetchBatches();
   }, [tenant, activeBranchId]);
+
+  const filteredBatches = batches.filter(b => {
+    if (!startDate && !endDate) return true;
+    const bDate = b.expiry_date ? b.expiry_date.split('T')[0] : '';
+    if (startDate && bDate < startDate) return false;
+    if (endDate && bDate > endDate) return false;
+    return true;
+  });
 
   const exportColumns = [
     { header: 'Batch Number', key: 'batch_number' as const },
@@ -79,10 +99,20 @@ export default function MerchantBatchesPage() {
 
         <ExportButton
           filename="sastmhaly_batches_expiry_report"
-          data={batches}
+          data={filteredBatches}
           columns={exportColumns}
         />
       </div>
+
+      {/* Date Range Filter */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onChange={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
+      />
 
       {/* Near Expiry Banner */}
       <div className="p-4 rounded-xl border border-[#FDE68A] bg-[#FFFBEB] flex items-center gap-3">
@@ -120,12 +150,12 @@ export default function MerchantBatchesPage() {
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-[#687386]">{t('loading')}</td>
                 </tr>
-              ) : batches.length === 0 ? (
+              ) : filteredBatches.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-[#687386]">{t('no_records')}</td>
                 </tr>
               ) : (
-                batches.slice(0, visibleCount).map((b, idx) => {
+                filteredBatches.slice(0, visibleCount).map((b, idx) => {
                   const isExpired = b.days_until_expiry < 0;
                   const isCritical = b.days_until_expiry >= 0 && b.days_until_expiry <= 15;
                   const isWarning = b.days_until_expiry > 15 && b.days_until_expiry <= 30;

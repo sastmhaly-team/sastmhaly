@@ -5,6 +5,9 @@ import { useAuth } from '@/lib/auth/context';
 import { useLanguage } from '@/lib/i18n/context';
 import { Account, JournalEntry } from '@/lib/types';
 import { exportToCsv } from '@/lib/export/csv';
+import { ExportButton } from '@/components/reports/ExportButton';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   BookOpen, Layers, CheckCircle2, Download, 
   ArrowUpRight, ArrowDownLeft, Scale, FileText
@@ -19,14 +22,26 @@ export default function AccountingManagementPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const fetchAccountingData = async () => {
-    setLoading(true);
     try {
-      const res = await fetch(`/api/merchant/accounting?tenantId=${tenantId}`);
-      const data = await res.json();
-      if (data.accounts) setAccounts(data.accounts);
-      if (data.journalEntries) setJournalEntries(data.journalEntries);
+      const url = `/api/merchant/accounting?tenantId=${tenantId}`;
+      const cached = getCachedData<any>(url);
+      if (cached) {
+        if (cached.accounts) setAccounts(cached.accounts);
+        if (cached.journalEntries) setJournalEntries(cached.journalEntries);
+        setLoading(false);
+      } else if (accounts.length === 0 && journalEntries.length === 0) {
+        setLoading(true);
+      }
+
+      await fetchWithCache<any>(url, (data) => {
+        if (data.accounts) setAccounts(data.accounts);
+        if (data.journalEntries) setJournalEntries(data.journalEntries);
+        setLoading(false);
+      });
     } catch (e) {
       console.error(e);
     } finally {
@@ -38,43 +53,38 @@ export default function AccountingManagementPage() {
     fetchAccountingData();
   }, [tenantId]);
 
-  const exportCoaCsv = () => {
-    const headers = [
-      { key: 'account_code', labelEn: 'Account Code', labelAr: 'كود الحساب' },
-      { key: 'account_name_en', labelEn: 'Account Name (EN)', labelAr: 'اسم الحساب بالإنجليزية' },
-      { key: 'account_name_ar', labelEn: 'Account Name (AR)', labelAr: 'اسم الحساب بالعربية' },
-      { key: 'account_type', labelEn: 'Type', labelAr: 'نوع الحساب' }
-    ];
-    exportToCsv(`Chart_Of_Accounts_${new Date().toISOString().split('T')[0]}`, accounts, headers, isRtl);
-  };
+  const coaExportHeaders = [
+    { key: 'account_code', labelEn: 'Account Code', labelAr: 'كود الحساب' },
+    { key: 'account_name_en', labelEn: 'Account Name (EN)', labelAr: 'اسم الحساب بالإنجليزية' },
+    { key: 'account_name_ar', labelEn: 'Account Name (AR)', labelAr: 'اسم الحساب بالعربية' },
+    { key: 'account_type', labelEn: 'Type', labelAr: 'نوع الحساب' }
+  ];
 
-  const exportJournalCsv = () => {
-    const flatRows: any[] = [];
-    journalEntries.forEach(je => {
-      je.lines?.forEach(line => {
-        flatRows.push({
-          entry_number: je.entry_number,
-          entry_date: je.entry_date,
-          description: je.description,
-          account_code: line.account_code,
-          account_name: isRtl ? line.account_name_ar : line.account_name_en,
-          debit: line.debit,
-          credit: line.credit
-        });
+  const journalExportHeaders = [
+    { key: 'entry_number', labelEn: 'Entry Number', labelAr: 'رقم القيد' },
+    { key: 'entry_date', labelEn: 'Date', labelAr: 'التاريخ' },
+    { key: 'description', labelEn: 'Description', labelAr: 'البيان' },
+    { key: 'account_code', labelEn: 'Account Code', labelAr: 'كود الحساب' },
+    { key: 'account_name', labelEn: 'Account Name', labelAr: 'اسم الحساب' },
+    { key: 'debit', labelEn: 'Debit (EGP)', labelAr: 'مدين (ج.م)' },
+    { key: 'credit', labelEn: 'Credit (EGP)', labelAr: 'دائن (ج.م)' }
+  ];
+
+  const flatJournalRows: any[] = [];
+  journalEntries.forEach(je => {
+    je.lines?.forEach(line => {
+      flatJournalRows.push({
+        entry_number: je.entry_number,
+        entry_date: je.entry_date,
+        created_at: je.created_at || je.entry_date,
+        description: je.description,
+        account_code: line.account_code,
+        account_name: isRtl ? line.account_name_ar : line.account_name_en,
+        debit: line.debit,
+        credit: line.credit
       });
     });
-
-    const headers = [
-      { key: 'entry_number', labelEn: 'Entry Number', labelAr: 'رقم القيد' },
-      { key: 'entry_date', labelEn: 'Date', labelAr: 'التاريخ' },
-      { key: 'description', labelEn: 'Description', labelAr: 'البيان' },
-      { key: 'account_code', labelEn: 'Account Code', labelAr: 'كود الحساب' },
-      { key: 'account_name', labelEn: 'Account Name', labelAr: 'اسم الحساب' },
-      { key: 'debit', labelEn: 'Debit (EGP)', labelAr: 'مدين (ج.م)' },
-      { key: 'credit', labelEn: 'Credit (EGP)', labelAr: 'دائن (ج.م)' }
-    ];
-    exportToCsv(`General_Ledger_Journal_${new Date().toISOString().split('T')[0]}`, flatRows, headers, isRtl);
-  };
+  });
 
   const getAccountTypeBadge = (type: string) => {
     switch (type) {
@@ -95,6 +105,14 @@ export default function AccountingManagementPage() {
     }
   };
 
+  const filteredJournalEntries = journalEntries.filter(je => {
+    if (!startDate && !endDate) return true;
+    const jeDate = je.entry_date ? je.entry_date.split('T')[0] : '';
+    if (startDate && jeDate < startDate) return false;
+    if (endDate && jeDate > endDate) return false;
+    return true;
+  });
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -111,15 +129,34 @@ export default function AccountingManagementPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={activeTab === 'coa' ? exportCoaCsv : exportJournalCsv}
-            className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-[#E5EAF2] hover:bg-[#F7F9FC] text-[#172033] rounded-lg text-xs font-semibold shadow-xs"
-          >
-            <Download className="w-4 h-4 text-[#246BFD]" />
-            <span>{isRtl ? 'تصدير البيانات (CSV)' : 'Export CSV'}</span>
-          </button>
+          {activeTab === 'coa' ? (
+            <ExportButton
+              filename="Chart_Of_Accounts"
+              data={accounts}
+              headers={coaExportHeaders}
+              label={isRtl ? 'تصدير دليل الحسابات (CSV)' : 'Export COA (CSV)'}
+            />
+          ) : (
+            <ExportButton
+              filename="General_Ledger_Journal"
+              data={flatJournalRows}
+              headers={journalExportHeaders}
+              dateField="entry_date"
+              label={isRtl ? 'تصدير قيود اليومية (CSV)' : 'Export Journal (CSV)'}
+            />
+          )}
         </div>
       </div>
+
+      {/* Date Range Filter */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onChange={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
+      />
 
       {/* Tabs */}
       <div className="flex border-b border-[#E5EAF2] gap-6">
@@ -214,7 +251,7 @@ export default function AccountingManagementPage() {
             <div className="bg-white p-8 rounded-xl border border-[#E5EAF2] text-center text-xs text-[#687386]">
               {isRtl ? 'جاري تحميل قيود اليومية...' : 'Loading journal entries...'}
             </div>
-          ) : journalEntries.length === 0 ? (
+          ) : filteredJournalEntries.length === 0 ? (
             <div className="bg-white p-12 rounded-xl border border-[#E5EAF2] text-center space-y-3">
               <Scale className="w-10 h-10 text-[#687386] mx-auto opacity-40" />
               <p className="text-sm font-semibold text-[#172033]">
@@ -222,7 +259,7 @@ export default function AccountingManagementPage() {
               </p>
             </div>
           ) : (
-            journalEntries.map((je) => (
+            filteredJournalEntries.map((je) => (
               <div key={je.id} className="bg-white rounded-xl border border-[#E5EAF2] shadow-xs overflow-hidden">
                 <div className="p-3 bg-[#F7F9FC] border-b border-[#E5EAF2] flex flex-wrap justify-between items-center gap-2">
                   <div className="flex items-center gap-3">

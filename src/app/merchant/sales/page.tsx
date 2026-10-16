@@ -7,6 +7,9 @@ import { useLanguage } from '@/lib/i18n/context';
 import { Sale, SaleItem } from '@/lib/types';
 import { Modal } from '@/components/ui/Modal';
 import { exportToCsv } from '@/lib/export/csv';
+import { ExportButton } from '@/components/reports/ExportButton';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Receipt, Search, Filter, Printer, RotateCcw, 
   Eye, CheckCircle2, AlertTriangle, Download, Calendar, DollarSign
@@ -23,6 +26,8 @@ export default function SalesManagementPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [paymentFilter, setPaymentFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   // Detail Modal
   const [selectedSale, setSelectedSale] = useState<(Sale & { items: SaleItem[] }) | null>(null);
@@ -56,15 +61,26 @@ export default function SalesManagementPage() {
   };
 
   const fetchSales = async () => {
-    setLoading(true);
     try {
       const branchParam = effectiveBranchId && effectiveBranchId !== 'all' ? `&branchId=${effectiveBranchId}` : '';
       const url = `/api/merchant/sales?tenantId=${tenantId}${branchParam}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.sales) setSales(data.sales);
-      if (data.tenant) setLiveTenant(data.tenant);
-      if (data.settings?.receipt_footer) setReceiptFooter(data.settings.receipt_footer);
+      
+      const cached = getCachedData<any>(url);
+      if (cached) {
+        if (cached.sales) setSales(cached.sales);
+        if (cached.tenant) setLiveTenant(cached.tenant);
+        if (cached.settings?.receipt_footer) setReceiptFooter(cached.settings.receipt_footer);
+        setLoading(false);
+      } else if (sales.length === 0) {
+        setLoading(true);
+      }
+
+      await fetchWithCache<any>(url, (data) => {
+        if (data.sales) setSales(data.sales);
+        if (data.tenant) setLiveTenant(data.tenant);
+        if (data.settings?.receipt_footer) setReceiptFooter(data.settings.receipt_footer);
+        setLoading(false);
+      });
     } catch (e) {
       console.error(e);
     } finally {
@@ -149,22 +165,26 @@ export default function SalesManagementPage() {
       (s.cashier_name && s.cashier_name.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
     const matchesPayment = paymentFilter === 'all' || s.payment_method === paymentFilter;
-    return matchesSearch && matchesStatus && matchesPayment;
+    const matchesDate = (() => {
+      if (!startDate && !endDate) return true;
+      const saleDate = s.created_at ? s.created_at.split('T')[0] : '';
+      if (startDate && saleDate < startDate) return false;
+      if (endDate && saleDate > endDate) return false;
+      return true;
+    })();
+    return matchesSearch && matchesStatus && matchesPayment && matchesDate;
   });
 
-  const exportSalesCsv = () => {
-    const headers = [
-      { key: 'sale_number', labelEn: 'Invoice Number', labelAr: 'رقم الفاتورة' },
-      { key: 'created_at', labelEn: 'Date & Time', labelAr: 'التاريخ والوقت' },
-      { key: 'branch_name', labelEn: 'Branch', labelAr: 'الفرع' },
-      { key: 'cashier_name', labelEn: 'Cashier', labelAr: 'الكاشير' },
-      { key: 'customer_name', labelEn: 'Customer', labelAr: 'العميل' },
-      { key: 'payment_method', labelEn: 'Payment Method', labelAr: 'طريقة الدفع' },
-      { key: 'total_amount', labelEn: 'Total (EGP)', labelAr: 'الإجمالي (ج.م)' },
-      { key: 'status', labelEn: 'Status', labelAr: 'الحالة' }
-    ];
-    exportToCsv(`Sales_Report_${new Date().toISOString().split('T')[0]}`, filteredSales, headers, isRtl);
-  };
+  const salesExportHeaders = [
+    { key: 'sale_number', labelEn: 'Invoice Number', labelAr: 'رقم الفاتورة' },
+    { key: 'created_at', labelEn: 'Date & Time', labelAr: 'التاريخ والوقت' },
+    { key: 'branch_name', labelEn: 'Branch', labelAr: 'الفرع' },
+    { key: 'cashier_name', labelEn: 'Cashier', labelAr: 'الكاشير' },
+    { key: 'customer_name', labelEn: 'Customer', labelAr: 'العميل' },
+    { key: 'payment_method', labelEn: 'Payment Method', labelAr: 'طريقة الدفع' },
+    { key: 'total_amount', labelEn: 'Total (EGP)', labelAr: 'الإجمالي (ج.م)' },
+    { key: 'status', labelEn: 'Status', labelAr: 'الحالة' }
+  ];
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -194,14 +214,23 @@ export default function SalesManagementPage() {
           </p>
         </div>
 
-        <button
-          onClick={exportSalesCsv}
-          className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-[#E5EAF2] hover:bg-[#F7F9FC] text-[#172033] rounded-lg text-xs font-semibold shadow-xs"
-        >
-          <Download className="w-4 h-4 text-[#246BFD]" />
-          <span>{isRtl ? 'تصدير إلى Excel (CSV)' : 'Export to Excel (CSV)'}</span>
-        </button>
+        <ExportButton
+          filename="Sales_Report"
+          data={sales}
+          headers={salesExportHeaders}
+          label={isRtl ? 'تصدير إلى Excel (CSV)' : 'Export to Excel (CSV)'}
+        />
       </div>
+
+      {/* Date Range Filter */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onChange={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
+      />
 
       {/* Filter Toolbar */}
       <div className="bg-white p-4 rounded-xl border border-[#E5EAF2] shadow-xs flex flex-wrap gap-3 items-center justify-between">

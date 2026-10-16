@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useAuth } from '@/lib/auth/context';
 import { useLanguage } from '@/lib/i18n/context';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Settings, Save, CheckCircle2, Building2, 
   Receipt, Scale, Percent, AlertCircle, Sparkles,
@@ -38,27 +39,50 @@ export default function MerchantSettingsPage() {
   });
 
   const fetchSettings = async () => {
-    setLoading(true);
     try {
-      const res = await fetch(`/api/merchant/settings?tenantId=${tenantId}`);
-      const data = await res.json();
-      if (data.tenant && data.settings) {
+      const url = `/api/merchant/settings?tenantId=${tenantId}`;
+      const cached = getCachedData<any>(url);
+      if (cached?.tenant && cached?.settings) {
         setFormData({
-          name: data.tenant.name || '',
-          phone: data.tenant.phone || '',
-          email: data.tenant.email || '',
-          tax_id: data.tenant.tax_id || '',
-          logo_url: data.tenant.logo_url || '',
-          default_tax_rate: data.settings.default_tax_rate ?? 14.0,
-          vat_enabled: data.settings.vat_enabled ?? 1,
-          receipt_header: data.settings.receipt_header || '',
-          receipt_footer: data.settings.receipt_footer || '',
-          receipt_width: data.settings.receipt_width || '80mm',
-          scale_barcode_prefix: data.settings.scale_barcode_prefix || '21',
-          valuation_method: data.settings.valuation_method || 'WAC',
-          expiry_warning_days: data.settings.expiry_warning_days || 30
+          name: cached.tenant.name || '',
+          phone: cached.tenant.phone || '',
+          email: cached.tenant.email || '',
+          tax_id: cached.tenant.tax_id || '',
+          logo_url: cached.tenant.logo_url || '',
+          default_tax_rate: cached.settings.default_tax_rate ?? 14.0,
+          vat_enabled: cached.settings.vat_enabled ?? 1,
+          receipt_header: cached.settings.receipt_header || '',
+          receipt_footer: cached.settings.receipt_footer || '',
+          receipt_width: cached.settings.receipt_width || '80mm',
+          scale_barcode_prefix: cached.settings.scale_barcode_prefix || '21',
+          valuation_method: cached.settings.valuation_method || 'WAC',
+          expiry_warning_days: cached.settings.expiry_warning_days || 30
         });
+        setLoading(false);
+      } else if (!formData.name) {
+        setLoading(true);
       }
+
+      await fetchWithCache<any>(url, (data) => {
+        if (data.tenant && data.settings) {
+          setFormData({
+            name: data.tenant.name || '',
+            phone: data.tenant.phone || '',
+            email: data.tenant.email || '',
+            tax_id: data.tenant.tax_id || '',
+            logo_url: data.tenant.logo_url || '',
+            default_tax_rate: data.settings.default_tax_rate ?? 14.0,
+            vat_enabled: data.settings.vat_enabled ?? 1,
+            receipt_header: data.settings.receipt_header || '',
+            receipt_footer: data.settings.receipt_footer || '',
+            receipt_width: data.settings.receipt_width || '80mm',
+            scale_barcode_prefix: data.settings.scale_barcode_prefix || '21',
+            valuation_method: data.settings.valuation_method || 'WAC',
+            expiry_warning_days: data.settings.expiry_warning_days || 30
+          });
+          setLoading(false);
+        }
+      });
     } catch (e) {
       console.error(e);
     } finally {

@@ -6,6 +6,9 @@ import { useLanguage } from '@/lib/i18n/context';
 import { User, Branch, UserRole } from '@/lib/types';
 import { Modal } from '@/components/ui/Modal';
 import { exportToCsv } from '@/lib/export/csv';
+import { ExportButton } from '@/components/reports/ExportButton';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   UserCog, Plus, Search, Download, 
   Shield, CheckCircle2, Building2, Mail, Phone, Lock, AlertCircle,
@@ -22,6 +25,8 @@ export default function EmployeesManagementPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [visibleCount, setVisibleCount] = useState(20);
 
   useEffect(() => {
@@ -47,23 +52,40 @@ export default function EmployeesManagementPage() {
       setLoading(false);
       return;
     }
-    setLoading(true);
     try {
-      const url = `/api/merchant/employees?tenantId=${tenantId}${effectiveBranchId ? `&branchId=${effectiveBranchId}` : ''}`;
-      const [empRes, brRes] = await Promise.all([
-        fetch(url),
-        fetch(`/api/merchant/branches?tenantId=${tenantId}`)
-      ]);
-      const empData = await empRes.json();
-      const brData = await brRes.json();
+      const empUrl = `/api/merchant/employees?tenantId=${tenantId}${effectiveBranchId ? `&branchId=${effectiveBranchId}` : ''}`;
+      const brUrl = `/api/merchant/branches?tenantId=${tenantId}`;
 
-      if (empData.users) setEmployees(empData.users);
-      if (brData.branches) {
-        setBranches(brData.branches);
-        if (!newEmployee.branch_id && brData.branches.length > 0) {
-          setNewEmployee(prev => ({ ...prev, branch_id: effectiveBranchId || brData.branches[0].id }));
+      const cachedEmp = getCachedData<any>(empUrl);
+      if (cachedEmp?.users) {
+        setEmployees(cachedEmp.users);
+        setLoading(false);
+      } else if (employees.length === 0) {
+        setLoading(true);
+      }
+
+      const cachedBr = getCachedData<any>(brUrl);
+      if (cachedBr?.branches) {
+        setBranches(cachedBr.branches);
+        if (!newEmployee.branch_id && cachedBr.branches.length > 0) {
+          setNewEmployee(prev => ({ ...prev, branch_id: effectiveBranchId || cachedBr.branches[0].id }));
         }
       }
+
+      await Promise.all([
+        fetchWithCache<any>(empUrl, (empData) => {
+          if (empData.users) setEmployees(empData.users);
+          setLoading(false);
+        }),
+        fetchWithCache<any>(brUrl, (brData) => {
+          if (brData.branches) {
+            setBranches(brData.branches);
+            if (!newEmployee.branch_id && brData.branches.length > 0) {
+              setNewEmployee(prev => ({ ...prev, branch_id: effectiveBranchId || brData.branches[0].id }));
+            }
+          }
+        })
+      ]);
     } catch (e) {
       console.error(e);
     } finally {
@@ -132,11 +154,14 @@ export default function EmployeesManagementPage() {
     }
   };
 
-  const filteredEmployees = employees.filter(e => 
-    e.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    e.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (e.phone && e.phone.includes(searchTerm))
-  );
+  const filteredEmployees = employees.filter(e => {
+    const matchesSearch = e.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      e.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (e.phone && e.phone.includes(searchTerm));
+    const dateStr = (e as any).created_at ? (e as any).created_at.split('T')[0] : '';
+    const matchesDate = (!startDate || dateStr >= startDate) && (!endDate || dateStr <= endDate);
+    return matchesSearch && matchesDate;
+  });
 
   // Edit Employee Modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -283,16 +308,13 @@ export default function EmployeesManagementPage() {
     }
   };
 
-  const exportEmployeesCsv = () => {
-    const headers = [
-      { key: 'full_name', labelEn: 'Full Name', labelAr: 'الاسم بالكامل' },
-      { key: 'username', labelEn: 'Username / Phone', labelAr: 'رقم الهاتف / المستخدم' },
-      { key: 'phone', labelEn: 'Phone', labelAr: 'رقم الهاتف' },
-      { key: 'role', labelEn: 'Role', labelAr: 'الدور الوظيفي' },
-      { key: 'email', labelEn: 'Email', labelAr: 'البريد الإلكتروني' }
-    ];
-    exportToCsv(`sastmhaly_employees_${Date.now()}`, employees, headers, isRtl);
-  };
+  const employeeExportHeaders = [
+    { key: 'full_name', labelEn: 'Full Name', labelAr: 'الاسم بالكامل' },
+    { key: 'username', labelEn: 'Username / Phone', labelAr: 'رقم الهاتف / المستخدم' },
+    { key: 'phone', labelEn: 'Phone', labelAr: 'رقم الهاتف' },
+    { key: 'role', labelEn: 'Role', labelAr: 'الدور الوظيفي' },
+    { key: 'email', labelEn: 'Email', labelAr: 'البريد الإلكتروني' }
+  ];
 
   const getRoleBadge = (role: string) => {
     switch (role) {
@@ -323,13 +345,12 @@ export default function EmployeesManagementPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={exportEmployeesCsv}
-            className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-[#E5EAF2] hover:bg-[#F7F9FC] text-[#172033] rounded-lg text-xs font-semibold shadow-xs cursor-pointer"
-          >
-            <Download className="w-4 h-4 text-[#246BFD]" />
-            <span>{isRtl ? 'تصدير (CSV)' : 'Export CSV'}</span>
-          </button>
+          <ExportButton
+            filename="Employees"
+            data={employees}
+            headers={employeeExportHeaders}
+            label={isRtl ? 'تصدير (CSV)' : 'Export CSV'}
+          />
 
           <button
             onClick={() => {
@@ -343,6 +364,16 @@ export default function EmployeesManagementPage() {
           </button>
         </div>
       </div>
+
+      {/* Date Range Filter */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onChange={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
+      />
 
       {/* Filter Toolbar */}
       <div className="bg-white p-4 rounded-xl border border-[#E5EAF2] shadow-xs flex items-center justify-between">

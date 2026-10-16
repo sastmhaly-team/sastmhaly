@@ -117,12 +117,20 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
 
           {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-2.5">
+            <a
+              href="https://wa.me/201558516263?text=مرحباً،%20انتهى%20اشتراك%20متجري%20في%20منصة%20سستمهالي%20وأريد%20تجديده%20لتفعيل%20الحساب"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 py-2.5 px-4 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>تواصل للتجديد عبر واتساب (01558516263)</span>
+            </a>
             <button
               onClick={() => window.location.reload()}
-              className="flex-1 py-2.5 px-4 rounded-xl bg-[#246BFD] hover:bg-[#1A54D4] text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              className="py-2.5 px-4 rounded-xl bg-[#246BFD] hover:bg-[#1A54D4] text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
               <RefreshCw className="w-4 h-4" />
-              <span>تحديث الحالة (تم التجديد)</span>
+              <span>تحديث الحالة</span>
             </button>
             <button
               onClick={logout}
@@ -156,10 +164,12 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
                   </span>
                 </div>
                 <a
-                  href="tel:01211583961"
-                  className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shrink-0 transition-colors self-start sm:self-auto"
+                  href="https://wa.me/201558516263?text=مرحباً،%20أريد%20تجديد%20اشتراك%20متجري%20في%20منصة%20سستمهالي"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-lg text-xs font-bold shrink-0 transition-colors self-start sm:self-auto flex items-center gap-1.5 shadow-xs"
                 >
-                  تواصل للتجديد (01211583961)
+                  <span>تواصل للتجديد عبر واتساب (01558516263)</span>
                 </a>
               </div>
             )}

@@ -6,6 +6,9 @@ import { useLanguage } from '@/lib/i18n/context';
 import { Expense, Branch } from '@/lib/types';
 import { Modal } from '@/components/ui/Modal';
 import { exportToCsv } from '@/lib/export/csv';
+import { ExportButton } from '@/components/reports/ExportButton';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Banknote, Plus, Search, Filter, Download, 
   DollarSign, TrendingDown, Building, Wallet, Landmark
@@ -22,6 +25,8 @@ export default function ExpensesManagementPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [visibleCount, setVisibleCount] = useState(20);
 
   useEffect(() => {
@@ -41,23 +46,39 @@ export default function ExpensesManagementPage() {
   const [submittingExpense, setSubmittingExpense] = useState(false);
 
   const fetchData = async () => {
-    setLoading(true);
     try {
       const url = `/api/merchant/expenses?tenantId=${tenantId}${effectiveBranchId ? `&branchId=${effectiveBranchId}` : ''}`;
-      const [expRes, brRes] = await Promise.all([
-        fetch(url),
-        fetch(`/api/merchant/branches?tenantId=${tenantId}`)
-      ]);
-      const expData = await expRes.json();
-      const brData = await brRes.json();
+      
+      const cached = getCachedData<any>(url);
+      if (cached) {
+        if (cached.expenses) setExpenses(cached.expenses);
+        setLoading(false);
+      } else if (expenses.length === 0) {
+        setLoading(true);
+      }
 
-      if (expData.expenses) setExpenses(expData.expenses);
-      if (brData.branches) {
-        setBranches(brData.branches);
-        if (!newExpense.branch_id && brData.branches.length > 0) {
-          setNewExpense(prev => ({ ...prev, branch_id: effectiveBranchId || brData.branches[0].id }));
+      const brCached = getCachedData<any>(`/api/merchant/branches?tenantId=${tenantId}`);
+      if (brCached && brCached.branches) {
+        setBranches(brCached.branches);
+        if (!newExpense.branch_id && brCached.branches.length > 0) {
+          setNewExpense(prev => ({ ...prev, branch_id: effectiveBranchId || brCached.branches[0].id }));
         }
       }
+
+      await Promise.all([
+        fetchWithCache<any>(url, (expData) => {
+          if (expData.expenses) setExpenses(expData.expenses);
+          setLoading(false);
+        }),
+        fetchWithCache<any>(`/api/merchant/branches?tenantId=${tenantId}`, (brData) => {
+          if (brData.branches) {
+            setBranches(brData.branches);
+            if (!newExpense.branch_id && brData.branches.length > 0) {
+              setNewExpense(prev => ({ ...prev, branch_id: effectiveBranchId || brData.branches[0].id }));
+            }
+          }
+        })
+      ]);
     } catch (e) {
       console.error(e);
     } finally {
@@ -112,23 +133,27 @@ export default function ExpensesManagementPage() {
       e.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (e.payee && e.payee.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesCategory = categoryFilter === 'all' || e.category === categoryFilter;
-    return matchesSearch && matchesCategory;
+    const matchesDate = (() => {
+      if (!startDate && !endDate) return true;
+      const expDate = e.created_at ? e.created_at.split('T')[0] : '';
+      if (startDate && expDate < startDate) return false;
+      if (endDate && expDate > endDate) return false;
+      return true;
+    })();
+    return matchesSearch && matchesCategory && matchesDate;
   });
 
   const totalExpenseAmount = filteredExpenses.reduce((acc, curr) => acc + curr.amount, 0);
 
-  const exportExpensesCsv = () => {
-    const headers = [
-      { key: 'category', labelEn: 'Category', labelAr: 'التصنيف' },
-      { key: 'amount', labelEn: 'Amount (EGP)', labelAr: 'المبلغ (ج.م)' },
-      { key: 'payment_source', labelEn: 'Payment Source', labelAr: 'مصدر الصرف' },
-      { key: 'branch_name', labelEn: 'Branch', labelAr: 'الفرع' },
-      { key: 'payee', labelEn: 'Payee', labelAr: 'الجهة المستلمة' },
-      { key: 'description', labelEn: 'Description', labelAr: 'البيان' },
-      { key: 'created_at', labelEn: 'Date', labelAr: 'التاريخ' }
-    ];
-    exportToCsv(`Operating_Expenses_${new Date().toISOString().split('T')[0]}`, filteredExpenses, headers, isRtl);
-  };
+  const expenseExportHeaders = [
+    { key: 'category', labelEn: 'Category', labelAr: 'التصنيف' },
+    { key: 'amount', labelEn: 'Amount (EGP)', labelAr: 'المبلغ (ج.م)' },
+    { key: 'payment_source', labelEn: 'Payment Source', labelAr: 'مصدر الصرف' },
+    { key: 'branch_name', labelEn: 'Branch', labelAr: 'الفرع' },
+    { key: 'payee', labelEn: 'Payee', labelAr: 'الجهة المستلمة' },
+    { key: 'description', labelEn: 'Description', labelAr: 'البيان' },
+    { key: 'created_at', labelEn: 'Date', labelAr: 'التاريخ' }
+  ];
 
   const getCategoryLabel = (cat: string) => {
     switch (cat) {
@@ -158,13 +183,12 @@ export default function ExpensesManagementPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={exportExpensesCsv}
-            className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-[#E5EAF2] hover:bg-[#F7F9FC] text-[#172033] rounded-lg text-xs font-semibold shadow-xs"
-          >
-            <Download className="w-4 h-4 text-[#246BFD]" />
-            <span>{isRtl ? 'تصدير (CSV)' : 'Export CSV'}</span>
-          </button>
+          <ExportButton
+            filename="Operating_Expenses"
+            data={expenses}
+            headers={expenseExportHeaders}
+            label={isRtl ? 'تصدير (CSV)' : 'Export CSV'}
+          />
 
           <button
             onClick={() => setAddModalOpen(true)}
@@ -175,6 +199,16 @@ export default function ExpensesManagementPage() {
           </button>
         </div>
       </div>
+
+      {/* Date Range Filter */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onChange={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
+      />
 
       {/* KPI Summary Card */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

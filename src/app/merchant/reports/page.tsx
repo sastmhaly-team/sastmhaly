@@ -5,6 +5,9 @@ import { useAuth } from '@/lib/auth/context';
 import { useLanguage } from '@/lib/i18n/context';
 import { Branch } from '@/lib/types';
 import { exportToCsv } from '@/lib/export/csv';
+import { ExportButton } from '@/components/reports/ExportButton';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   BarChart3, TrendingUp, Package, Users, Building2, 
   Download, Calendar, Filter, DollarSign, Layers, CheckCircle2
@@ -20,6 +23,8 @@ export default function ReportsCenterPage() {
   const [selectedBranch, setSelectedBranch] = useState(activeBranchId || branchId || 'all');
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   useEffect(() => {
     if (activeBranchId) {
@@ -34,30 +39,52 @@ export default function ReportsCenterPage() {
   const [suppliersData, setSuppliersData] = useState<any[]>([]);
 
   const fetchReportData = async () => {
-    setLoading(true);
     try {
       const branchParam = selectedBranch !== 'all' ? `&branchId=${selectedBranch}` : '';
-      const [dashRes, prodRes, custRes, supRes, brRes] = await Promise.all([
-        fetch(`/api/merchant/dashboard?tenantId=${tenantId}${branchParam}`),
-        fetch(`/api/merchant/products?tenantId=${tenantId}${branchParam}`),
-        fetch(`/api/merchant/customers?tenantId=${tenantId}`),
-        fetch(`/api/merchant/suppliers?tenantId=${tenantId}`),
-        fetch(`/api/merchant/branches?tenantId=${tenantId}`)
-      ]);
+      const dateParam = `${startDate ? `&startDate=${startDate}` : ''}${endDate ? `&endDate=${endDate}` : ''}`;
+      const dashUrl = `/api/merchant/dashboard?tenantId=${tenantId}${branchParam}${dateParam}`;
+      const prodUrl = `/api/merchant/products?tenantId=${tenantId}${branchParam}`;
+      const custUrl = `/api/merchant/customers?tenantId=${tenantId}`;
+      const supUrl = `/api/merchant/suppliers?tenantId=${tenantId}`;
+      const brUrl = `/api/merchant/branches?tenantId=${tenantId}`;
 
-      const [dash, prod, cust, sup, br] = await Promise.all([
-        dashRes.json(),
-        prodRes.json(),
-        custRes.json(),
-        supRes.json(),
-        brRes.json()
-      ]);
+      const cachedDash = getCachedData<any>(dashUrl);
+      if (cachedDash?.kpis) {
+        setDashboardKpis(cachedDash.kpis);
+        setLoading(false);
+      } else if (!dashboardKpis) {
+        setLoading(true);
+      }
 
-      if (dash.kpis) setDashboardKpis(dash.kpis);
-      if (prod.products) setProductsData(prod.products);
-      if (cust.customers) setCustomersData(cust.customers);
-      if (sup.suppliers) setSuppliersData(sup.suppliers);
-      if (br.branches) setBranches(br.branches);
+      const [cachedProd, cachedCust, cachedSup, cachedBr] = [
+        getCachedData<any>(prodUrl),
+        getCachedData<any>(custUrl),
+        getCachedData<any>(supUrl),
+        getCachedData<any>(brUrl)
+      ];
+      if (cachedProd?.products) setProductsData(cachedProd.products);
+      if (cachedCust?.customers) setCustomersData(cachedCust.customers);
+      if (cachedSup?.suppliers) setSuppliersData(cachedSup.suppliers);
+      if (cachedBr?.branches) setBranches(cachedBr.branches);
+
+      await Promise.all([
+        fetchWithCache<any>(dashUrl, (data) => {
+          if (data.kpis) setDashboardKpis(data.kpis);
+          setLoading(false);
+        }),
+        fetchWithCache<any>(prodUrl, (data) => {
+          if (data.products) setProductsData(data.products);
+        }),
+        fetchWithCache<any>(custUrl, (data) => {
+          if (data.customers) setCustomersData(data.customers);
+        }),
+        fetchWithCache<any>(supUrl, (data) => {
+          if (data.suppliers) setSuppliersData(data.suppliers);
+        }),
+        fetchWithCache<any>(brUrl, (data) => {
+          if (data.branches) setBranches(data.branches);
+        })
+      ]);
     } catch (e) {
       console.error(e);
     } finally {
@@ -67,11 +94,10 @@ export default function ReportsCenterPage() {
 
   useEffect(() => {
     fetchReportData();
-  }, [tenantId, selectedBranch]);
+  }, [tenantId, selectedBranch, startDate, endDate]);
 
   // Exports
-  const handleExportCurrent = () => {
-    const dateStr = new Date().toISOString().split('T')[0];
+  const getActiveExportConfig = () => {
     if (activeReport === 'pnl') {
       const pnlRows = [
         { itemEn: 'Gross Sales', itemAr: 'إجمالي المبيعات', amount: dashboardKpis?.grossSales || 0 },
@@ -82,28 +108,42 @@ export default function ReportsCenterPage() {
         { itemEn: 'Operating Expenses', itemAr: 'المصروفات التشغيلية', amount: -(dashboardKpis?.operatingExpenses || 0) },
         { itemEn: 'Net Operating Profit', itemAr: 'صافي الربح التشغيلي', amount: dashboardKpis?.netOperatingProfit || 0 }
       ];
-      exportToCsv(`PnL_Report_${dateStr}`, pnlRows, [
-        { key: 'itemAr', labelEn: 'Financial Statement Line', labelAr: 'بند القائمة المالية' },
-        { key: 'amount', labelEn: 'Amount (EGP)', labelAr: 'القيمة (ج.م)' }
-      ], isRtl);
+      return {
+        filename: 'PnL_Report',
+        data: pnlRows,
+        headers: [
+          { key: 'itemAr', labelEn: 'Financial Statement Line', labelAr: 'بند القائمة المالية' },
+          { key: 'amount', labelEn: 'Amount (EGP)', labelAr: 'القيمة (ج.م)' }
+        ]
+      };
     } else if (activeReport === 'inventory') {
-      exportToCsv(`Inventory_Valuation_${dateStr}`, productsData, [
-        { key: 'sku', labelEn: 'SKU', labelAr: 'كود الصنف' },
-        { key: 'name_ar', labelEn: 'Product Name', labelAr: 'اسم المنتج' },
-        { key: 'current_stock', labelEn: 'Current Stock', labelAr: 'الرصيد الحالي' },
-        { key: 'cost_price', labelEn: 'Unit Cost (EGP)', labelAr: 'تكلفة الوحدة (ج.م)' },
-        { key: 'selling_price', labelEn: 'Selling Price (EGP)', labelAr: 'سعر البيع (ج.م)' }
-      ], isRtl);
-    } else if (activeReport === 'aging') {
-      exportToCsv(`Customer_Receivables_${dateStr}`, customersData, [
-        { key: 'code', labelEn: 'Customer Code', labelAr: 'كود العميل' },
-        { key: 'name', labelEn: 'Customer Name', labelAr: 'اسم العميل' },
-        { key: 'phone', labelEn: 'Phone', labelAr: 'الهاتف' },
-        { key: 'current_balance', labelEn: 'Receivable Balance (EGP)', labelAr: 'الرصيد المدين المستحق (ج.م)' },
-        { key: 'credit_limit', labelEn: 'Credit Limit (EGP)', labelAr: 'الحد الائتماني (ج.م)' }
-      ], isRtl);
+      return {
+        filename: 'Inventory_Valuation',
+        data: productsData,
+        headers: [
+          { key: 'sku', labelEn: 'SKU', labelAr: 'كود الصنف' },
+          { key: 'name_ar', labelEn: 'Product Name', labelAr: 'اسم المنتج' },
+          { key: 'current_stock', labelEn: 'Current Stock', labelAr: 'الرصيد الحالي' },
+          { key: 'cost_price', labelEn: 'Unit Cost (EGP)', labelAr: 'تكلفة الوحدة (ج.م)' },
+          { key: 'selling_price', labelEn: 'Selling Price (EGP)', labelAr: 'سعر البيع (ج.م)' }
+        ]
+      };
+    } else {
+      return {
+        filename: 'Customer_Receivables',
+        data: customersData,
+        headers: [
+          { key: 'code', labelEn: 'Customer Code', labelAr: 'كود العميل' },
+          { key: 'name', labelEn: 'Customer Name', labelAr: 'اسم العميل' },
+          { key: 'phone', labelEn: 'Phone', labelAr: 'الهاتف' },
+          { key: 'current_balance', labelEn: 'Receivable Balance (EGP)', labelAr: 'الرصيد المدين المستحق (ج.م)' },
+          { key: 'credit_limit', labelEn: 'Credit Limit (EGP)', labelAr: 'الحد الائتماني (ج.م)' }
+        ]
+      };
     }
   };
+
+  const activeConfig = getActiveExportConfig();
 
   return (
     <div className="space-y-6">
@@ -133,15 +173,25 @@ export default function ReportsCenterPage() {
             ))}
           </select>
 
-          <button
-            onClick={handleExportCurrent}
-            className="inline-flex items-center gap-2 px-3 py-2 bg-[#246BFD] hover:bg-blue-600 text-white rounded-lg text-xs font-bold shadow-xs transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            <span>{isRtl ? 'تصدير التقرير (Excel / CSV)' : 'Export Report (CSV)'}</span>
-          </button>
+          <ExportButton
+            key={activeReport}
+            filename={activeConfig.filename}
+            data={activeConfig.data}
+            headers={activeConfig.headers}
+            label={isRtl ? 'تصدير التقرير (Excel / CSV)' : 'Export Report (CSV)'}
+          />
         </div>
       </div>
+
+      {/* Date Range Filter */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onChange={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
+      />
 
       {/* Report Type Selector */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

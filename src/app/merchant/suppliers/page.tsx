@@ -6,6 +6,9 @@ import { useLanguage } from '@/lib/i18n/context';
 import { Supplier } from '@/lib/types';
 import { Modal } from '@/components/ui/Modal';
 import { exportToCsv } from '@/lib/export/csv';
+import { ExportButton } from '@/components/reports/ExportButton';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Building2, Plus, Search, Download, 
   CreditCard, Phone, Mail, FileText, CheckCircle2
@@ -19,6 +22,8 @@ export default function SuppliersManagementPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [visibleCount, setVisibleCount] = useState(20);
 
   useEffect(() => {
@@ -47,11 +52,20 @@ export default function SuppliersManagementPage() {
   const [submittingPayment, setSubmittingPayment] = useState(false);
 
   const fetchSuppliers = async () => {
-    setLoading(true);
     try {
-      const res = await fetch(`/api/merchant/suppliers?tenantId=${tenantId}`);
-      const data = await res.json();
-      if (data.suppliers) setSuppliers(data.suppliers);
+      const url = `/api/merchant/suppliers?tenantId=${tenantId}`;
+      const cached = getCachedData<any>(url);
+      if (cached?.suppliers) {
+        setSuppliers(cached.suppliers);
+        setLoading(false);
+      } else if (suppliers.length === 0) {
+        setLoading(true);
+      }
+
+      await fetchWithCache<any>(url, (data) => {
+        if (data.suppliers) setSuppliers(data.suppliers);
+        setLoading(false);
+      });
     } catch (e) {
       console.error(e);
     } finally {
@@ -137,22 +151,22 @@ export default function SuppliersManagementPage() {
     }
   };
 
-  const filteredSuppliers = suppliers.filter(s =>
-    s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.phone.includes(searchTerm)
-  );
+  const filteredSuppliers = suppliers.filter(s => {
+    const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.phone.includes(searchTerm);
+    const dateStr = (s as any).created_at ? (s as any).created_at.split('T')[0] : '';
+    const matchesDate = (!startDate || dateStr >= startDate) && (!endDate || dateStr <= endDate);
+    return matchesSearch && matchesDate;
+  });
 
-  const exportSuppliersCsv = () => {
-    const headers = [
-      { key: 'code', labelEn: 'Code', labelAr: 'الكود' },
-      { key: 'name', labelEn: 'Supplier Name', labelAr: 'اسم المورد' },
-      { key: 'phone', labelEn: 'Phone', labelAr: 'الهاتف' },
-      { key: 'payment_terms', labelEn: 'Payment Terms', labelAr: 'شروط السداد' },
-      { key: 'current_balance', labelEn: 'Payable Balance (EGP)', labelAr: 'الرصيد المستحق (ج.م)' }
-    ];
-    exportToCsv(`Suppliers_${new Date().toISOString().split('T')[0]}`, filteredSuppliers, headers, isRtl);
-  };
+  const supplierExportHeaders = [
+    { key: 'code', labelEn: 'Code', labelAr: 'الكود' },
+    { key: 'name', labelEn: 'Supplier Name', labelAr: 'اسم المورد' },
+    { key: 'phone', labelEn: 'Phone', labelAr: 'الهاتف' },
+    { key: 'payment_terms', labelEn: 'Payment Terms', labelAr: 'شروط السداد' },
+    { key: 'current_balance', labelEn: 'Payable Balance (EGP)', labelAr: 'الرصيد المستحق (ج.م)' }
+  ];
 
   return (
     <div className="space-y-6">
@@ -170,13 +184,12 @@ export default function SuppliersManagementPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={exportSuppliersCsv}
-            className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-[#E5EAF2] hover:bg-[#F7F9FC] text-[#172033] rounded-lg text-xs font-semibold shadow-xs"
-          >
-            <Download className="w-4 h-4 text-[#246BFD]" />
-            <span>{isRtl ? 'تصدير (CSV)' : 'Export CSV'}</span>
-          </button>
+          <ExportButton
+            filename="Suppliers"
+            data={suppliers}
+            headers={supplierExportHeaders}
+            label={isRtl ? 'تصدير (CSV)' : 'Export CSV'}
+          />
 
           <button
             onClick={() => setAddModalOpen(true)}
@@ -187,6 +200,16 @@ export default function SuppliersManagementPage() {
           </button>
         </div>
       </div>
+
+      {/* Date Range Filter */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onChange={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
+      />
 
       {/* Filter Toolbar */}
       <div className="bg-white p-4 rounded-xl border border-[#E5EAF2] shadow-xs flex items-center justify-between">

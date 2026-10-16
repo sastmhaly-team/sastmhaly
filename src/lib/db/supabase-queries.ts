@@ -1513,7 +1513,7 @@ export async function getJournalEntries(tenantId: string): Promise<JournalEntry[
 // DASHBOARD ANALYTICS
 // ============================================================================
 
-export async function getMerchantDashboardKpis(tenantId: string, branchId?: string) {
+export async function getMerchantDashboardKpis(tenantId: string, branchId?: string, startDate?: string, endDate?: string) {
   const supabase = getSupabase();
   const today = new Date().toISOString().split('T')[0];
 
@@ -1521,12 +1521,27 @@ export async function getMerchantDashboardKpis(tenantId: string, branchId?: stri
   let salesTodayQuery = supabase.from('sales').select('total_amount, subtotal, discount_amount, tax_amount').eq('tenant_id', tenantId).eq('status', 'completed').gte('created_at', `${today}T00:00:00`).lte('created_at', `${today}T23:59:59`);
   let expensesQuery = supabase.from('expenses').select('amount').eq('tenant_id', tenantId);
   let inventoryQuery = supabase.from('inventory_balances').select('quantity, avg_cost').eq('tenant_id', tenantId);
+  let topProductsQuery = supabase.from('sale_items').select('quantity, line_total, cost_price, product_id, products(name_en, name_ar, sku, cost_price), sales!inner(tenant_id, branch_id, status, created_at)')
+    .eq('sales.tenant_id', tenantId).eq('sales.status', 'completed');
 
   if (branchId) {
     salesQuery = salesQuery.eq('branch_id', branchId);
     salesTodayQuery = salesTodayQuery.eq('branch_id', branchId);
     expensesQuery = expensesQuery.eq('branch_id', branchId);
     inventoryQuery = inventoryQuery.eq('branch_id', branchId);
+    topProductsQuery = topProductsQuery.eq('sales.branch_id', branchId);
+  }
+
+  if (startDate) {
+    salesQuery = salesQuery.gte('created_at', `${startDate}T00:00:00`);
+    expensesQuery = expensesQuery.gte('created_at', `${startDate}T00:00:00`);
+    topProductsQuery = topProductsQuery.gte('sales.created_at', `${startDate}T00:00:00`);
+  }
+
+  if (endDate) {
+    salesQuery = salesQuery.lte('created_at', `${endDate}T23:59:59`);
+    expensesQuery = expensesQuery.lte('created_at', `${endDate}T23:59:59`);
+    topProductsQuery = topProductsQuery.lte('sales.created_at', `${endDate}T23:59:59`);
   }
 
   const [salesRes, salesTodayRes, expensesRes, inventoryRes, topProductsRes, lowStockRes] = await Promise.all([
@@ -1534,8 +1549,7 @@ export async function getMerchantDashboardKpis(tenantId: string, branchId?: stri
     salesTodayQuery,
     expensesQuery,
     inventoryQuery,
-    supabase.from('sale_items').select('quantity, line_total, cost_price, product_id, products(name_en, name_ar, sku), sales!inner(tenant_id, branch_id, status)')
-      .eq('sales.tenant_id', tenantId).eq('sales.status', 'completed'),
+    topProductsQuery,
     supabase.from('inventory_balances')
       .select('quantity, products!inner(min_stock_alert)')
       .eq('tenant_id', tenantId),
@@ -1554,21 +1568,25 @@ export async function getMerchantDashboardKpis(tenantId: string, branchId?: stri
   const inventoryValuation = inventory.reduce((s: number, r: any) => s + (r.quantity || 0) * (r.avg_cost || 0), 0);
   const inventoryUnits = inventory.reduce((s: number, r: any) => s + (r.quantity || 0), 0);
 
-  // Top products
+  // Top products & COGS (Cost of Goods Sold)
   const productMap = new Map<string, any>();
+  let cogs = 0;
   for (const si of topProductsRes.data || []) {
     const pid = si.product_id;
+    const itemCost = Number(si.cost_price || (si as any).products?.cost_price || 0);
+    const itemQty = Number(si.quantity || 0);
+    cogs += itemCost * itemQty;
+
     if (!productMap.has(pid)) productMap.set(pid, { name_en: (si as any).products?.name_en, name_ar: (si as any).products?.name_ar, sku: (si as any).products?.sku, total_sold: 0, revenue: 0 });
     const p = productMap.get(pid);
-    p.total_sold += si.quantity;
+    p.total_sold += itemQty;
     p.revenue += (si as any).line_total || 0;
   }
   const topProducts = Array.from(productMap.values()).sort((a, b) => b.total_sold - a.total_sold).slice(0, 5);
 
   const lowStockCount = (lowStockRes.data || []).filter((r: any) => r.quantity <= (r.products?.min_stock_alert || 5)).length;
 
-  const cogs = 0; // Would need join through sale_items
-  const grossProfit = netSales - cogs;
+  const grossProfit = Math.max(0, netSales - cogs);
   const grossMarginPct = netSales > 0 ? ((grossProfit / netSales) * 100).toFixed(1) : '0.0';
   const netOperatingProfit = grossProfit - operatingExpenses;
 

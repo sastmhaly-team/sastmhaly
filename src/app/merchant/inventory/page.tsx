@@ -6,6 +6,8 @@ import { useLanguage } from '@/lib/i18n/context';
 import { InventoryBalance, InventoryMovement, Product } from '@/lib/types';
 import { ExportButton } from '@/components/reports/ExportButton';
 import { Modal } from '@/components/ui/Modal';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Layers, Search, Plus, Filter, ArrowUpRight, ArrowDownRight, 
   History, AlertTriangle, ShieldCheck, CheckCircle2
@@ -21,6 +23,8 @@ export default function MerchantInventoryPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'balances' | 'movements'>('balances');
   const [search, setSearch] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [visibleBalancesCount, setVisibleBalancesCount] = useState(20);
   const [visibleMovementsCount, setVisibleMovementsCount] = useState(20);
 
@@ -56,24 +60,42 @@ export default function MerchantInventoryPage() {
   const fetchInventory = async () => {
     if (!tenant) return;
     try {
-      setLoading(true);
       const branchParam = activeBranchId !== 'all' ? `&branchId=${activeBranchId}` : '';
-      const res = await fetch(`/api/merchant/inventory?tenantId=${tenant.id}${branchParam}`);
-      if (res.ok) {
-        const data = await res.json();
-        setBalances(data.balances || []);
-        setMovements(data.movements || []);
+      const invUrl = `/api/merchant/inventory?tenantId=${tenant.id}${branchParam}`;
+      const prodUrl = `/api/merchant/products?tenantId=${tenant.id}`;
+
+      const cachedInv = getCachedData<any>(invUrl);
+      if (cachedInv) {
+        if (cachedInv.balances) setBalances(cachedInv.balances);
+        if (cachedInv.movements) setMovements(cachedInv.movements);
+        setLoading(false);
+      } else if (balances.length === 0 && movements.length === 0) {
+        setLoading(true);
       }
 
-      // Also fetch products for dropdown
-      const prodRes = await fetch(`/api/merchant/products?tenantId=${tenant.id}`);
-      if (prodRes.ok) {
-        const prodData = await prodRes.json();
-        setProducts(prodData.products || []);
-        if (prodData.products?.length > 0 && !adjData.product_id) {
-          setAdjData(a => ({ ...a, product_id: prodData.products[0].id }));
+      const cachedProd = getCachedData<any>(prodUrl);
+      if (cachedProd?.products) {
+        setProducts(cachedProd.products);
+        if (cachedProd.products.length > 0 && !adjData.product_id) {
+          setAdjData(a => ({ ...a, product_id: cachedProd.products[0].id }));
         }
       }
+
+      await Promise.all([
+        fetchWithCache<any>(invUrl, (data) => {
+          if (data.balances) setBalances(data.balances);
+          if (data.movements) setMovements(data.movements);
+          setLoading(false);
+        }),
+        fetchWithCache<any>(prodUrl, (prodData) => {
+          if (prodData.products) {
+            setProducts(prodData.products);
+            if (prodData.products.length > 0 && !adjData.product_id) {
+              setAdjData(a => ({ ...a, product_id: prodData.products[0].id }));
+            }
+          }
+        })
+      ]);
     } catch (e) {
       console.error(e);
     } finally {
@@ -145,6 +167,14 @@ export default function MerchantInventoryPage() {
     { header: 'Notes', key: 'notes' as const },
   ];
 
+  const filteredMovements = movements.filter(m => {
+    if (!startDate && !endDate) return true;
+    const mDate = m.created_at ? m.created_at.split('T')[0] : '';
+    if (startDate && mDate < startDate) return false;
+    if (endDate && mDate > endDate) return false;
+    return true;
+  });
+
   return (
     <div className="space-y-6">
       
@@ -171,7 +201,7 @@ export default function MerchantInventoryPage() {
           ) : (
             <ExportButton
               filename="sastmhaly_inventory_movements"
-              data={movements}
+              data={filteredMovements}
               columns={movementColumns}
             />
           )}
@@ -185,6 +215,16 @@ export default function MerchantInventoryPage() {
           </button>
         </div>
       </div>
+
+      {/* Date Range Filter */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onChange={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
+      />
 
       {/* Tabs: Balances vs Movements Ledger */}
       <div className="flex items-center gap-2 border-b border-[#E5EAF2]">

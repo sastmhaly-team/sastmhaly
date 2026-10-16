@@ -6,6 +6,8 @@ import { useLanguage } from '@/lib/i18n/context';
 import { Product, Category, Unit } from '@/lib/types';
 import { ExportButton } from '@/components/reports/ExportButton';
 import { Modal } from '@/components/ui/Modal';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Package, Plus, Search, Filter, Upload, Barcode, 
   Scale, CalendarDays, AlertTriangle, CheckCircle2, Download,
@@ -25,6 +27,8 @@ export default function MerchantProductsPage() {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [lowStockFilter, setLowStockFilter] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [visibleCount, setVisibleCount] = useState(20);
 
   useEffect(() => {
@@ -89,18 +93,31 @@ export default function MerchantProductsPage() {
   const fetchProducts = async () => {
     if (!tenant) return;
     try {
-      setLoading(true);
       const branchParam = activeBranchId !== 'all' ? `&branchId=${activeBranchId}` : '';
-      const res = await fetch(`/api/merchant/products?tenantId=${tenant.id}${branchParam}`);
-      if (res.ok) {
-        const data = await res.json();
-        setProducts(data.products || []);
-        setCategories(data.categories || []);
-        setUnits(data.units || []);
-        if (data.categories?.length > 0 && !formData.category_id) {
-          setFormData(f => ({ ...f, category_id: data.categories[0].id, unit_id: data.units[0]?.id || '' }));
+      const url = `/api/merchant/products?tenantId=${tenant.id}${branchParam}`;
+
+      const cached = getCachedData<any>(url);
+      if (cached) {
+        if (cached.products) setProducts(cached.products);
+        if (cached.categories) setCategories(cached.categories);
+        if (cached.units) setUnits(cached.units);
+        if (cached.categories?.length > 0 && !formData.category_id) {
+          setFormData(f => ({ ...f, category_id: cached.categories[0].id, unit_id: cached.units?.[0]?.id || '' }));
         }
+        setLoading(false);
+      } else if (products.length === 0) {
+        setLoading(true);
       }
+
+      await fetchWithCache<any>(url, (data) => {
+        if (data.products) setProducts(data.products);
+        if (data.categories) setCategories(data.categories);
+        if (data.units) setUnits(data.units);
+        if (data.categories?.length > 0 && !formData.category_id) {
+          setFormData(f => ({ ...f, category_id: data.categories[0].id, unit_id: data.units?.[0]?.id || '' }));
+        }
+        setLoading(false);
+      });
     } catch (e) {
       console.error(e);
     } finally {
@@ -436,7 +453,15 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
       p.barcode.includes(search) ||
       p.sku.toLowerCase().includes(search.toLowerCase());
     const matchesStock = !lowStockFilter || (p.current_stock !== undefined && p.current_stock <= p.min_stock_alert);
-    return matchesCategory && matchesSearch && matchesStock;
+    const matchesDate = (() => {
+      if (!startDate && !endDate) return true;
+      const pDate = p.created_at ? p.created_at.split('T')[0] : '';
+      if (!pDate) return true;
+      if (startDate && pDate < startDate) return false;
+      if (endDate && pDate > endDate) return false;
+      return true;
+    })();
+    return matchesCategory && matchesSearch && matchesStock && matchesDate;
   });
 
   const exportColumns = [
@@ -509,6 +534,16 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
           </button>
         </div>
       </div>
+
+      {/* Date Range Filter */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onChange={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
+      />
 
       {/* Search & Filters */}
       <div className="bg-white p-4 rounded-xl border border-[#E5EAF2] flex flex-col md:flex-row items-center justify-between gap-3 shadow-2xs">

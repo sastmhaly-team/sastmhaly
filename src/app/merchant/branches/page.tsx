@@ -5,6 +5,9 @@ import { useAuth } from '@/lib/auth/context';
 import { useLanguage } from '@/lib/i18n/context';
 import { Branch } from '@/lib/types';
 import { exportToCsv } from '@/lib/export/csv';
+import { ExportButton } from '@/components/reports/ExportButton';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Building2, Search, Download, 
   MapPin, Phone, Clock, UserCheck, ShieldCheck, Info
@@ -18,6 +21,8 @@ export default function BranchesPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [visibleCount, setVisibleCount] = useState(20);
 
   useEffect(() => {
@@ -29,13 +34,22 @@ export default function BranchesPage() {
       setLoading(false);
       return;
     }
-    setLoading(true);
     try {
-      const res = await fetch(`/api/merchant/branches?tenantId=${tenantId}`);
-      const data = await res.json();
-      if (data.branches) {
-        setBranches(data.branches);
+      const url = `/api/merchant/branches?tenantId=${tenantId}`;
+      const cached = getCachedData<any>(url);
+      if (cached?.branches) {
+        setBranches(cached.branches);
+        setLoading(false);
+      } else if (branches.length === 0) {
+        setLoading(true);
       }
+
+      await fetchWithCache<any>(url, (data) => {
+        if (data.branches) {
+          setBranches(data.branches);
+        }
+        setLoading(false);
+      });
     } catch (e) {
       console.error(e);
     } finally {
@@ -47,24 +61,24 @@ export default function BranchesPage() {
     fetchBranches();
   }, [tenantId]);
 
-  const filteredBranches = branches.filter(b =>
-    b.name_ar.includes(searchTerm) ||
-    b.name_en.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    b.code.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredBranches = branches.filter(b => {
+    const matchesSearch = b.name_ar.includes(searchTerm) ||
+      b.name_en.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      b.code.toLowerCase().includes(searchTerm.toLowerCase());
+    const dateStr = (b as any).created_at ? (b as any).created_at.split('T')[0] : '';
+    const matchesDate = (!startDate || dateStr >= startDate) && (!endDate || dateStr <= endDate);
+    return matchesSearch && matchesDate;
+  });
 
-  const exportBranchesCsv = () => {
-    const headers = [
-      { key: 'code', labelEn: 'Branch Code', labelAr: 'كود الفرع' },
-      { key: 'name_ar', labelEn: 'Name (Arabic)', labelAr: 'الاسم بالعربية' },
-      { key: 'name_en', labelEn: 'Name (English)', labelAr: 'الاسم بالإنجليزية' },
-      { key: 'phone', labelEn: 'Phone', labelAr: 'الهاتف' },
-      { key: 'city', labelEn: 'City', labelAr: 'المدينة' },
-      { key: 'address', labelEn: 'Address', labelAr: 'العنوان' },
-      { key: 'is_main', labelEn: 'Is Main', labelAr: 'الفرع الرئيسي' }
-    ];
-    exportToCsv(`sastmhaly_branches_${Date.now()}`, branches, headers, isRtl);
-  };
+  const branchExportHeaders = [
+    { key: 'code', labelEn: 'Branch Code', labelAr: 'كود الفرع' },
+    { key: 'name_ar', labelEn: 'Name (Arabic)', labelAr: 'الاسم بالعربية' },
+    { key: 'name_en', labelEn: 'Name (English)', labelAr: 'الاسم بالإنجليزية' },
+    { key: 'phone', labelEn: 'Phone', labelAr: 'الهاتف' },
+    { key: 'city', labelEn: 'City', labelAr: 'المدينة' },
+    { key: 'address', labelEn: 'Address', labelAr: 'العنوان' },
+    { key: 'is_main', labelEn: 'Is Main', labelAr: 'الفرع الرئيسي' }
+  ];
 
   return (
     <div className="space-y-6">
@@ -86,14 +100,24 @@ export default function BranchesPage() {
           </div>
         </div>
 
-        <button
-          onClick={exportBranchesCsv}
+        <ExportButton
+          filename="Branches"
+          data={branches}
+          headers={branchExportHeaders}
+          label={isRtl ? 'تصدير قائمة الفروع (CSV)' : 'Export Branches (CSV)'}
           className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-[#BAE6FD] hover:bg-[#F0F9FF] text-[#246BFD] rounded-lg text-xs font-bold shadow-2xs cursor-pointer shrink-0"
-        >
-          <Download className="w-4 h-4" />
-          <span>{isRtl ? 'تصدير قائمة الفروع (CSV)' : 'Export Branches (CSV)'}</span>
-        </button>
+        />
       </div>
+
+      {/* Date Range Filter */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onChange={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
+      />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

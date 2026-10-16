@@ -6,6 +6,9 @@ import { useLanguage } from '@/lib/i18n/context';
 import { PurchaseOrder, Supplier, Product, Branch } from '@/lib/types';
 import { Modal } from '@/components/ui/Modal';
 import { exportToCsv } from '@/lib/export/csv';
+import { ExportButton } from '@/components/reports/ExportButton';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Truck, Plus, Search, Filter, Download, 
   CheckCircle, Clock, PackageCheck, AlertCircle, Trash2
@@ -24,6 +27,8 @@ export default function PurchasingManagementPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [visibleCount, setVisibleCount] = useState(20);
 
   useEffect(() => {
@@ -42,30 +47,54 @@ export default function PurchasingManagementPage() {
   const [receivingPoId, setReceivingPoId] = useState<string | null>(null);
 
   const fetchData = async () => {
-    setLoading(true);
     try {
-      const url = `/api/merchant/purchasing?tenantId=${tenantId}${effectiveBranchId ? `&branchId=${effectiveBranchId}` : ''}`;
-      const [poRes, supRes, prodRes, brRes] = await Promise.all([
-        fetch(url),
-        fetch(`/api/merchant/suppliers?tenantId=${tenantId}`),
-        fetch(`/api/merchant/products?tenantId=${tenantId}`),
-        fetch(`/api/merchant/branches?tenantId=${tenantId}`)
-      ]);
+      const poUrl = `/api/merchant/purchasing?tenantId=${tenantId}${effectiveBranchId ? `&branchId=${effectiveBranchId}` : ''}`;
+      const supUrl = `/api/merchant/suppliers?tenantId=${tenantId}`;
+      const prodUrl = `/api/merchant/products?tenantId=${tenantId}`;
+      const brUrl = `/api/merchant/branches?tenantId=${tenantId}`;
 
-      const poData = await poRes.json();
-      const supData = await supRes.json();
-      const prodData = await prodRes.json();
-      const brData = await brRes.json();
+      const cachedPo = getCachedData<any>(poUrl);
+      if (cachedPo?.purchaseOrders) {
+        setOrders(cachedPo.purchaseOrders);
+        setLoading(false);
+      } else if (orders.length === 0) {
+        setLoading(true);
+      }
 
-      if (poData.purchaseOrders) setOrders(poData.purchaseOrders);
-      if (supData.suppliers) setSuppliers(supData.suppliers);
-      if (prodData.products) setProducts(prodData.products);
-      if (brData.branches) {
-        setBranches(brData.branches);
-        if (!selectedBranch && brData.branches.length > 0) {
-          setSelectedBranch(effectiveBranchId || brData.branches[0].id);
+      const cachedSup = getCachedData<any>(supUrl);
+      if (cachedSup?.suppliers) setSuppliers(cachedSup.suppliers);
+
+      const cachedProd = getCachedData<any>(prodUrl);
+      if (cachedProd?.products) setProducts(cachedProd.products);
+
+      const cachedBr = getCachedData<any>(brUrl);
+      if (cachedBr?.branches) {
+        setBranches(cachedBr.branches);
+        if (!selectedBranch && cachedBr.branches.length > 0) {
+          setSelectedBranch(effectiveBranchId || cachedBr.branches[0].id);
         }
       }
+
+      await Promise.all([
+        fetchWithCache<any>(poUrl, (data) => {
+          if (data.purchaseOrders) setOrders(data.purchaseOrders);
+          setLoading(false);
+        }),
+        fetchWithCache<any>(supUrl, (data) => {
+          if (data.suppliers) setSuppliers(data.suppliers);
+        }),
+        fetchWithCache<any>(prodUrl, (data) => {
+          if (data.products) setProducts(data.products);
+        }),
+        fetchWithCache<any>(brUrl, (data) => {
+          if (data.branches) {
+            setBranches(data.branches);
+            if (!selectedBranch && data.branches.length > 0) {
+              setSelectedBranch(effectiveBranchId || data.branches[0].id);
+            }
+          }
+        })
+      ]);
     } catch (e) {
       console.error(e);
     } finally {
@@ -176,20 +205,24 @@ export default function PurchasingManagementPage() {
       o.po_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (o.supplier_name && o.supplier_name.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesStatus = statusFilter === 'all' || o.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesDate = (() => {
+      if (!startDate && !endDate) return true;
+      const poDate = o.created_at ? o.created_at.split('T')[0] : '';
+      if (startDate && poDate < startDate) return false;
+      if (endDate && poDate > endDate) return false;
+      return true;
+    })();
+    return matchesSearch && matchesStatus && matchesDate;
   });
 
-  const exportPurchasesCsv = () => {
-    const headers = [
-      { key: 'po_number', labelEn: 'PO Number', labelAr: 'رقم أمر الشراء' },
-      { key: 'supplier_name', labelEn: 'Supplier', labelAr: 'المورد' },
-      { key: 'branch_name', labelEn: 'Branch', labelAr: 'الفرع' },
-      { key: 'total_amount', labelEn: 'Total Amount (EGP)', labelAr: 'الإجمالي (ج.م)' },
-      { key: 'status', labelEn: 'Status', labelAr: 'الحالة' },
-      { key: 'created_at', labelEn: 'Date', labelAr: 'التاريخ' }
-    ];
-    exportToCsv(`Purchase_Orders_${new Date().toISOString().split('T')[0]}`, filteredOrders, headers, isRtl);
-  };
+  const purchasingExportHeaders = [
+    { key: 'po_number', labelEn: 'PO Number', labelAr: 'رقم أمر الشراء' },
+    { key: 'supplier_name', labelEn: 'Supplier', labelAr: 'المورد' },
+    { key: 'branch_name', labelEn: 'Branch', labelAr: 'الفرع' },
+    { key: 'total_amount', labelEn: 'Total Amount (EGP)', labelAr: 'الإجمالي (ج.م)' },
+    { key: 'status', labelEn: 'Status', labelAr: 'الحالة' },
+    { key: 'created_at', labelEn: 'Date', labelAr: 'التاريخ' }
+  ];
 
   return (
     <div className="space-y-6">
@@ -207,13 +240,12 @@ export default function PurchasingManagementPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={exportPurchasesCsv}
-            className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-[#E5EAF2] hover:bg-[#F7F9FC] text-[#172033] rounded-lg text-xs font-semibold shadow-xs"
-          >
-            <Download className="w-4 h-4 text-[#246BFD]" />
-            <span>{isRtl ? 'تصدير (CSV)' : 'Export CSV'}</span>
-          </button>
+          <ExportButton
+            filename="Purchase_Orders"
+            data={orders}
+            headers={purchasingExportHeaders}
+            label={isRtl ? 'تصدير (CSV)' : 'Export CSV'}
+          />
 
           <button
             onClick={() => {
@@ -227,6 +259,16 @@ export default function PurchasingManagementPage() {
           </button>
         </div>
       </div>
+
+      {/* Date Range Filter */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onChange={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
+      />
 
       {/* Filter Toolbar */}
       <div className="bg-white p-4 rounded-xl border border-[#E5EAF2] shadow-xs flex flex-wrap gap-3 items-center justify-between">

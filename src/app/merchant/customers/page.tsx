@@ -6,6 +6,9 @@ import { useLanguage } from '@/lib/i18n/context';
 import { Customer } from '@/lib/types';
 import { Modal } from '@/components/ui/Modal';
 import { exportToCsv } from '@/lib/export/csv';
+import { ExportButton } from '@/components/reports/ExportButton';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Users, Plus, Search, Download, 
   CreditCard, Phone, Sparkles, AlertTriangle, Edit3, PlusCircle
@@ -19,6 +22,8 @@ export default function CustomersManagementPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [visibleCount, setVisibleCount] = useState(20);
 
   useEffect(() => {
@@ -56,11 +61,20 @@ export default function CustomersManagementPage() {
   const [submittingCreditLimit, setSubmittingCreditLimit] = useState(false);
 
   const fetchCustomers = async () => {
-    setLoading(true);
     try {
-      const res = await fetch(`/api/merchant/customers?tenantId=${tenantId}`);
-      const data = await res.json();
-      if (data.customers) setCustomers(data.customers);
+      const url = `/api/merchant/customers?tenantId=${tenantId}`;
+      const cached = getCachedData<any>(url);
+      if (cached?.customers) {
+        setCustomers(cached.customers);
+        setLoading(false);
+      } else if (customers.length === 0) {
+        setLoading(true);
+      }
+
+      await fetchWithCache<any>(url, (data) => {
+        if (data.customers) setCustomers(data.customers);
+        setLoading(false);
+      });
     } catch (e) {
       console.error(e);
     } finally {
@@ -205,23 +219,23 @@ export default function CustomersManagementPage() {
     }
   };
 
-  const filteredCustomers = customers.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.phone.includes(searchTerm)
-  );
+  const filteredCustomers = customers.filter(c => {
+    const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.phone.includes(searchTerm);
+    const dateStr = (c as any).created_at ? (c as any).created_at.split('T')[0] : '';
+    const matchesDate = (!startDate || dateStr >= startDate) && (!endDate || dateStr <= endDate);
+    return matchesSearch && matchesDate;
+  });
 
-  const exportCustomersCsv = () => {
-    const headers = [
-      { key: 'code', labelEn: 'Code', labelAr: 'الكود' },
-      { key: 'name', labelEn: 'Customer Name', labelAr: 'اسم العميل' },
-      { key: 'phone', labelEn: 'Phone', labelAr: 'الهاتف' },
-      { key: 'credit_limit', labelEn: 'Credit Limit (EGP)', labelAr: 'الحد الائتماني (ج.م)' },
-      { key: 'current_balance', labelEn: 'Current Balance (EGP)', labelAr: 'الرصيد المدين (ج.م)' },
-      { key: 'loyalty_points', labelEn: 'Loyalty Points', labelAr: 'نقاط الولاء' }
-    ];
-    exportToCsv(`Customers_${new Date().toISOString().split('T')[0]}`, filteredCustomers, headers, isRtl);
-  };
+  const customerExportHeaders = [
+    { key: 'code', labelEn: 'Code', labelAr: 'الكود' },
+    { key: 'name', labelEn: 'Customer Name', labelAr: 'اسم العميل' },
+    { key: 'phone', labelEn: 'Phone', labelAr: 'الهاتف' },
+    { key: 'credit_limit', labelEn: 'Credit Limit (EGP)', labelAr: 'الحد الائتماني (ج.م)' },
+    { key: 'current_balance', labelEn: 'Current Balance (EGP)', labelAr: 'الرصيد المدين (ج.م)' },
+    { key: 'loyalty_points', labelEn: 'Loyalty Points', labelAr: 'نقاط الولاء' }
+  ];
 
   return (
     <div className="space-y-6">
@@ -239,13 +253,12 @@ export default function CustomersManagementPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={exportCustomersCsv}
-            className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-[#E5EAF2] hover:bg-[#F7F9FC] text-[#172033] rounded-lg text-xs font-semibold shadow-xs"
-          >
-            <Download className="w-4 h-4 text-[#246BFD]" />
-            <span>{isRtl ? 'تصدير (CSV)' : 'Export CSV'}</span>
-          </button>
+          <ExportButton
+            filename="Customers"
+            data={customers}
+            headers={customerExportHeaders}
+            label={isRtl ? 'تصدير (CSV)' : 'Export CSV'}
+          />
 
           <button
             onClick={() => setAddModalOpen(true)}
@@ -256,6 +269,16 @@ export default function CustomersManagementPage() {
           </button>
         </div>
       </div>
+
+      {/* Date Range Filter */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onChange={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
+      />
 
       {/* Filter Toolbar */}
       <div className="bg-white p-4 rounded-xl border border-[#E5EAF2] shadow-xs flex items-center justify-between">

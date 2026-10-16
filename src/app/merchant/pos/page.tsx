@@ -5,14 +5,16 @@ import Image from 'next/image';
 import { useAuth } from '@/lib/auth/context';
 import { useLanguage } from '@/lib/i18n/context';
 import { useNav } from '@/lib/nav-context';
-import { Modal } from '@/components/ui/Modal';
 import { Product, Customer, CashSession, PosCartItem, PosHeldSale, Sale, SaleItem } from '@/lib/types';
 import { posAudio } from '@/lib/audio';
+import { supabase } from '@/lib/supabase';
+import { Modal } from '@/components/ui/Modal';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Search, Barcode, ShoppingCart, Trash2, Plus, Minus, 
   CreditCard, Banknote, Smartphone, User, Pause, Play, 
   Printer, CheckCircle2, Scale, ArrowRight, X, AlertCircle,
-  UserCheck, Users, ChevronRight, PanelLeftClose, PanelLeftOpen
+  UserCheck, Users, ChevronRight, PanelLeftClose, PanelLeftOpen, Radio
 } from 'lucide-react';
 
 export default function PosPage() {
@@ -119,16 +121,28 @@ export default function PosPage() {
     }
   };
 
-  // Fetch initial products, customers, active session, and merchant settings
+  // Fetch initial products, customers, active session, and merchant settings with instant SWR caching
   const loadPosData = useCallback(async () => {
     if (!tenant) return;
     try {
       const branchParam = currentBranch ? `&branchId=${currentBranch.id}` : '';
-      const res = await fetch(`/api/merchant/pos?tenantId=${tenant.id}${branchParam}`);
-      if (res.ok) {
-        const data = await res.json();
-        setProducts(data.products || []);
-        setCustomers(data.customers || []);
+      const url = `/api/merchant/pos?tenantId=${tenant.id}${branchParam}`;
+
+      const cached = getCachedData<any>(url);
+      if (cached) {
+        if (cached.products) setProducts(cached.products);
+        if (cached.customers) setCustomers(cached.customers);
+        if (cached.activeSession !== undefined) setActiveSession(cached.activeSession);
+        if (cached.settings) {
+          setVatEnabled(cached.settings.vat_enabled !== 0);
+          if (cached.settings.receipt_footer) setReceiptFooter(cached.settings.receipt_footer);
+        }
+        if (cached.tenant) setLiveTenant(cached.tenant);
+      }
+
+      await fetchWithCache<any>(url, (data) => {
+        if (data.products) setProducts(data.products);
+        if (data.customers) setCustomers(data.customers);
         setActiveSession(data.activeSession || null);
         if (data.settings) {
           setVatEnabled(data.settings.vat_enabled !== 0);
@@ -139,7 +153,7 @@ export default function PosPage() {
         if (data.tenant) {
           setLiveTenant(data.tenant);
         }
-      }
+      });
     } catch (e) {
       console.error(e);
     }
@@ -148,6 +162,48 @@ export default function PosPage() {
   useEffect(() => {
     loadPosData();
   }, [loadPosData]);
+
+  // Real-time Stock Sync across multiple POS terminals in the SAME branch
+  useEffect(() => {
+    if (!currentBranch?.id) return;
+
+    const channelName = `pos_branch_${currentBranch.id}`;
+    const channel = supabase.channel(channelName);
+
+    channel
+      .on('broadcast', { event: 'stock_change' }, (payload) => {
+        const { items } = payload.payload || {};
+        if (Array.isArray(items) && items.length > 0) {
+          setProducts(prev => prev.map(p => {
+            const match = items.find((it: any) => it.productId === p.id);
+            if (!match) return p;
+            const current = Number(p.current_stock ?? (p as any).stock_quantity ?? 0);
+            const updated = Math.max(0, current - match.quantity);
+            return { ...p, current_stock: updated };
+          }));
+        }
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'inventory_balances',
+        filter: `branch_id=eq.${currentBranch.id}`,
+      }, (payload: any) => {
+        const newRecord = payload.new;
+        if (newRecord?.product_id) {
+          setProducts(prev => prev.map(p => 
+            p.id === newRecord.product_id
+              ? { ...p, current_stock: Number(newRecord.quantity), stock_quantity: Number(newRecord.quantity) }
+              : p
+          ));
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentBranch?.id]);
 
   // Global Keyboard Shortcuts (F2: Search/Barcode focus, F7: Hold sale, F9: Checkout)
   useEffect(() => {
@@ -501,12 +557,37 @@ export default function PosPage() {
       }
 
       const json = await res.json();
+      const soldItems = cart.map(item => ({
+        productId: item.product.id,
+        quantity: item.quantity,
+      }));
+
+      // 1. Immediately decrement stock locally in state without full page reload
+      setProducts(prev => prev.map(p => {
+        const sold = soldItems.find(si => si.productId === p.id);
+        if (!sold) return p;
+        const current = Number(p.current_stock ?? (p as any).stock_quantity ?? 0);
+        const updated = Math.max(0, current - sold.quantity);
+        return { ...p, current_stock: updated };
+      }));
+
+      // 2. Broadcast sold items in real-time to all other POS terminals in this branch
+      if (currentBranch?.id) {
+        supabase.channel(`pos_branch_${currentBranch.id}`).send({
+          type: 'broadcast',
+          event: 'stock_change',
+          payload: {
+            branchId: currentBranch.id,
+            items: soldItems,
+          }
+        }).catch(err => console.error('Failed to broadcast stock update', err));
+      }
+
       posAudio.playSuccess();
       setCompletedSale(json.sale);
       setIsCheckoutOpen(false);
       setIsReceiptOpen(true);
       clearCart();
-      loadPosData(); // Reload inventory counts
     } catch (e) {
       alert('Error during checkout submission');
     } finally {

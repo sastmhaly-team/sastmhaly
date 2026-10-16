@@ -6,6 +6,8 @@ import { useLanguage } from '@/lib/i18n/context';
 import { CashRegister, CashSession } from '@/lib/types';
 import { ExportButton } from '@/components/reports/ExportButton';
 import { Modal } from '@/components/ui/Modal';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Landmark, Plus, Minus, CheckCircle2, Clock, 
   ArrowUpRight, ArrowDownRight, Printer, AlertTriangle, Banknote, ShieldAlert
@@ -19,6 +21,8 @@ export default function MerchantRegistersPage() {
   const [sessions, setSessions] = useState<CashSession[]>([]);
   const [activeSession, setActiveSession] = useState<CashSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   // Modals
   const [isOpenSessionModal, setIsOpenSessionModal] = useState(false);
@@ -44,18 +48,31 @@ export default function MerchantRegistersPage() {
       return;
     }
     try {
-      setLoading(true);
       const branchParam = activeBranchId && activeBranchId !== 'all' ? `&branchId=${activeBranchId}` : '';
-      const res = await fetch(`/api/merchant/registers?tenantId=${tenantId}${branchParam}`);
-      if (res.ok) {
-        const data = await res.json();
-        setRegisters(data.registers || []);
-        setSessions(data.sessions || []);
+      const url = `/api/merchant/registers?tenantId=${tenantId}${branchParam}`;
+      
+      const cached = getCachedData<any>(url);
+      if (cached) {
+        if (cached.registers) setRegisters(cached.registers);
+        if (cached.sessions) setSessions(cached.sessions);
+        if (cached.activeSession !== undefined) setActiveSession(cached.activeSession);
+        if (cached.registers?.length > 0 && !selectedRegisterId) {
+          setSelectedRegisterId(cached.registers[0].id);
+        }
+        setLoading(false);
+      } else if (registers.length === 0 && sessions.length === 0) {
+        setLoading(true);
+      }
+
+      await fetchWithCache<any>(url, (data) => {
+        if (data.registers) setRegisters(data.registers);
+        if (data.sessions) setSessions(data.sessions);
         setActiveSession(data.activeSession || null);
-        if (data.registers?.length > 0) {
+        if (data.registers?.length > 0 && !selectedRegisterId) {
           setSelectedRegisterId(data.registers[0].id);
         }
-      }
+        setLoading(false);
+      });
     } catch (e) {
       console.error(e);
     } finally {
@@ -185,6 +202,14 @@ export default function MerchantRegistersPage() {
     { header: 'Closed At', key: 'closed_at' as const },
   ];
 
+  const filteredSessions = sessions.filter(s => {
+    if (!startDate && !endDate) return true;
+    const sDate = s.opened_at ? s.opened_at.split('T')[0] : '';
+    if (startDate && sDate < startDate) return false;
+    if (endDate && sDate > endDate) return false;
+    return true;
+  });
+
   return (
     <div className="space-y-6">
       
@@ -204,7 +229,7 @@ export default function MerchantRegistersPage() {
         <div className="flex items-center gap-2.5">
           <ExportButton
             filename="sastmhaly_cash_sessions_audit"
-            data={sessions}
+            data={filteredSessions}
             columns={exportColumns}
           />
 
@@ -230,6 +255,16 @@ export default function MerchantRegistersPage() {
           )}
         </div>
       </div>
+
+      {/* Date Range Filter */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onChange={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
+      />
 
       {/* Active Shift Banner Card */}
       {activeSession ? (
@@ -317,12 +352,12 @@ export default function MerchantRegistersPage() {
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-[#687386]">{t('loading')}</td>
                 </tr>
-              ) : sessions.length === 0 ? (
+              ) : filteredSessions.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-[#687386]">{t('no_records')}</td>
                 </tr>
               ) : (
-                sessions.map((s, idx) => {
+                filteredSessions.map((s, idx) => {
                   const diff = s.difference !== undefined && s.difference !== null ? Number(s.difference) : null;
                   return (
                     <tr key={s.id} className="hover:bg-[#F7F9FC]">

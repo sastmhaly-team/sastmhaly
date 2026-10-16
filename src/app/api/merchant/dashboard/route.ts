@@ -8,8 +8,11 @@ export async function GET(request: NextRequest) {
     ? searchParams.get('branchId')! 
     : undefined;
 
+  const startDate = searchParams.get('startDate') || undefined;
+  const endDate = searchParams.get('endDate') || undefined;
+
   try {
-    const kpis = await getMerchantDashboardKpis(tenantId, branchId);
+    const kpis = await getMerchantDashboardKpis(tenantId, branchId, startDate, endDate);
     return NextResponse.json(kpis);
   } catch (error) {
     console.error('Failed to get dashboard kpis', error);

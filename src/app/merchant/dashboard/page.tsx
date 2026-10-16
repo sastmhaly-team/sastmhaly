@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth/context';
 import { useLanguage } from '@/lib/i18n/context';
 import { KpiCard } from '@/components/reports/KpiCard';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   ShoppingCart, DollarSign, TrendingUp, AlertTriangle, 
   Clock, Package, Building2, ArrowUpRight, ArrowDownRight,
@@ -39,30 +41,36 @@ export default function MerchantDashboardPage() {
   const { lang, t } = useLanguage();
   const [data, setData] = useState<DashboardKpiData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const activeBranchObj = branches.find(b => b.id === activeBranchId);
 
   useEffect(() => {
     if (!tenant) return;
-    const fetchKpis = async () => {
-      setLoading(true);
-      try {
-        const branchParam = activeBranchId !== 'all' ? `&branchId=${activeBranchId}` : '';
-        const res = await fetch(`/api/merchant/dashboard?tenantId=${tenant.id}${branchParam}`);
-        if (res.ok) {
-          const json = await res.json();
-          setData(json);
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchKpis();
-  }, [tenant, activeBranchId]);
+    const branchParam = activeBranchId !== 'all' ? `&branchId=${activeBranchId}` : '';
+    const dateParam = `${startDate ? `&startDate=${startDate}` : ''}${endDate ? `&endDate=${endDate}` : ''}`;
+    const url = `/api/merchant/dashboard?tenantId=${tenant.id}${branchParam}${dateParam}`;
 
-  if (loading || !data) {
+    // Instant render from cache if available (<1s)
+    const cached = getCachedData<DashboardKpiData>(url);
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+    } else if (!data) {
+      setLoading(true);
+    }
+
+    fetchWithCache<DashboardKpiData>(url, (freshData) => {
+      setData(freshData);
+      setLoading(false);
+    }).catch(e => {
+      console.error(e);
+      setLoading(false);
+    });
+  }, [tenant, activeBranchId, startDate, endDate]);
+
+  if (!data) {
     return (
       <div className="space-y-6 animate-pulse">
         <div className="h-8 bg-gray-200 rounded-md w-1/3"></div>
@@ -105,6 +113,16 @@ export default function MerchantDashboardPage() {
         </div>
       </div>
 
+      {/* Date Range Filter Bar */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onChange={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
+      />
+
       {/* KPI Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
@@ -117,20 +135,20 @@ export default function MerchantDashboardPage() {
           badge={{ text: 'Today', type: 'info' }}
         />
 
-        {/* Net Sales */}
+        {/* Gross Sales */}
         <KpiCard
-          title={lang === 'ar' ? 'صافي المبيعات (Net Sales)' : 'Net Sales'}
-          value={`${data.netSales.toLocaleString()} ${t('currency')}`}
-          subtitle={lang === 'ar' ? `إجمالي الإيراد بعد الخصومات` : `Gross: ${data.grossSales.toLocaleString()} ${t('currency')}`}
+          title={lang === 'ar' ? 'إجمالي المبيعات' : 'Gross Sales'}
+          value={`${data.grossSales.toLocaleString()} ${t('currency')}`}
+          subtitle={lang === 'ar' ? `إجمالي سعر البيع قبل خصم التكلفة` : `Total sales volume`}
           icon={TrendingUp}
-          badge={{ text: 'Revenue', type: 'success' }}
+          badge={{ text: 'Revenue', type: 'info' }}
         />
 
-        {/* Gross Profit & Margin */}
+        {/* Net Profit after Cost (الصافي بعد خصم التكلفة) */}
         <KpiCard
-          title={lang === 'ar' ? 'مجمل الربح (Gross Profit)' : 'Gross Profit'}
+          title={lang === 'ar' ? 'صافي الربح (بعد خصم التكلفة)' : 'Net Profit (After Cost)'}
           value={`${data.grossProfit.toLocaleString()} ${t('currency')}`}
-          subtitle={`Margin: ${data.grossMarginPct}% (COGS: ${data.cogs.toLocaleString()})`}
+          subtitle={lang === 'ar' ? `التكلفة: ${data.cogs.toLocaleString()} ${t('currency')} (هامش ${data.grossMarginPct}%)` : `COGS: ${data.cogs.toLocaleString()} (Margin: ${data.grossMarginPct}%)`}
           icon={DollarSign}
           badge={{ text: `${data.grossMarginPct}% Margin`, type: 'success' }}
         />
