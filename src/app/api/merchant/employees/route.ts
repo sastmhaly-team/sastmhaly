@@ -23,7 +23,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { tenant_id, full_name, phone, password, role, branch_id, email, username } = body;
+    const { 
+      tenant_id, full_name, phone, password, role, branch_id, email, username,
+      job_title, base_salary, salary_type, daily_hours, national_id, hire_date, shift_name
+    } = body;
 
     if (!tenant_id || !full_name || !phone || !password) {
       return NextResponse.json({ 
@@ -51,6 +54,13 @@ export async function POST(request: NextRequest) {
       full_name,
       phone: cleanedPhone,
       role: role || 'cashier',
+      job_title,
+      base_salary: base_salary !== undefined ? Number(base_salary) : 0,
+      salary_type: salary_type || 'monthly',
+      daily_hours: daily_hours !== undefined ? Number(daily_hours) : 8,
+      national_id,
+      hire_date: hire_date || new Date().toISOString().split('T')[0],
+      shift_name: shift_name || 'الوردية الصباحية',
     });
 
     return NextResponse.json({ 
@@ -67,7 +77,10 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, tenant_id, full_name, phone, password, role, branch_id, is_active } = body;
+    const { 
+      id, tenant_id, full_name, phone, password, role, branch_id, is_active,
+      job_title, base_salary, salary_type, daily_hours, national_id, hire_date, shift_name
+    } = body;
 
     if (!id || !tenant_id) {
       return NextResponse.json({ error: 'User ID and tenant ID are required' }, { status: 400 });
@@ -89,7 +102,14 @@ export async function PUT(request: NextRequest) {
       role,
       branch_id,
       password_hash: password || undefined,
-      is_active
+      is_active,
+      job_title,
+      base_salary: base_salary !== undefined ? Number(base_salary) : undefined,
+      salary_type,
+      daily_hours: daily_hours !== undefined ? Number(daily_hours) : undefined,
+      national_id,
+      hire_date,
+      shift_name,
     });
 
     return NextResponse.json({

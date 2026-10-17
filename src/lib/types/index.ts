@@ -99,7 +99,78 @@ export interface User {
   role: UserRole;
   is_active: number;
   created_at: string;
+  // HR & Payroll fields
+  job_title?: string;
+  base_salary?: number;
+  salary_type?: 'monthly' | 'weekly' | 'daily' | 'hourly';
+  daily_hours?: number;
+  national_id?: string;
+  hire_date?: string;
+  shift_name?: string;
 }
+
+export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused' | 'half_day';
+
+export interface AttendanceRecord {
+  id: string;
+  tenant_id: string;
+  branch_id?: string;
+  user_id: string;
+  date: string; // YYYY-MM-DD
+  status: AttendanceStatus;
+  check_in_time?: string; // e.g. 09:15
+  check_out_time?: string; // e.g. 17:30
+  total_hours?: number;
+  late_minutes?: number;
+  notes?: string;
+  user_name?: string;
+  user_phone?: string;
+  branch_name?: string;
+  created_at: string;
+}
+
+export type AdjustmentType = 'advance' | 'bonus' | 'deduction' | 'allowance';
+
+export interface EmployeeAdjustment {
+  id: string;
+  tenant_id: string;
+  branch_id?: string;
+  user_id: string;
+  type: AdjustmentType;
+  amount: number;
+  date: string; // YYYY-MM-DD
+  month: string; // YYYY-MM
+  reason: string;
+  status: 'pending' | 'approved' | 'settled';
+  created_at: string;
+  user_name?: string;
+  user_phone?: string;
+}
+
+export interface PayrollRecord {
+  id: string;
+  tenant_id: string;
+  branch_id?: string;
+  user_id: string;
+  month: string; // YYYY-MM
+  base_salary: number;
+  working_days?: number;
+  attended_days: number;
+  absent_days: number;
+  total_bonuses: number;
+  total_deductions: number;
+  total_advances: number;
+  net_salary: number;
+  status: 'draft' | 'calculated' | 'paid';
+  paid_at?: string;
+  payment_method?: 'cash' | 'bank' | 'wallet';
+  notes?: string;
+  user_name?: string;
+  user_phone?: string;
+  job_title?: string;
+  created_at: string;
+}
+
 
 export interface Category {
   id: string;

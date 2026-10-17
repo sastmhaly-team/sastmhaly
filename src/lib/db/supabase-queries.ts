@@ -10,7 +10,7 @@ import {
   InventoryBalance, InventoryMovement, StockTransfer, StockTransferItem,
   Supplier, PurchaseOrder, Customer, CashRegister, CashSession,
   Sale, SaleItem, Expense, Account, JournalEntry, Notification, AuditLog,
-  SubscriptionPlan
+  SubscriptionPlan, AttendanceRecord, AttendanceStatus, EmployeeAdjustment, PayrollRecord
 } from '../types';
 
 export function getSupabase() {
@@ -421,7 +421,7 @@ export async function deleteBranch(tenantId: string, branchId: string): Promise<
 
 export async function getUsers(tenantId?: string, branchId?: string): Promise<User[]> {
   const supabase = getSupabase();
-  let query = supabase.from('users').select('id, tenant_id, branch_id, email, username, full_name, phone, role, is_active, created_at');
+  let query = supabase.from('users').select('*');
   if (tenantId) query = query.eq('tenant_id', tenantId);
   if (branchId) query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
   const { data } = await query;
@@ -442,21 +442,50 @@ export async function getUserByUsernameOrEmail(identifier: string): Promise<(Use
 export async function createUser(data: {
   tenant_id: string; branch_id?: string; email: string; username: string;
   password_hash: string; full_name: string; phone?: string; role: string;
+  job_title?: string; base_salary?: number; salary_type?: string;
+  daily_hours?: number; national_id?: string; hire_date?: string; shift_name?: string;
 }): Promise<User> {
   const supabase = getSupabase();
   const id = uid('usr');
-  const { data: user, error } = await supabase.from('users').insert({
+  const payload: any = {
     id, tenant_id: data.tenant_id, branch_id: data.branch_id || null,
     email: data.email, username: data.username, password_hash: data.password_hash,
     full_name: data.full_name, phone: data.phone || null, role: data.role, is_active: 1
-  }).select('id, tenant_id, branch_id, email, username, full_name, phone, role, is_active, created_at').single();
-  if (error) throw new Error(error.message);
-  return user as User;
+  };
+  if (data.job_title !== undefined) payload.job_title = data.job_title;
+  if (data.base_salary !== undefined) payload.base_salary = data.base_salary;
+  if (data.salary_type !== undefined) payload.salary_type = data.salary_type;
+  if (data.daily_hours !== undefined) payload.daily_hours = data.daily_hours;
+  if (data.national_id !== undefined) payload.national_id = data.national_id;
+  if (data.hire_date !== undefined) payload.hire_date = data.hire_date;
+  if (data.shift_name !== undefined) payload.shift_name = data.shift_name;
+
+  try {
+    const { data: user, error } = await supabase.from('users').insert(payload).select('*').single();
+    if (!error && user) return user as User;
+    if (error && error.message.includes('column')) {
+      // Fallback without extended HR columns if DB migration hasn't been run yet
+      const fallbackPayload = {
+        id, tenant_id: data.tenant_id, branch_id: data.branch_id || null,
+        email: data.email, username: data.username, password_hash: data.password_hash,
+        full_name: data.full_name, phone: data.phone || null, role: data.role, is_active: 1
+      };
+      const { data: fallbackUser, error: fbError } = await supabase.from('users').insert(fallbackPayload).select('*').single();
+      if (fbError) throw new Error(fbError.message);
+      return { ...fallbackUser, ...payload } as User;
+    }
+    if (error) throw new Error(error.message);
+    return user as User;
+  } catch (err: any) {
+    throw new Error(err.message || 'User creation failed');
+  }
 }
 
 export async function updateUser(id: string, tenantId: string, data: {
   full_name?: string; phone?: string; role?: string; branch_id?: string;
   password_hash?: string; is_active?: number;
+  job_title?: string; base_salary?: number; salary_type?: string;
+  daily_hours?: number; national_id?: string; hire_date?: string; shift_name?: string;
 }): Promise<User> {
   const supabase = getSupabase();
   const updates: any = {};
@@ -466,12 +495,40 @@ export async function updateUser(id: string, tenantId: string, data: {
   if (data.branch_id !== undefined) updates.branch_id = data.branch_id || null;
   if (data.password_hash) updates.password_hash = data.password_hash;
   if (data.is_active !== undefined) updates.is_active = data.is_active;
+  if (data.job_title !== undefined) updates.job_title = data.job_title;
+  if (data.base_salary !== undefined) updates.base_salary = data.base_salary;
+  if (data.salary_type !== undefined) updates.salary_type = data.salary_type;
+  if (data.daily_hours !== undefined) updates.daily_hours = data.daily_hours;
+  if (data.national_id !== undefined) updates.national_id = data.national_id;
+  if (data.hire_date !== undefined) updates.hire_date = data.hire_date;
+  if (data.shift_name !== undefined) updates.shift_name = data.shift_name;
 
-  const { data: user, error } = await supabase.from('users').update(updates)
-    .eq('id', id).eq('tenant_id', tenantId)
-    .select('id, tenant_id, branch_id, email, username, full_name, phone, role, is_active, created_at').single();
-  if (error) throw new Error(error.message);
-  return user as User;
+  try {
+    const { data: user, error } = await supabase.from('users').update(updates)
+      .eq('id', id).eq('tenant_id', tenantId)
+      .select('*').single();
+    if (!error && user) return user as User;
+    if (error && error.message.includes('column')) {
+      // Fallback stripping extended HR fields
+      const coreUpdates: any = {};
+      if (data.full_name !== undefined) coreUpdates.full_name = data.full_name;
+      if (data.phone !== undefined) coreUpdates.phone = data.phone;
+      if (data.role !== undefined) coreUpdates.role = data.role;
+      if (data.branch_id !== undefined) coreUpdates.branch_id = data.branch_id || null;
+      if (data.password_hash) coreUpdates.password_hash = data.password_hash;
+      if (data.is_active !== undefined) coreUpdates.is_active = data.is_active;
+
+      const { data: fbUser, error: fbError } = await supabase.from('users').update(coreUpdates)
+        .eq('id', id).eq('tenant_id', tenantId)
+        .select('*').single();
+      if (fbError) throw new Error(fbError.message);
+      return { ...fbUser, ...updates } as User;
+    }
+    if (error) throw new Error(error.message);
+    return user as User;
+  } catch (err: any) {
+    throw new Error(err.message || 'User update failed');
+  }
 }
 
 export async function deleteUser(id: string, tenantId: string): Promise<boolean> {
@@ -1675,3 +1732,367 @@ export async function updateTenantSettings(tenantId: string, data: {
 export async function getEmployees(tenantId: string, branchId?: string) {
   return getUsers(tenantId, branchId);
 }
+
+// ============================================================================
+// HR: ATTENDANCE, ADJUSTMENTS & PAYROLL (الحضور والانصراف والرواتب)
+// ============================================================================
+
+export async function getAttendanceRecords(
+  tenantId: string,
+  date?: string,
+  branchId?: string,
+  userId?: string
+): Promise<AttendanceRecord[]> {
+  const supabase = getSupabase();
+  try {
+    let query = supabase.from('employee_attendance').select('*').eq('tenant_id', tenantId);
+    if (date) query = query.eq('date', date);
+    if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
+    if (userId) query = query.eq('user_id', userId);
+    query = query.order('date', { ascending: false });
+
+    const { data, error } = await query;
+    if (error) {
+      console.warn('Attendance query error (table might not exist yet):', error.message);
+      return [];
+    }
+
+    // Attach user names
+    const users = await getUsers(tenantId);
+    const userMap = new Map(users.map(u => [u.id, u]));
+
+    return (data || []).map((row: any) => {
+      const u = userMap.get(row.user_id);
+      return {
+        ...row,
+        user_name: u?.full_name || 'موظف',
+        user_phone: u?.phone || u?.username || '',
+      } as AttendanceRecord;
+    });
+  } catch (err) {
+    console.warn('Error fetching attendance records:', err);
+    return [];
+  }
+}
+
+export async function upsertAttendanceRecord(
+  tenantId: string,
+  record: {
+    id?: string;
+    branch_id?: string;
+    user_id: string;
+    date: string;
+    status: AttendanceStatus;
+    check_in_time?: string;
+    check_out_time?: string;
+    notes?: string;
+    late_minutes?: number;
+  }
+): Promise<AttendanceRecord> {
+  const supabase = getSupabase();
+
+  // Calculate total hours if check-in and check-out exist
+  let total_hours = 0;
+  if (record.check_in_time && record.check_out_time) {
+    const [inH, inM] = record.check_in_time.split(':').map(Number);
+    const [outH, outM] = record.check_out_time.split(':').map(Number);
+    if (!isNaN(inH) && !isNaN(outH)) {
+      const inMinutes = inH * 60 + (inM || 0);
+      const outMinutes = outH * 60 + (outM || 0);
+      if (outMinutes >= inMinutes) {
+        total_hours = Math.round(((outMinutes - inMinutes) / 60) * 100) / 100;
+      }
+    }
+  }
+
+  const id = record.id || uid('att');
+  const payload = {
+    id,
+    tenant_id: tenantId,
+    branch_id: record.branch_id || null,
+    user_id: record.user_id,
+    date: record.date,
+    status: record.status,
+    check_in_time: record.check_in_time || null,
+    check_out_time: record.check_out_time || null,
+    total_hours,
+    late_minutes: record.late_minutes || 0,
+    notes: record.notes || null,
+  };
+
+  const { data, error } = await supabase
+    .from('employee_attendance')
+    .upsert(payload, { onConflict: 'tenant_id,user_id,date' })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data as AttendanceRecord;
+}
+
+export async function getEmployeeAdjustments(
+  tenantId: string,
+  month?: string,
+  userId?: string
+): Promise<EmployeeAdjustment[]> {
+  const supabase = getSupabase();
+  try {
+    let query = supabase.from('employee_adjustments').select('*').eq('tenant_id', tenantId);
+    if (month) query = query.eq('month', month);
+    if (userId) query = query.eq('user_id', userId);
+    query = query.order('date', { ascending: false });
+
+    const { data, error } = await query;
+    if (error) {
+      console.warn('Adjustments query error:', error.message);
+      return [];
+    }
+
+    const users = await getUsers(tenantId);
+    const userMap = new Map(users.map(u => [u.id, u]));
+
+    return (data || []).map((row: any) => {
+      const u = userMap.get(row.user_id);
+      return {
+        ...row,
+        user_name: u?.full_name || 'موظف',
+        user_phone: u?.phone || '',
+      } as EmployeeAdjustment;
+    });
+  } catch (err) {
+    console.warn('Error fetching adjustments:', err);
+    return [];
+  }
+}
+
+export async function createEmployeeAdjustment(data: {
+  tenant_id: string;
+  branch_id?: string;
+  user_id: string;
+  type: 'advance' | 'bonus' | 'deduction' | 'allowance';
+  amount: number;
+  date: string;
+  month: string;
+  reason: string;
+  status?: 'pending' | 'approved' | 'settled';
+}): Promise<EmployeeAdjustment> {
+  const supabase = getSupabase();
+  const id = uid('adj');
+  const payload = {
+    id,
+    tenant_id: data.tenant_id,
+    branch_id: data.branch_id || null,
+    user_id: data.user_id,
+    type: data.type,
+    amount: Number(data.amount) || 0,
+    date: data.date,
+    month: data.month,
+    reason: data.reason,
+    status: data.status || 'approved',
+  };
+
+  const { data: created, error } = await supabase
+    .from('employee_adjustments')
+    .insert(payload)
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return created as EmployeeAdjustment;
+}
+
+export async function deleteEmployeeAdjustment(id: string, tenantId: string): Promise<boolean> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from('employee_adjustments')
+    .delete()
+    .eq('id', id)
+    .eq('tenant_id', tenantId);
+  return !error;
+}
+
+export async function getPayrollRecords(
+  tenantId: string,
+  month?: string,
+  branchId?: string
+): Promise<PayrollRecord[]> {
+  const supabase = getSupabase();
+  try {
+    let query = supabase.from('employee_payroll').select('*').eq('tenant_id', tenantId);
+    if (month) query = query.eq('month', month);
+    if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
+    query = query.order('created_at', { ascending: false });
+
+    const { data, error } = await query;
+    if (error) {
+      console.warn('Payroll query error:', error.message);
+      return [];
+    }
+
+    const users = await getUsers(tenantId);
+    const userMap = new Map(users.map(u => [u.id, u]));
+
+    return (data || []).map((row: any) => {
+      const u = userMap.get(row.user_id);
+      return {
+        ...row,
+        user_name: u?.full_name || 'موظف',
+        user_phone: u?.phone || '',
+        job_title: u?.job_title || (u?.role === 'cashier' ? 'كاشير' : 'موظف'),
+      } as PayrollRecord;
+    });
+  } catch (err) {
+    console.warn('Error fetching payroll records:', err);
+    return [];
+  }
+}
+
+export async function generateMonthlyPayroll(
+  tenantId: string,
+  month: string,
+  branchId?: string
+): Promise<PayrollRecord[]> {
+  const supabase = getSupabase();
+
+  // 1. Fetch active employees
+  const users = await getUsers(tenantId, branchId);
+  const activeStaff = users.filter(u => u.is_active === 1 && u.role !== 'super_admin');
+
+  // 2. Fetch attendance for this month
+  const startDate = `${month}-01`;
+  const endDate = `${month}-31`;
+  const { data: attendanceData } = await supabase
+    .from('employee_attendance')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .gte('date', startDate)
+    .lte('date', endDate);
+
+  // 3. Fetch adjustments for this month
+  const { data: adjustmentsData } = await supabase
+    .from('employee_adjustments')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('month', month);
+
+  const attendanceRows = attendanceData || [];
+  const adjustmentRows = adjustmentsData || [];
+
+  const results: PayrollRecord[] = [];
+
+  for (const emp of activeStaff) {
+    const empAtt = attendanceRows.filter((a: any) => a.user_id === emp.id);
+    const empAdj = adjustmentRows.filter((j: any) => j.user_id === emp.id);
+
+    const attendedDays = empAtt.filter((a: any) => a.status === 'present' || a.status === 'late').length +
+      empAtt.filter((a: any) => a.status === 'half_day').length * 0.5;
+    const absentDays = empAtt.filter((a: any) => a.status === 'absent').length;
+
+    const bonuses = empAdj
+      .filter((a: any) => a.type === 'bonus' || a.type === 'allowance')
+      .reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0);
+
+    const deductions = empAdj
+      .filter((a: any) => a.type === 'deduction')
+      .reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0);
+
+    const advances = empAdj
+      .filter((a: any) => a.type === 'advance')
+      .reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0);
+
+    const baseSalary = Number(emp.base_salary || 0);
+    const netSalary = Math.max(0, baseSalary + bonuses - deductions - advances);
+
+    const id = uid('pr');
+    const payload = {
+      id,
+      tenant_id: tenantId,
+      branch_id: emp.branch_id || null,
+      user_id: emp.id,
+      month,
+      base_salary: baseSalary,
+      working_days: 30,
+      attended_days: attendedDays,
+      absent_days: absentDays,
+      total_bonuses: bonuses,
+      total_deductions: deductions,
+      total_advances: advances,
+      net_salary: netSalary,
+      status: 'calculated',
+    };
+
+    try {
+      const { data: saved, error } = await supabase
+        .from('employee_payroll')
+        .upsert(payload, { onConflict: 'tenant_id,user_id,month' })
+        .select()
+        .single();
+
+      if (!error && saved) {
+        results.push({
+          ...saved,
+          user_name: emp.full_name,
+          user_phone: emp.phone || emp.username,
+          job_title: emp.job_title || (emp.role === 'cashier' ? 'كاشير' : 'موظف'),
+        } as PayrollRecord);
+      }
+    } catch (e) {
+      console.warn(`Error generating payroll for user ${emp.id}:`, e);
+    }
+  }
+
+  return results;
+}
+
+export async function markPayrollPaid(
+  id: string,
+  tenantId: string,
+  paymentMethod: 'cash' | 'bank' | 'wallet' = 'cash',
+  recordExpense: boolean = true
+): Promise<PayrollRecord> {
+  const supabase = getSupabase();
+  const now = new Date().toISOString();
+
+  const { data: record, error } = await supabase
+    .from('employee_payroll')
+    .update({
+      status: 'paid',
+      paid_at: now,
+      payment_method: paymentMethod,
+    })
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  // Optionally log expense in expenses table for accounting integration
+  if (recordExpense && record && record.net_salary > 0) {
+    try {
+      const users = await getUsers(tenantId);
+      const emp = users.find(u => u.id === record.user_id);
+      const empName = emp?.full_name || 'موظف';
+      const expenseId = uid('exp');
+      await supabase.from('expenses').insert({
+        id: expenseId,
+        tenant_id: tenantId,
+        branch_id: record.branch_id || (users[0]?.branch_id || null),
+        category: 'مرتبات وأجور الموظفين',
+        amount: record.net_salary,
+        payment_source: paymentMethod === 'cash' ? 'cash_drawer' : 'bank_account',
+        payee: empName,
+        description: `صرف راتب شهر (${record.month}) للموظف: ${empName}`,
+        created_by: 'system_hr',
+      });
+    } catch (e) {
+      console.warn('Failed to auto-log payroll expense:', e);
+    }
+  }
+
+  return record as PayrollRecord;
+}
+
