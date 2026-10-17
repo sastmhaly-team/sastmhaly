@@ -68,7 +68,7 @@ body {
   background: #94A3B8;
 }
 
-/* Print styles for POS Thermal Receipt (58mm / 80mm) */
+/* Print styles for POS Thermal Receipt (58mm / 80mm) & HR Documents/Payslips */
 @media print {
   html, body {
     background: white !important;
@@ -78,27 +78,44 @@ body {
     width: 100% !important;
     height: auto !important;
     overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   body > *:not(#print-mount) {
     display: none !important;
   }
   #print-mount {
     display: block !important;
-    width: 80mm !important;
-    max-width: 80mm !important;
-    margin: 0 auto !important;
-    padding: 3mm !important;
-    box-sizing: border-box !important;
     background: white !important;
     color: black !important;
-    font-size: 11px !important;
     overflow: visible !important;
     height: auto !important;
     min-height: 0 !important;
+    box-sizing: border-box !important;
+    margin: 0 auto !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  /* Default POS Thermal Receipt mode */
+  #print-mount:not(.document-mode) {
+    width: 80mm !important;
+    max-width: 80mm !important;
+    padding: 3mm !important;
+    font-size: 11px !important;
+  }
+  /* Full Document / Payslip mode (Standard A4 / Portrait) */
+  #print-mount.document-mode {
+    width: 100% !important;
+    max-width: 800px !important;
+    padding: 24px !important;
+    font-size: 13px !important;
+    display: block !important;
   }
   #print-mount * {
-    color: black !important;
+    color: inherit;
     visibility: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   #print-mount img {
     display: inline-block !important;
@@ -106,9 +123,19 @@ body {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
-
-  @page {
-    size: 80mm auto;
-    margin: 0mm;
+  button,
+  .no-print,
+  [data-no-print],
+  input[type="button"],
+  input[type="submit"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
   }
 }
+

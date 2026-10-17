@@ -599,6 +599,103 @@ export default function EmployeesManagementPage() {
     }
   };
 
+  // Print Official Payslip via #print-mount
+  // Print Official Payslip via #print-mount (Pure printable document without buttons)
+  const handlePrintPayslip = () => {
+    if (!payslipData) return;
+    let mount = document.getElementById('print-mount');
+    if (!mount) {
+      mount = document.createElement('div');
+      mount.id = 'print-mount';
+      document.body.appendChild(mount);
+    }
+    mount.className = 'document-mode';
+    mount.setAttribute('dir', 'rtl');
+
+    // Build the pure official payslip document - guaranteed 0 buttons
+    mount.innerHTML = `
+      <div style="font-family: Cairo, system-ui, -apple-system, sans-serif; direction: rtl; padding: 24px 30px; color: #0B1730; background: #fff; max-width: 750px; margin: 0 auto; box-sizing: border-box;">
+        <!-- Header / Store Info -->
+        <div style="text-align: center; border-bottom: 2px solid #E2E8F0; padding-bottom: 16px; margin-bottom: 20px;">
+          <h1 style="font-size: 22px; font-weight: 800; margin: 0; color: #0B1730;">${tenant?.name || 'سوبر ماركت / المتجر'}</h1>
+          <p style="font-size: 13px; color: #64748B; margin: 5px 0 0; font-weight: 600;">قسيمة استلام راتب ومستحقات شهرية</p>
+          <div style="display: inline-block; background: #EFF6FF; color: #246BFD; font-weight: 800; padding: 4px 14px; border-radius: 6px; margin-top: 8px; font-size: 13px; border: 1px solid #BFDBFE;">
+            شهر: ${payslipData.month}
+          </div>
+        </div>
+
+        <!-- Employee Details Grid -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 18px; margin-bottom: 22px;">
+          <div>
+            <span style="font-size: 11px; color: #64748B; display: block; font-weight: 600;">اسم الموظف:</span>
+            <strong style="font-size: 15px; color: #0F172A;">${payslipData.user_name}</strong>
+          </div>
+          <div>
+            <span style="font-size: 11px; color: #64748B; display: block; font-weight: 600;">المسمى الوظيفي:</span>
+            <strong style="font-size: 15px; color: #334155;">${payslipData.job_title}</strong>
+          </div>
+          <div>
+            <span style="font-size: 11px; color: #64748B; display: block; font-weight: 600;">أيام الحضور الفعلي:</span>
+            <strong style="font-size: 14px; color: #16A34A;">${payslipData.attended_days} يوم</strong>
+          </div>
+          <div>
+            <span style="font-size: 11px; color: #64748B; display: block; font-weight: 600;">أيام الغياب:</span>
+            <strong style="font-size: 14px; color: #DC2626;">${payslipData.absent_days} يوم</strong>
+          </div>
+        </div>
+
+        <!-- Financial Breakdown Table -->
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 28px; font-size: 13px; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden;">
+          <thead>
+            <tr style="background: #F1F5F9; border-bottom: 2px solid #CBD5E1;">
+              <th style="padding: 11px 16px; text-align: right; color: #475569; font-weight: 700;">البند المالي</th>
+              <th style="padding: 11px 16px; text-align: left; color: #475569; font-weight: 700;">المبلغ (${tenant?.currency || 'ج.م'})</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom: 1px solid #E2E8F0;">
+              <td style="padding: 11px 16px; color: #334155;">الراتب الأساسي</td>
+              <td style="padding: 11px 16px; text-align: left; font-weight: 700; color: #0F172A;">${Number(payslipData.base_salary).toLocaleString()}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #E2E8F0; color: #16A34A; background: #F0FDF4;">
+              <td style="padding: 11px 16px;">المكافآت والبدلات (+)</td>
+              <td style="padding: 11px 16px; text-align: left; font-weight: 700;">+${Number(payslipData.total_bonuses).toLocaleString()}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #E2E8F0; color: #DC2626; background: #FEF2F2;">
+              <td style="padding: 11px 16px;">الخصومات والجزاءات (-)</td>
+              <td style="padding: 11px 16px; text-align: left; font-weight: 700;">-${Number(payslipData.total_deductions).toLocaleString()}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #E2E8F0; color: #D97706; background: #FFFBEB;">
+              <td style="padding: 11px 16px;">السلف المستردة (-)</td>
+              <td style="padding: 11px 16px; text-align: left; font-weight: 700;">-${Number(payslipData.total_advances).toLocaleString()}</td>
+            </tr>
+            <tr style="background: #EFF6FF; border-top: 2px solid #93C5FD; font-size: 16px; font-weight: 800; color: #1D4ED8;">
+              <td style="padding: 13px 16px;">صافي الراتب المستلم (=)</td>
+              <td style="padding: 13px 16px; text-align: left;">${Number(payslipData.net_salary).toLocaleString()} ${tenant?.currency || 'ج.م'}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Official Signatures -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px; text-align: center; margin-top: 45px; font-size: 13px; color: #475569;">
+          <div>
+            <p style="margin: 0 0 45px; font-weight: 600;">توقيع الإدارة / المحاسب</p>
+            <div style="border-top: 1px dashed #94A3B8; width: 65%; margin: 0 auto;"></div>
+          </div>
+          <div>
+            <p style="margin: 0 0 45px; font-weight: 600;">توقيع واستلام الموظف</p>
+            <div style="border-top: 1px dashed #94A3B8; width: 65%; margin: 0 auto;"></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    setTimeout(() => {
+      window.print();
+    }, 50);
+  };
+
+
   // Create Adjustment (Advance, Bonus, Deduction)
   const handleCreateAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1795,9 +1892,9 @@ export default function EmployeesManagementPage() {
               <input
                 type="number"
                 min="0"
-                step="50"
-                value={newEmployee.base_salary}
-                onChange={(e) => setNewEmployee({ ...newEmployee, base_salary: Number(e.target.value) })}
+                step="any"
+                value={newEmployee.base_salary || ''}
+                onChange={(e) => setNewEmployee({ ...newEmployee, base_salary: e.target.value === '' ? 0 : Number(e.target.value) })}
                 className="w-full p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg text-xs font-mono font-bold outline-none focus:bg-white focus:border-[#246BFD]"
               />
             </div>
@@ -1959,9 +2056,9 @@ export default function EmployeesManagementPage() {
               <input
                 type="number"
                 min="0"
-                step="50"
-                value={editForm.base_salary}
-                onChange={(e) => setEditForm({ ...editForm, base_salary: Number(e.target.value) })}
+                step="any"
+                value={editForm.base_salary || ''}
+                onChange={(e) => setEditForm({ ...editForm, base_salary: e.target.value === '' ? 0 : Number(e.target.value) })}
                 className="w-full p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg text-xs font-mono font-bold outline-none focus:bg-white focus:border-[#246BFD]"
               />
             </div>
@@ -2080,11 +2177,11 @@ export default function EmployeesManagementPage() {
               </label>
               <input
                 type="number"
-                min="1"
-                step="10"
+                min="0"
+                step="any"
                 required
-                value={newAdj.amount}
-                onChange={(e) => setNewAdj({ ...newAdj, amount: Number(e.target.value) })}
+                value={newAdj.amount || ''}
+                onChange={(e) => setNewAdj({ ...newAdj, amount: e.target.value === '' ? 0 : Number(e.target.value) })}
                 className="w-full p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg text-xs font-mono font-bold outline-none focus:bg-white focus:border-[#246BFD]"
               />
             </div>
@@ -2221,7 +2318,8 @@ export default function EmployeesManagementPage() {
         size="md"
       >
         {payslipData && (
-          <div className="space-y-4 text-xs font-sans">
+          <div className="space-y-4">
+            <div id="printable-payslip" className="space-y-4 text-xs font-sans">
             {/* Header / Store Info */}
             <div className="text-center pb-3 border-b border-gray-200">
               <h3 className="font-extrabold text-base text-[#0B1730]">{tenant?.name || 'سوبر ماركت / المتجر'}</h3>
@@ -2296,26 +2394,27 @@ export default function EmployeesManagementPage() {
                 <span className="block border-t border-dashed border-gray-300 w-32 mx-auto"></span>
               </div>
             </div>
-
-            {/* Print and Close buttons */}
-            <div className="flex justify-end gap-2 pt-2 border-t border-[#E5EAF2]">
-              <button
-                type="button"
-                onClick={() => setPayslipModalOpen(false)}
-                className="px-4 py-2 border border-[#E5EAF2] rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
-              >
-                {isRtl ? 'إغلاق' : 'Close'}
-              </button>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#246BFD] hover:bg-blue-600 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer"
-              >
-                <Printer className="w-4 h-4" />
-                <span>{isRtl ? 'طباعة القسيمة' : 'Print Payslip'}</span>
-              </button>
-            </div>
           </div>
+
+          {/* Print and Close buttons (outside printable-payslip container) */}
+          <div className="no-print print:hidden flex justify-end gap-2 pt-3 border-t border-[#E5EAF2]">
+            <button
+              type="button"
+              onClick={() => setPayslipModalOpen(false)}
+              className="no-print px-4 py-2 border border-[#E5EAF2] rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
+            >
+              {isRtl ? 'إغلاق' : 'Close'}
+            </button>
+            <button
+              type="button"
+              onClick={handlePrintPayslip}
+              className="no-print inline-flex items-center gap-1.5 px-4 py-2 bg-[#246BFD] hover:bg-blue-600 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer"
+            >
+              <Printer className="w-4 h-4" />
+              <span>{isRtl ? 'طباعة القسيمة' : 'Print Payslip'}</span>
+            </button>
+          </div>
+        </div>
         )}
       </Modal>
     </div>
