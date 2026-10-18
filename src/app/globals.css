@@ -32,6 +32,10 @@
   --color-text-sub: var(--text-secondary);
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background-color: var(--background);
   color: var(--text-primary);
@@ -39,6 +43,168 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Apple-style Smooth Keyframes & Utilities */
+@keyframes float-slow {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes float-reverse {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(10px);
+  }
+}
+
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.65;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes shimmer-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+@keyframes badge-float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(-1deg);
+  }
+}
+
+@keyframes text-gradient-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes text-fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes text-glow-pulse {
+  0%, 100% {
+    text-shadow: 0 0 1px rgba(0, 113, 227, 0.2);
+  }
+  50% {
+    text-shadow: 0 0 16px rgba(0, 113, 227, 0.45);
+  }
+}
+
+/* Visible Animated Blue Gradient Text */
+.gradient-text-animated {
+  background: linear-gradient(135deg, #0071E3 0%, #2563EB 35%, #00C0FA 70%, #0071E3 100%);
+  background-size: 250% 250%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradient-shift 4.5s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Floating Card Animation (Clearly Visible) */
+.card-float-animated {
+  animation: card-floating 5s ease-in-out infinite;
+}
+
+@keyframes card-floating {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-16px);
+  }
+}
+
+/* Floating Badges with Visible Bobbing */
+.badge-bob-1 {
+  animation: badge-bob 4s ease-in-out infinite;
+}
+.badge-bob-2 {
+  animation: badge-bob 4.5s ease-in-out infinite 2s;
+}
+
+@keyframes badge-bob {
+  0%, 100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-10px) scale(1.04);
+  }
+}
+
+/* Pulsing Subtle Glow for Numbers */
+.stat-number-glow {
+  animation: stat-glow 3.5s ease-in-out infinite;
+}
+
+@keyframes stat-glow {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0px rgba(0, 113, 227, 0));
+  }
+  50% {
+    transform: scale(1.05);
+    filter: drop-shadow(0 4px 16px rgba(0, 113, 227, 0.4));
+  }
+}
+
+/* Shimmer Light Reflection */
+@keyframes shimmer-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+.animate-shimmer-sweep {
+  animation: shimmer-sweep 3s ease-in-out infinite;
 }
 
 /* RTL Specific adjustments */
