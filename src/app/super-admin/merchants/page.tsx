@@ -9,7 +9,7 @@ import { Tenant } from '@/lib/types';
 import { 
   Building2, Plus, Search, Filter, CheckCircle2, 
   Ban, ShieldCheck, ArrowUpRight, Store, Phone, Mail, Sparkles, MapPin, AlertCircle,
-  Calendar, Clock, RefreshCw, AlertTriangle, Trash2, Loader2, Edit2
+  Calendar, Clock, RefreshCw, AlertTriangle, Trash2, Loader2, Edit2, Eye
 } from 'lucide-react';
 
 const DURATION_PRESETS = [
@@ -139,6 +139,40 @@ export default function SuperAdminMerchantsPage() {
   useEffect(() => {
     fetchMerchants();
   }, []);
+
+  const [viewingTenantId, setViewingTenantId] = useState<string | null>(null);
+
+  const handleViewMerchantAccount = async (merchant: Tenant) => {
+    try {
+      setViewingTenantId(merchant.id);
+      const res = await fetch('/api/super-admin/impersonate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenant_id: merchant.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.error || (lang === 'ar' ? 'تعذر فتح الحساب الرئيسي للمتجر' : 'Failed to inspect merchant main account'));
+        return;
+      }
+
+      // Save the current super admin identifier so they can return at any time
+      const currentAdmin = localStorage.getItem('sastmhaly_user');
+      if (currentAdmin) {
+        localStorage.setItem('sastmhaly_impersonator', currentAdmin);
+      }
+      localStorage.setItem('sastmhaly_user', data.identifier);
+      localStorage.setItem('sastmhaly_branch', 'all');
+
+      // Navigate to the merchant dashboard
+      window.location.href = '/merchant/dashboard';
+    } catch (err: any) {
+      console.error(err);
+      alert(lang === 'ar' ? 'حدث خطأ أثناء الاتصال بحساب المتجر' : 'Error connecting to merchant account');
+    } finally {
+      setViewingTenantId(null);
+    }
+  };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const cleaned = e.target.value.replace(/\D/g, '').slice(0, 11);
@@ -752,6 +786,21 @@ export default function SuperAdminMerchantsPage() {
                       </td>
                       <td className="px-4 py-3.5 text-center">
                         <div className="inline-flex items-center gap-1.5 flex-wrap justify-center">
+                          {/* Eye Button: Open & Inspect Merchant Main Account */}
+                          <button
+                            onClick={() => handleViewMerchantAccount(m)}
+                            disabled={viewingTenantId === m.id}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 shadow-xs group"
+                            title={lang === 'ar' ? 'فتح ومعاينة الحساب الرئيسي لهذا المتجر لرؤية كل شيء' : 'Open Main Account & Inspect Everything'}
+                          >
+                            {viewingTenantId === m.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Eye className="w-3.5 h-3.5 group-hover:scale-115 transition-transform" />
+                            )}
+                            <span>{lang === 'ar' ? 'معاينة المتجر' : 'Inspect'}</span>
+                          </button>
+
                           {/* Renew / Extend Button */}
                           <button
                             onClick={() => handleOpenRenewModal(m)}

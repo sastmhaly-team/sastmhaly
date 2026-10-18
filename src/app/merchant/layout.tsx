@@ -6,12 +6,33 @@ import { AppSidebar } from '@/components/layout/AppSidebar';
 import { useAuth } from '@/lib/auth/context';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ShieldAlert, AlertTriangle, RefreshCw, LogOut, Clock, Phone, Sparkles } from 'lucide-react';
+import { ShieldAlert, AlertTriangle, RefreshCw, LogOut, Clock, Phone, Sparkles, Eye, ShieldCheck } from 'lucide-react';
 
 export default function MerchantLayout({ children }: { children: React.ReactNode }) {
   const { user, tenant, isLoading, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+
+  // Check if super admin is impersonating this merchant (Hook called unconditionally at top)
+  const [impersonator, setImpersonator] = React.useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const imp = localStorage.getItem('sastmhaly_impersonator');
+      setImpersonator(imp);
+    }
+  }, []);
+
+  const handleExitImpersonation = () => {
+    if (typeof window !== 'undefined' && impersonator) {
+      localStorage.setItem('sastmhaly_user', impersonator);
+      localStorage.removeItem('sastmhaly_impersonator');
+      localStorage.setItem('sastmhaly_branch', 'all');
+      window.location.href = '/super-admin/merchants';
+    }
+  };
+
+  const isPos = pathname === '/merchant/pos';
 
   // Role-based route permissions check
   const isAuthorized = React.useMemo(() => {
@@ -83,11 +104,11 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
     );
   }
 
-  // Enforce Subscription Expired or Suspended Lockout
+  // Enforce Subscription Expired or Suspended Lockout (Bypassed if Super Admin is inspecting)
   const isSuspended = tenant?.status === 'suspended';
   const isExpired = tenant?.is_expired || (tenant?.sub_expires_at && new Date(tenant.sub_expires_at).getTime() < Date.now());
 
-  if (tenant && (isSuspended || isExpired)) {
+  if (tenant && (isSuspended || isExpired) && !impersonator && user?.role !== 'super_admin') {
     return (
       <div className="min-h-screen bg-[#F7F9FC] flex flex-col items-center justify-center p-4 sm:p-6 text-center text-[#0B1730] relative">
         <div className="max-w-lg w-full bg-white border border-[#E5EAF2] rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
@@ -145,10 +166,35 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
     );
   }
 
-  const isPos = pathname === '/merchant/pos';
-
   return (
     <div className="h-screen h-[100dvh] flex flex-col bg-[#F7F9FC] overflow-hidden">
+      {/* Super Admin Impersonation Inspection Banner */}
+      {impersonator && (
+        <div className="bg-gradient-to-r from-[#0B1730] via-indigo-950 to-[#0B1730] border-b border-indigo-500/40 text-white px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-md z-50">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-2.5 w-2.5 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <Eye className="w-4 h-4 text-indigo-400 shrink-0" />
+            <span className="font-semibold text-white">
+              أنت الآن تتصفح الحساب الرئيسي لمتجر: <strong className="text-indigo-300 font-bold underline underline-offset-2">{tenant?.name || ''}</strong> بصلاحية Super Admin (رؤية شاملة لكافة البيانات)
+            </span>
+            <span className="px-2 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 text-[10px] font-mono">
+              {user?.full_name || user?.username}
+            </span>
+          </div>
+
+          <button
+            onClick={handleExitImpersonation}
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition-all shadow-xs cursor-pointer"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>العودة إلى لوحة تحكم Super Admin</span>
+          </button>
+        </div>
+      )}
+
       <AppHeader />
       <div className="flex flex-1 w-full min-h-0 overflow-hidden">
         <AppSidebar />
