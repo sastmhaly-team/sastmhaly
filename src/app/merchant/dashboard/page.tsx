@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth/context';
 import { useLanguage } from '@/lib/i18n/context';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
-import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
+import { fetchWithCache, getCachedData, invalidateCache } from '@/lib/cache/client-cache';
 import { 
   ShoppingCart, DollarSign, TrendingUp, AlertTriangle, 
   Clock, Package, Building2, Landmark, Users, ArrowRight,
@@ -91,7 +91,10 @@ export default function MerchantDashboardPage() {
 
   const loadData = (showRefreshingState = false) => {
     if (!tenant) return;
-    if (showRefreshingState) setRefreshing(true);
+    if (showRefreshingState) {
+      setRefreshing(true);
+      invalidateCache('/api/merchant/dashboard');
+    }
 
     const branchParam = activeBranchId !== 'all' ? `&branchId=${activeBranchId}` : '';
     const dateParam = `${startDate ? `&startDate=${startDate}` : ''}${endDate ? `&endDate=${endDate}` : ''}`;
@@ -119,6 +122,11 @@ export default function MerchantDashboardPage() {
 
   useEffect(() => {
     loadData();
+
+    // Revalidate live stats when user returns to tab
+    const onFocus = () => loadData();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, [tenant, activeBranchId, startDate, endDate]);
 
   const handleShareWhatsApp = async (sale: any) => {

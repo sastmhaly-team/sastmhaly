@@ -10,7 +10,7 @@ import { posAudio } from '@/lib/audio';
 import { supabase } from '@/lib/supabase';
 import { Modal } from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
-import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
+import { fetchWithCache, getCachedData, invalidateCache } from '@/lib/cache/client-cache';
 import { saveOfflineSale, saveOfflineCustomer, updateOfflineSaleCustomer } from '@/lib/offline/offline-manager';
 import { 
   Search, Barcode, ShoppingCart, Trash2, Plus, Minus, 
@@ -856,6 +856,12 @@ export default function PosPage() {
       setIsCheckoutOpen(false);
       setIsReceiptOpen(true);
       clearCart();
+
+      // Immediately invalidate dashboard & sales cache so the new sale is reflected instantly
+      try {
+        invalidateCache('/api/merchant/dashboard');
+        invalidateCache('/api/merchant/sales');
+      } catch (err) {}
     } catch (e) {
       alert('Error during checkout submission');
     } finally {

@@ -4,6 +4,8 @@
  * stock adjustments, and idempotent synchronization without duplicate records.
  */
 
+import { invalidateCache } from '@/lib/cache/client-cache';
+
 export interface OfflineSale {
   id: string;
   offline_at: string;
@@ -266,6 +268,13 @@ export async function syncPendingSales(): Promise<{ success: number; failed: num
       failedCount,
       pendingCount: remaining.length,
     });
+
+    if (successCount > 0) {
+      try {
+        invalidateCache('/api/merchant/dashboard');
+        invalidateCache('/api/merchant/sales');
+      } catch (e) {}
+    }
 
     return { success: successCount, failed: failedCount };
   } finally {

@@ -1610,17 +1610,20 @@ export async function getJournalEntries(tenantId: string): Promise<JournalEntry[
 
 export async function getMerchantDashboardKpis(tenantId: string, branchId?: string, startDate?: string, endDate?: string) {
   const supabase = getSupabase();
-  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).toISOString();
+  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
   const in30Days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   let salesQuery = supabase.from('sales')
-    .select('id, total_amount, subtotal, discount_amount, tax_amount, payment_method, created_at, branch_id, cashier_id, customer_name, sale_number, users(full_name), branches(name_ar, name_en), customers(name)')
-    .eq('tenant_id', tenantId).eq('status', 'completed');
+    .select('id, total_amount, subtotal, discount_amount, tax_amount, payment_method, created_at, branch_id, cashier_id, sale_number, users(full_name), branches(name_ar, name_en), customers(name)')
+    .eq('tenant_id', tenantId).eq('status', 'completed')
+    .order('created_at', { ascending: false });
 
   let salesTodayQuery = supabase.from('sales')
     .select('total_amount, subtotal, discount_amount, tax_amount, cashier_id, users(full_name)')
     .eq('tenant_id', tenantId).eq('status', 'completed')
-    .gte('created_at', `${today}T00:00:00`).lte('created_at', `${today}T23:59:59`);
+    .gte('created_at', startOfDay).lte('created_at', endOfDay);
 
   let expensesQuery = supabase.from('expenses').select('amount').eq('tenant_id', tenantId);
   let inventoryQuery = supabase.from('inventory_balances').select('quantity, avg_cost, products(min_stock_alert)').eq('tenant_id', tenantId);
@@ -1730,12 +1733,14 @@ export async function getMerchantDashboardKpis(tenantId: string, branchId?: stri
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split('T')[0];
+    const dateStr = d.toLocaleDateString('en-CA');
     const dayName = d.toLocaleDateString('ar-EG', { weekday: 'short' });
     daysMap.set(dateStr, { date: dateStr, label: dayName, sales: 0, count: 0 });
   }
   for (const s of sales) {
-    const dStr = s.created_at ? s.created_at.split('T')[0] : '';
+    if (!s.created_at) continue;
+    const saleDate = new Date(s.created_at);
+    const dStr = saleDate.toLocaleDateString('en-CA');
     if (daysMap.has(dStr)) {
       const entry = daysMap.get(dStr)!;
       entry.sales += Number(s.total_amount || 0);
@@ -1777,7 +1782,7 @@ export async function getMerchantDashboardKpis(tenantId: string, branchId?: stri
   const recentSales = sales.slice(0, 6).map((s: any) => ({
     id: s.id,
     sale_number: s.sale_number,
-    customer_name: s.customers?.name || s.customer_name || 'عميل نقدي',
+    customer_name: s.customers?.name || (s.customer_id ? 'عميل مسجل' : 'عميل نقدي عام'),
     total_amount: Number(s.total_amount || 0),
     payment_method: s.payment_method || 'cash',
     created_at: s.created_at,
