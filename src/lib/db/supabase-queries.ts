@@ -29,20 +29,32 @@ function uid(prefix: string) {
 
 export async function getTenants(): Promise<Tenant[]> {
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from('tenants')
-    .select(`
-      *,
-      subscriptions (
-        id, status, starts_at, expires_at,
-        subscription_plans (price_monthly)
-      )
-    `)
-    .order('created_at', { ascending: false });
+  const [tenantsRes, productsRes] = await Promise.all([
+    supabase
+      .from('tenants')
+      .select(`
+        *,
+        subscriptions (
+          id, status, starts_at, expires_at,
+          subscription_plans (price_monthly)
+        )
+      `)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('products')
+      .select('tenant_id')
+  ]);
 
-  if (error) throw new Error(error.message);
+  if (tenantsRes.error) throw new Error(tenantsRes.error.message);
 
-  return (data || []).map((r: any) => {
+  const productCountMap = new Map<string, number>();
+  for (const p of productsRes.data || []) {
+    if (p.tenant_id) {
+      productCountMap.set(p.tenant_id, (productCountMap.get(p.tenant_id) || 0) + 1);
+    }
+  }
+
+  return (tenantsRes.data || []).map((r: any) => {
     const sub = r.subscriptions?.[0];
     let daysRemaining = 0;
     let isExpired = false;
@@ -53,7 +65,15 @@ export async function getTenants(): Promise<Tenant[]> {
     } else {
       isExpired = r.status === 'suspended';
     }
-    return { ...r, sub_status: sub?.status, sub_expires_at: sub?.expires_at, days_remaining: daysRemaining, is_expired: isExpired };
+    const productsCount = productCountMap.get(r.id) || 0;
+    return { 
+      ...r, 
+      sub_status: sub?.status, 
+      sub_expires_at: sub?.expires_at, 
+      days_remaining: daysRemaining, 
+      is_expired: isExpired,
+      products_count: productsCount
+    };
   });
 }
 

@@ -701,7 +701,15 @@ export default function SuperAdminMerchantsPage() {
                             {m.name.charAt(0)}
                           </div>
                           <div>
-                            <p className="font-bold text-[#0B1730]">{m.name}</p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-bold text-[#0B1730]">{m.name}</p>
+                              <span 
+                                className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-mono font-extrabold bg-blue-50 text-blue-700 border border-blue-200"
+                                title={lang === 'ar' ? `عدد الأصناف: ${m.products_count ?? 0}` : `Products count: ${m.products_count ?? 0}`}
+                              >
+                                {m.products_count ?? 0}
+                              </span>
+                            </div>
                             {m.legal_name && (
                               <p className="text-[10px] text-[#687386]">{m.legal_name}</p>
                             )}

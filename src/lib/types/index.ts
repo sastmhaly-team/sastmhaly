@@ -30,6 +30,7 @@ export interface Tenant {
   sub_expires_at?: string;
   days_remaining?: number;
   is_expired?: boolean;
+  products_count?: number;
 }
 
 export interface TenantSettings {
