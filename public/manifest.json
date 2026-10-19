@@ -1,0 +1,23 @@
+{
+  "name": "Sastmhaly | سستمهالي لإدارة المتاجر ونقاط البيع",
+  "short_name": "Sastmhaly",
+  "description": "منصة سستمهالي المتكاملة لإدارة المتاجر، نقاط البيع، المخازن، والحسابات",
+  "start_url": "/merchant/dashboard",
+  "display": "standalone",
+  "background_color": "#F7F9FC",
+  "theme_color": "#246BFD",
+  "dir": "rtl",
+  "lang": "ar",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

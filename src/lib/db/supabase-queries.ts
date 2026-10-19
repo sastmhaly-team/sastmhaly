@@ -1068,6 +1068,8 @@ export async function closeCashSession(tenantId: string, sessionId: string, coun
 // ============================================================================
 
 export interface CreateSaleInput {
+  id?: string;
+  sale_number?: string;
   tenant_id: string; branch_id: string; register_id: string; session_id: string;
   cashier_id: string; customer_id?: string;
   items: {
@@ -1083,7 +1085,26 @@ export interface CreateSaleInput {
 
 export async function commitSaleTransaction(input: CreateSaleInput): Promise<Sale & { items?: any[] }> {
   const supabase = getSupabase();
-  const saleId = `sale_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  // 0. Idempotency Check: prevent duplicate sales if already synced or submitted
+  if (input.id || input.sale_number) {
+    let checkQuery = supabase.from('sales').select('*, items:sale_items(*)').eq('tenant_id', input.tenant_id);
+    if (input.id && input.sale_number) {
+      checkQuery = checkQuery.or(`id.eq.${input.id},sale_number.eq.${input.sale_number}`);
+    } else if (input.id) {
+      checkQuery = checkQuery.eq('id', input.id);
+    } else if (input.sale_number) {
+      checkQuery = checkQuery.eq('sale_number', input.sale_number);
+    }
+
+    const { data: existingSale } = await checkQuery.maybeSingle();
+    if (existingSale) {
+      console.log(`[Idempotent Sale] Sale already exists in database (ID: ${existingSale.id}, Number: ${existingSale.sale_number}), returning without duplicate creation.`);
+      return existingSale as any;
+    }
+  }
+
+  const saleId = input.id || `sale_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
   // 1. Fetch branch & tenant settings in parallel
   const [branchRes, settingsRes] = await Promise.all([
@@ -1100,7 +1121,7 @@ export async function commitSaleTransaction(input: CreateSaleInput): Promise<Sal
       branchCode = defaultBranch.code || 'BR';
     }
   }
-  const saleNumber = `INV-${branchCode}-${Date.now().toString().slice(-6)}`;
+  const saleNumber = input.sale_number || `INV-${branchCode}-${Date.now().toString().slice(-6)}`;
 
   const cashierId = input.cashier_id || 'admin';
   const registerId = input.register_id || `reg_${branchId}_01`;
@@ -1463,11 +1484,28 @@ export async function getCustomers(tenantId: string): Promise<Customer[]> {
 }
 
 export async function createCustomer(tenantId: string, data: {
-  code: string; name: string; phone: string; email?: string;
+  id?: string; code: string; name: string; phone: string; email?: string;
   address?: string; tax_id?: string; credit_limit?: number;
 }): Promise<Customer> {
   const supabase = getSupabase();
-  const id = uid('cust');
+
+  // If customer already exists with this phone or ID for this tenant, return it
+  if (data.phone || data.id) {
+    let q = supabase.from('customers').select('*').eq('tenant_id', tenantId);
+    if (data.id && data.phone) {
+      q = q.or(`id.eq.${data.id},phone.eq.${data.phone}`);
+    } else if (data.id) {
+      q = q.eq('id', data.id);
+    } else if (data.phone) {
+      q = q.eq('phone', data.phone);
+    }
+    const { data: existing } = await q.maybeSingle();
+    if (existing) {
+      return existing as Customer;
+    }
+  }
+
+  const id = data.id || uid('cust');
   const { data: customer, error } = await supabase.from('customers').insert({
     id, tenant_id: tenantId, code: data.code, name: data.name, phone: data.phone,
     email: data.email || null, address: data.address || null,
@@ -1573,13 +1611,23 @@ export async function getJournalEntries(tenantId: string): Promise<JournalEntry[
 export async function getMerchantDashboardKpis(tenantId: string, branchId?: string, startDate?: string, endDate?: string) {
   const supabase = getSupabase();
   const today = new Date().toISOString().split('T')[0];
+  const in30Days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-  let salesQuery = supabase.from('sales').select('total_amount, subtotal, discount_amount, tax_amount').eq('tenant_id', tenantId).eq('status', 'completed');
-  let salesTodayQuery = supabase.from('sales').select('total_amount, subtotal, discount_amount, tax_amount').eq('tenant_id', tenantId).eq('status', 'completed').gte('created_at', `${today}T00:00:00`).lte('created_at', `${today}T23:59:59`);
+  let salesQuery = supabase.from('sales')
+    .select('id, total_amount, subtotal, discount_amount, tax_amount, payment_method, created_at, branch_id, cashier_id, customer_name, sale_number, users(full_name), branches(name_ar, name_en), customers(name)')
+    .eq('tenant_id', tenantId).eq('status', 'completed');
+
+  let salesTodayQuery = supabase.from('sales')
+    .select('total_amount, subtotal, discount_amount, tax_amount, cashier_id, users(full_name)')
+    .eq('tenant_id', tenantId).eq('status', 'completed')
+    .gte('created_at', `${today}T00:00:00`).lte('created_at', `${today}T23:59:59`);
+
   let expensesQuery = supabase.from('expenses').select('amount').eq('tenant_id', tenantId);
-  let inventoryQuery = supabase.from('inventory_balances').select('quantity, avg_cost').eq('tenant_id', tenantId);
+  let inventoryQuery = supabase.from('inventory_balances').select('quantity, avg_cost, products(min_stock_alert)').eq('tenant_id', tenantId);
   let topProductsQuery = supabase.from('sale_items').select('quantity, line_total, cost_price, product_id, products(name_en, name_ar, sku, cost_price), sales!inner(tenant_id, branch_id, status, created_at)')
     .eq('sales.tenant_id', tenantId).eq('sales.status', 'completed');
+  let batchesQuery = supabase.from('product_batches').select('id, expiry_date, quantity').eq('tenant_id', tenantId).gt('quantity', 0).lte('expiry_date', in30Days);
+  let branchesQuery = supabase.from('branches').select('id, name_ar, name_en').eq('tenant_id', tenantId);
 
   if (branchId) {
     salesQuery = salesQuery.eq('branch_id', branchId);
@@ -1587,6 +1635,7 @@ export async function getMerchantDashboardKpis(tenantId: string, branchId?: stri
     expensesQuery = expensesQuery.eq('branch_id', branchId);
     inventoryQuery = inventoryQuery.eq('branch_id', branchId);
     topProductsQuery = topProductsQuery.eq('sales.branch_id', branchId);
+    batchesQuery = batchesQuery.eq('branch_id', branchId);
   }
 
   if (startDate) {
@@ -1601,15 +1650,14 @@ export async function getMerchantDashboardKpis(tenantId: string, branchId?: stri
     topProductsQuery = topProductsQuery.lte('sales.created_at', `${endDate}T23:59:59`);
   }
 
-  const [salesRes, salesTodayRes, expensesRes, inventoryRes, topProductsRes, lowStockRes] = await Promise.all([
+  const [salesRes, salesTodayRes, expensesRes, inventoryRes, topProductsRes, batchesRes, branchesRes] = await Promise.all([
     salesQuery,
     salesTodayQuery,
     expensesQuery,
     inventoryQuery,
     topProductsQuery,
-    supabase.from('inventory_balances')
-      .select('quantity, products!inner(min_stock_alert)')
-      .eq('tenant_id', tenantId),
+    batchesQuery,
+    branchesQuery,
   ]);
 
   const sales = salesRes.data || [];
@@ -1641,18 +1689,114 @@ export async function getMerchantDashboardKpis(tenantId: string, branchId?: stri
   }
   const topProducts = Array.from(productMap.values()).sort((a, b) => b.total_sold - a.total_sold).slice(0, 5);
 
-  const lowStockCount = (lowStockRes.data || []).filter((r: any) => r.quantity <= (r.products?.min_stock_alert || 5)).length;
+  // Inventory Health counts
+  let goodStockCount = 0;
+  let lowStockCount = 0;
+  let outOfStockCount = 0;
+  for (const r of inventory) {
+    const minAlert = (r as any).products?.min_stock_alert || 5;
+    const qty = Number(r.quantity || 0);
+    if (qty <= 0) outOfStockCount++;
+    else if (qty <= minAlert) lowStockCount++;
+    else goodStockCount++;
+  }
+
+  const nearExpiryCount = batchesRes.data?.length || 0;
 
   const grossProfit = Math.max(0, netSales - cogs);
   const grossMarginPct = netSales > 0 ? ((grossProfit / netSales) * 100).toFixed(1) : '0.0';
   const netOperatingProfit = grossProfit - operatingExpenses;
+
+  // 1. Payment Methods Breakdown
+  const paymentMethods: Record<'cash' | 'card' | 'mobile_wallet' | 'customer_credit', { count: number; total: number }> = {
+    cash: { count: 0, total: 0 },
+    card: { count: 0, total: 0 },
+    mobile_wallet: { count: 0, total: 0 },
+    customer_credit: { count: 0, total: 0 },
+  };
+  for (const s of sales) {
+    const pm = (s.payment_method || 'cash') as keyof typeof paymentMethods;
+    if (paymentMethods[pm]) {
+      paymentMethods[pm].count += 1;
+      paymentMethods[pm].total += Number(s.total_amount || 0);
+    } else {
+      paymentMethods.cash.count += 1;
+      paymentMethods.cash.total += Number(s.total_amount || 0);
+    }
+  }
+
+  // 2. Daily Sales Trend (last 7 days)
+  const daysMap = new Map<string, { date: string; label: string; sales: number; count: number }>();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().split('T')[0];
+    const dayName = d.toLocaleDateString('ar-EG', { weekday: 'short' });
+    daysMap.set(dateStr, { date: dateStr, label: dayName, sales: 0, count: 0 });
+  }
+  for (const s of sales) {
+    const dStr = s.created_at ? s.created_at.split('T')[0] : '';
+    if (daysMap.has(dStr)) {
+      const entry = daysMap.get(dStr)!;
+      entry.sales += Number(s.total_amount || 0);
+      entry.count += 1;
+    }
+  }
+  const dailySalesTrend = Array.from(daysMap.values());
+
+  // 3. Top Cashier of Today
+  const cashierMap = new Map<string, { name: string; sales: number; transactions: number }>();
+  for (const s of salesToday) {
+    const cName = (s as any).users?.full_name || 'الكاشير';
+    const cId = s.cashier_id || cName;
+    if (!cashierMap.has(cId)) {
+      cashierMap.set(cId, { name: cName, sales: 0, transactions: 0 });
+    }
+    const entry = cashierMap.get(cId)!;
+    entry.sales += Number(s.total_amount || 0);
+    entry.transactions += 1;
+  }
+  const topCashiers = Array.from(cashierMap.values()).sort((a, b) => b.sales - a.sales);
+  const topCashier = topCashiers.length > 0 ? topCashiers[0] : null;
+
+  // 4. Branch Performance
+  const branchMap = new Map<string, { id: string; name_ar: string; name_en: string; totalSales: number; salesCount: number }>();
+  for (const b of branchesRes.data || []) {
+    branchMap.set(b.id, { id: b.id, name_ar: b.name_ar, name_en: b.name_en, totalSales: 0, salesCount: 0 });
+  }
+  for (const s of sales) {
+    if (s.branch_id && branchMap.has(s.branch_id)) {
+      const entry = branchMap.get(s.branch_id)!;
+      entry.totalSales += Number(s.total_amount || 0);
+      entry.salesCount += 1;
+    }
+  }
+  const branchPerformance = Array.from(branchMap.values()).sort((a, b) => b.totalSales - a.totalSales);
+
+  // 5. Recent Sales (up to 6)
+  const recentSales = sales.slice(0, 6).map((s: any) => ({
+    id: s.id,
+    sale_number: s.sale_number,
+    customer_name: s.customers?.name || s.customer_name || 'عميل نقدي',
+    total_amount: Number(s.total_amount || 0),
+    payment_method: s.payment_method || 'cash',
+    created_at: s.created_at,
+    cashier_name: s.users?.full_name || 'الكاشير',
+    branch_name: s.branches?.name_ar || s.branches?.name_en || 'الفرع الرئيسي',
+  }));
 
   return {
     salesToday: salesTodayTotal, transactionsToday: salesToday.length,
     grossSales, netSales, cogs, grossProfit, grossMarginPct,
     operatingExpenses, netOperatingProfit,
     inventoryValuation, inventoryUnits,
-    nearExpiryCount: 0, lowStockCount, topProducts
+    nearExpiryCount, lowStockCount, outOfStockCount, goodStockCount,
+    topProducts,
+    paymentMethods,
+    dailySalesTrend,
+    recentSales,
+    topCashier,
+    branchPerformance,
   };
 }
 

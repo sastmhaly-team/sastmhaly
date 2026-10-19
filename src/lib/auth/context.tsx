@@ -49,10 +49,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loginAs = async (identifier: string): Promise<boolean> => {
+    // 1. If offline, try restoring cached session immediately
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      const cached = localStorage.getItem('sastmhaly_cached_session');
+      if (cached) {
+        try {
+          const data = JSON.parse(cached);
+          if (data.user) {
+            setUser(data.user);
+            setTenant(data.tenant || null);
+            setBranches(data.branches || []);
+            const isMainAccount = data.user.role === 'merchant_owner' || data.user.role === 'owner' || data.user.role === 'admin' || data.user.role === 'super_admin';
+            const branchId = !isMainAccount && data.user.branch_id 
+              ? data.user.branch_id 
+              : (localStorage.getItem('sastmhaly_branch') || 'all');
+            setActiveBranchIdState(branchId);
+            return true;
+          }
+        } catch {}
+      }
+    }
+
     try {
       const res = await fetch(`/api/auth/session?username=${encodeURIComponent(identifier)}`);
       if (!res.ok) {
+        // If server actively rejected the user, clear
         localStorage.removeItem('sastmhaly_user');
+        localStorage.removeItem('sastmhaly_cached_session');
         setUser(null);
         return false;
       }
@@ -69,8 +92,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setActiveBranchIdState(branchId);
       
       localStorage.setItem('sastmhaly_user', identifier);
+      // Persist session snapshot for offline access
+      localStorage.setItem('sastmhaly_cached_session', JSON.stringify({
+        user: data.user,
+        tenant: data.tenant,
+        branches: data.branches,
+      }));
       return true;
     } catch {
+      // Network failure (offline / timeout) - Fallback to cached session instead of logging out!
+      const cached = localStorage.getItem('sastmhaly_cached_session');
+      if (cached) {
+        try {
+          const data = JSON.parse(cached);
+          if (data.user) {
+            console.warn('[Offline Mode] Restored user session from local cache');
+            setUser(data.user);
+            setTenant(data.tenant || null);
+            setBranches(data.branches || []);
+            const isMainAccount = data.user.role === 'merchant_owner' || data.user.role === 'owner' || data.user.role === 'admin' || data.user.role === 'super_admin';
+            const branchId = !isMainAccount && data.user.branch_id 
+              ? data.user.branch_id 
+              : (localStorage.getItem('sastmhaly_branch') || 'all');
+            setActiveBranchIdState(branchId);
+            return true;
+          }
+        } catch {}
+      }
+
       localStorage.removeItem('sastmhaly_user');
       setUser(null);
       return false;

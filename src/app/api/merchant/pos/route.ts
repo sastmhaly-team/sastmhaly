@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { commitSaleTransaction, getActiveCashSession, getCustomers, getProducts, getTenantSettings } from '@/lib/db/supabase-queries';
+import { commitSaleTransaction, getActiveCashSession, getCustomers, getProducts, getTenantSettings, getCategories, getUnits } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -11,6 +11,8 @@ export async function GET(request: NextRequest) {
     const customers = await getCustomers(tenantId);
     const activeSession = await getActiveCashSession(tenantId, branchId);
     const { tenant, settings } = await getTenantSettings(tenantId);
+    const categories = await getCategories(tenantId);
+    const units = await getUnits(tenantId);
 
     return NextResponse.json({
       products,
@@ -18,6 +20,8 @@ export async function GET(request: NextRequest) {
       activeSession,
       tenant,
       settings,
+      categories,
+      units,
     });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch POS initial state' }, { status: 500 });
@@ -28,6 +32,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const {
+      id,
+      sale_number,
       tenant_id,
       branch_id,
       register_id,
@@ -53,8 +59,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing branch or cashier context' }, { status: 400 });
     }
 
-    // Atomic transaction execution
+    // Atomic transaction execution (with duplicate prevention)
     const sale = await commitSaleTransaction({
+      id: id || undefined,
+      sale_number: sale_number || undefined,
       tenant_id: tenant_id || 'tenant_albaraka',
       branch_id,
       register_id: register_id || '',

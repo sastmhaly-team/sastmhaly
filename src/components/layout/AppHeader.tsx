@@ -11,6 +11,8 @@ import { NotificationBell } from './NotificationBell';
 import { useNav } from '@/lib/nav-context';
 import { LogOut, ShieldCheck, ShoppingCart, User as UserIcon, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
+import { OfflineIndicator } from '@/components/offline/OfflineIndicator';
+
 export function AppHeader() {
   const { user, tenant, logout } = useAuth();
   const { t, lang } = useLanguage();
@@ -106,6 +108,9 @@ export function AppHeader() {
         {/* Right Tools & User Info */}
         <div className="flex items-center gap-2.5 sm:gap-3">
           
+          {/* Offline / Online Status Indicator & Sync Action */}
+          <OfflineIndicator />
+
           {/* Active Branch Selector for multi-branch merchants */}
           {user && user.role !== 'super_admin' && (
             <BranchSelector />

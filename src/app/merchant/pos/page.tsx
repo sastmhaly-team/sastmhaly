@@ -11,12 +11,15 @@ import { supabase } from '@/lib/supabase';
 import { Modal } from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
+import { saveOfflineSale, saveOfflineCustomer, updateOfflineSaleCustomer } from '@/lib/offline/offline-manager';
 import { 
   Search, Barcode, ShoppingCart, Trash2, Plus, Minus, 
   CreditCard, Banknote, Smartphone, User, Pause, Play, 
   Printer, CheckCircle2, Scale, ArrowRight, X, AlertCircle,
-  UserCheck, Users, ChevronRight, PanelLeftClose, PanelLeftOpen, Radio
+  UserCheck, Users, ChevronRight, PanelLeftClose, PanelLeftOpen, Radio,
+  PackagePlus, Sparkles, Tag, MessageCircle
 } from 'lucide-react';
+import { InvoiceShareModal } from '@/components/invoice/InvoiceShareModal';
 
 export default function PosPage() {
   const { tenant, user, activeBranchId, branches } = useAuth();
@@ -40,6 +43,7 @@ export default function PosPage() {
   const [mobileTab, setMobileTab] = useState<'products' | 'cart'>('products');
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isWeightOpen, setIsWeightOpen] = useState(false);
   const [isHoldOpen, setIsHoldOpen] = useState(false);
   const [activeWeightedProduct, setActiveWeightedProduct] = useState<Product | null>(null);
@@ -60,6 +64,20 @@ export default function PosPage() {
   const [quickCustomerName, setQuickCustomerName] = useState('');
   const [quickCustomerPhone, setQuickCustomerPhone] = useState('');
   const [savingQuickCustomer, setSavingQuickCustomer] = useState(false);
+
+  // Quick Add Product Modal State (For uncataloged barcode scans)
+  const [isQuickProductOpen, setIsQuickProductOpen] = useState(false);
+  const [quickBarcode, setQuickBarcode] = useState('');
+  const [quickNameAr, setQuickNameAr] = useState('');
+  const [quickNameEn, setQuickNameEn] = useState('');
+  const [quickSellingPrice, setQuickSellingPrice] = useState('');
+  const [quickCostPrice, setQuickCostPrice] = useState('');
+  const [quickInitialStock, setQuickInitialStock] = useState('10');
+  const [quickCategory, setQuickCategory] = useState('');
+  const [quickUnit, setQuickUnit] = useState('');
+  const [savingQuickProduct, setSavingQuickProduct] = useState(false);
+  const [availableCategories, setAvailableCategories] = useState<{ id: string; name_ar: string; name_en: string }[]>([]);
+  const [availableUnits, setAvailableUnits] = useState<{ id: string; name_ar: string; name_en: string }[]>([]);
 
   // Store live settings and tenant details
   const [vatEnabled, setVatEnabled] = useState<boolean>(true);
@@ -85,41 +103,226 @@ export default function PosPage() {
   const handleSaveQuickCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tenant) return;
-    if (!quickCustomerName.trim() || !quickCustomerPhone.trim()) {
+    const name = quickCustomerName.trim();
+    const phone = quickCustomerPhone.trim();
+    if (!name || !phone) {
       alert(lang === 'ar' ? 'يرجى إدخال اسم ورقم هاتف العميل' : 'Please enter customer name and phone');
       return;
     }
+
     try {
       setSavingQuickCustomer(true);
-      const res = await fetch('/api/merchant/customers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let createdCustomer: Customer;
+
+      // 1. If currently offline, create offline customer immediately
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        createdCustomer = {
+          id: `cust_off_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
           tenant_id: tenant.id,
-          name: quickCustomerName.trim(),
-          phone: quickCustomerPhone.trim(),
+          name,
+          phone,
           code: `CUST-${Date.now().toString().slice(-4)}`,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const created = data.customer;
-        if (created) {
-          setCustomers(prev => [created, ...prev]);
-          setSelectedCustomer(created);
-        }
-        alert(lang === 'ar' ? 'تم تسجيل وحفظ العميل بنجاح!' : 'Customer registered successfully!');
-        setIsQuickCustomerOpen(false);
-        setQuickCustomerName('');
-        setQuickCustomerPhone('');
+          current_balance: 0,
+          credit_limit: 1000,
+          loyalty_points: 0,
+        } as Customer;
+
+        // Queue for background sync when back online
+        saveOfflineCustomer({
+          id: createdCustomer.id,
+          tenant_id: tenant.id,
+          name: createdCustomer.name,
+          phone: createdCustomer.phone,
+          code: createdCustomer.code,
+          created_at: new Date().toISOString(),
+        });
       } else {
-        const err = await res.json();
-        alert(err.error || 'Failed to save customer');
+        // 2. Online attempt with fallback
+        try {
+          const res = await fetch('/api/merchant/customers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tenant_id: tenant.id,
+              name,
+              phone,
+              code: `CUST-${Date.now().toString().slice(-4)}`,
+            }),
+          });
+
+          if (!res.ok) {
+            const err = await res.json();
+            alert(err.error || 'Failed to save customer');
+            setSavingQuickCustomer(false);
+            return;
+          }
+
+          const data = await res.json();
+          createdCustomer = data.customer;
+        } catch (fetchErr) {
+          // If network failed midway, fallback gracefully to offline customer without throwing TypeError!
+          console.warn('[Offline Customer Fallback] Network failed, preserving customer offline', fetchErr);
+          createdCustomer = {
+            id: `cust_off_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+            tenant_id: tenant.id,
+            name,
+            phone,
+            code: `CUST-${Date.now().toString().slice(-4)}`,
+            current_balance: 0,
+            credit_limit: 1000,
+            loyalty_points: 0,
+          } as Customer;
+
+          saveOfflineCustomer({
+            id: createdCustomer.id,
+            tenant_id: tenant.id,
+            name: createdCustomer.name,
+            phone: createdCustomer.phone,
+            code: createdCustomer.code,
+            created_at: new Date().toISOString(),
+          });
+        }
       }
-    } catch {
-      alert('Error saving customer');
+
+      // Add to local state customers
+      setCustomers(prev => [createdCustomer, ...prev]);
+      setSelectedCustomer(createdCustomer);
+
+      // If an invoice is currently completed and open on the receipt modal, update it!
+      if (completedSale) {
+        setCompletedSale(prev => prev ? {
+          ...prev,
+          customer_id: createdCustomer.id,
+          customer_name: createdCustomer.name,
+        } : null);
+
+        // Also update the offline sale if it was queued
+        updateOfflineSaleCustomer(completedSale.id, createdCustomer.id, createdCustomer.name);
+        if (completedSale.sale_number) {
+          updateOfflineSaleCustomer(completedSale.sale_number, createdCustomer.id, createdCustomer.name);
+        }
+      }
+
+      alert(
+        typeof navigator !== 'undefined' && !navigator.onLine
+          ? (lang === 'ar' ? 'تم تسجيل وحفظ العميل وربطه بالفاتورة بنجاح (وضع أوفلاين)!' : 'Customer registered and attached to invoice (Offline)!')
+          : (lang === 'ar' ? 'تم تسجيل وحفظ العميل وربطه بالفاتورة بنجاح!' : 'Customer registered successfully!')
+      );
+
+      setIsQuickCustomerOpen(false);
+      setQuickCustomerName('');
+      setQuickCustomerPhone('');
+    } catch (err: any) {
+      console.error('Error saving customer:', err);
+      alert(lang === 'ar' ? 'حدث خطأ أثناء حفظ العميل' : 'Error saving customer');
     } finally {
       setSavingQuickCustomer(false);
+    }
+  };
+
+  const handleSaveQuickProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tenant || !currentBranch) return;
+    if (!quickNameAr.trim()) {
+      alert(lang === 'ar' ? 'يرجى إدخال اسم الصنف بالعربية' : 'Please enter product name in Arabic');
+      return;
+    }
+    const price = parseFloat(quickSellingPrice);
+    if (isNaN(price) || price <= 0) {
+      alert(lang === 'ar' ? 'يرجى إدخال سعر بيع صحيح' : 'Please enter a valid selling price');
+      return;
+    }
+
+    try {
+      setSavingQuickProduct(true);
+      const barcodeVal = quickBarcode.trim() || `GEN-${Date.now().toString().slice(-6)}`;
+      const costVal = quickCostPrice ? parseFloat(quickCostPrice) : price * 0.7;
+      const stockVal = quickInitialStock ? parseFloat(quickInitialStock) : 10;
+      const catVal = quickCategory || (availableCategories[0]?.id || 'cat_general');
+      const unitVal = quickUnit || (availableUnits[0]?.id || 'unit_piece');
+
+      const productPayload = {
+        tenant_id: tenant.id,
+        sku: `SKU-${Date.now().toString().slice(-6)}`,
+        barcode: barcodeVal,
+        name_ar: quickNameAr.trim(),
+        name_en: quickNameEn.trim() || quickNameAr.trim(),
+        category_id: catVal,
+        unit_id: unitVal,
+        selling_price: price,
+        cost_price: isNaN(costVal) ? 0 : costVal,
+        tax_rate: vatEnabled ? 14 : 0,
+        initial_stock: isNaN(stockVal) ? 10 : stockVal,
+        branch_id: currentBranch.id,
+      };
+
+      let newProduct: Product;
+
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        // Offline product creation fallback
+        newProduct = {
+          id: `prod_off_${Date.now()}`,
+          tenant_id: tenant.id,
+          sku: productPayload.sku,
+          barcode: productPayload.barcode,
+          name_ar: productPayload.name_ar,
+          name_en: productPayload.name_en,
+          category_id: productPayload.category_id,
+          unit_id: productPayload.unit_id,
+          cost_price: productPayload.cost_price,
+          selling_price: productPayload.selling_price,
+          tax_rate: productPayload.tax_rate,
+          current_stock: productPayload.initial_stock,
+          track_stock: 1,
+          is_active: 1,
+          category_name_ar: availableCategories.find(c => c.id === catVal)?.name_ar || 'عام',
+          category_name_en: availableCategories.find(c => c.id === catVal)?.name_en || 'General',
+          unit_name_ar: availableUnits.find(u => u.id === unitVal)?.name_ar || 'قطعة',
+        } as Product;
+      } else {
+        const res = await fetch('/api/merchant/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(productPayload),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          alert(err.error || 'Failed to save product');
+          setSavingQuickProduct(false);
+          return;
+        }
+
+        const data = await res.json();
+        newProduct = {
+          ...data.product,
+          current_stock: stockVal,
+          category_name_ar: availableCategories.find(c => c.id === catVal)?.name_ar || 'عام',
+          category_name_en: availableCategories.find(c => c.id === catVal)?.name_en || 'General',
+          unit_name_ar: availableUnits.find(u => u.id === unitVal)?.name_ar || 'قطعة',
+        };
+      }
+
+      // Add to products list in state
+      setProducts(prev => [newProduct, ...prev]);
+
+      // Automatically add product to current cart
+      addToCart(newProduct, 1);
+      posAudio.playBeep();
+
+      // Close modal & reset fields
+      setIsQuickProductOpen(false);
+      setQuickBarcode('');
+      setQuickNameAr('');
+      setQuickNameEn('');
+      setQuickSellingPrice('');
+      setQuickCostPrice('');
+      setQuickInitialStock('10');
+    } catch (err) {
+      console.error('Error saving quick product', err);
+      alert('Error saving product');
+    } finally {
+      setSavingQuickProduct(false);
     }
   };
 
@@ -140,6 +343,8 @@ export default function PosPage() {
           if (cached.settings.receipt_footer) setReceiptFooter(cached.settings.receipt_footer);
         }
         if (cached.tenant) setLiveTenant(cached.tenant);
+        if (cached.categories) setAvailableCategories(cached.categories);
+        if (cached.units) setAvailableUnits(cached.units);
       }
 
       await fetchWithCache<any>(url, (data) => {
@@ -155,6 +360,8 @@ export default function PosPage() {
         if (data.tenant) {
           setLiveTenant(data.tenant);
         }
+        if (data.categories) setAvailableCategories(data.categories);
+        if (data.units) setAvailableUnits(data.units);
       });
     } catch (e) {
       console.error(e);
@@ -285,11 +492,17 @@ export default function PosPage() {
     }
 
     posAudio.playVoid();
-    alert(
-      lang === 'ar'
-        ? `عفواً، الصنف ذو الباركود (${query}) غير مسجل في الكتالوج!`
-        : `Product with barcode (${query}) was not found in catalog!`
-    );
+    // Unrecognized barcode: Open Quick Add Product Modal with barcode prefilled
+    setQuickBarcode(query);
+    setQuickNameAr('');
+    setQuickNameEn('');
+    setQuickSellingPrice('');
+    setQuickCostPrice('');
+    setQuickInitialStock('10');
+    setQuickCategory(availableCategories[0]?.id || 'cat_general');
+    setQuickUnit(availableUnits[0]?.id || 'unit_piece');
+    setIsQuickProductOpen(true);
+    setSearchQuery('');
   };
 
   const handleBarcodeSubmit = (e: React.FormEvent) => {
@@ -557,20 +770,61 @@ export default function PosPage() {
         payment_method: paymentMethod,
       };
 
-      const res = await fetch('/api/merchant/pos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      let finalSaleData: any = null;
 
-      if (!res.ok) {
-        const err = await res.json();
-        alert(err.error || 'Failed to complete sale');
-        setIsSubmitting(false);
-        return;
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        // Direct offline transaction
+        const offSale = saveOfflineSale(payload);
+        finalSaleData = {
+          ...offSale,
+          created_at: offSale.offline_at,
+          branch_name: currentBranch.name_ar || currentBranch.name_en,
+          cashier_name: user?.full_name || user?.username,
+          customer_name: selectedCustomer?.name,
+          items: cart.map(it => ({
+            product_name: it.product.name_ar || it.product.name_en,
+            quantity: it.quantity,
+            unit_price: it.unit_price,
+            line_total: it.unit_price * it.quantity,
+          })),
+        };
+      } else {
+        try {
+          const res = await fetch('/api/merchant/pos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+
+          if (!res.ok) {
+            const err = await res.json();
+            alert(err.error || 'Failed to complete sale');
+            setIsSubmitting(false);
+            return;
+          }
+
+          const json = await res.json();
+          finalSaleData = json.sale;
+        } catch (networkErr) {
+          // If network failed midway, seamlessly fallback to offline transaction
+          console.warn('[Offline Fallback] Network failed during checkout, preserving sale offline', networkErr);
+          const offSale = saveOfflineSale(payload);
+          finalSaleData = {
+            ...offSale,
+            created_at: offSale.offline_at,
+            branch_name: currentBranch.name_ar || currentBranch.name_en,
+            cashier_name: user?.full_name || user?.username,
+            customer_name: selectedCustomer?.name,
+            items: cart.map(it => ({
+              product_name: it.product.name_ar || it.product.name_en,
+              quantity: it.quantity,
+              unit_price: it.unit_price,
+              line_total: it.unit_price * it.quantity,
+            })),
+          };
+        }
       }
 
-      const json = await res.json();
       const soldItems = cart.map(item => ({
         productId: item.product.id,
         quantity: item.quantity,
@@ -585,8 +839,8 @@ export default function PosPage() {
         return { ...p, current_stock: updated };
       }));
 
-      // 2. Broadcast sold items in real-time to all other POS terminals in this branch
-      if (currentBranch?.id) {
+      // 2. Broadcast sold items in real-time to all other POS terminals in this branch (if online)
+      if (currentBranch?.id && navigator.onLine) {
         supabase.channel(`pos_branch_${currentBranch.id}`).send({
           type: 'broadcast',
           event: 'stock_change',
@@ -598,7 +852,7 @@ export default function PosPage() {
       }
 
       posAudio.playSuccess();
-      setCompletedSale(json.sale);
+      setCompletedSale(finalSaleData);
       setIsCheckoutOpen(false);
       setIsReceiptOpen(true);
       clearCart();
@@ -1238,8 +1492,12 @@ export default function PosPage() {
               </div>
               <h3 className="font-bold text-sm tracking-tight">{liveTenant?.name || tenant?.name || currentBranch?.name_ar || 'سستمهالي'}</h3>
               <p className="text-[10px] text-gray-600">{currentBranch?.address || 'القاهرة، مصر'}</p>
-              <p className="text-[10px] text-gray-600">{currentBranch?.phone || '01203356780'}</p>
               <div className="font-bold pt-1 text-xs">{completedSale?.sale_number}</div>
+              {completedSale?.sale_number?.startsWith('OFF-') && (
+                <div className="text-[10px] text-amber-700 font-bold bg-amber-50 border border-amber-300 rounded px-1.5 py-0.5 mt-0.5">
+                  ⚡ فاتورة أوفلاين (سيتم مزامنتها تلقائياً عند عودة الإنترنت)
+                </div>
+              )}
               <div className="border-t border-dashed border-black my-1.5"></div>
             </div>
 
@@ -1354,6 +1612,15 @@ export default function PosPage() {
             )}
             <div className="flex items-center gap-2 ms-auto">
               <button
+                type="button"
+                onClick={() => setIsShareModalOpen(true)}
+                className="px-3.5 py-2 rounded-lg bg-[#25D366] hover:bg-[#20bd5a] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                title={lang === 'ar' ? 'مشاركة الفاتورة عبر واتساب (صورة أو نص)' : 'Share Receipt on WhatsApp (Photo or Text)'}
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>{lang === 'ar' ? 'واتساب' : 'WhatsApp'}</span>
+              </button>
+              <button
                 onClick={() => setIsReceiptOpen(false)}
                 className="px-4 py-2 rounded-lg border border-[#E5EAF2] text-xs font-bold text-[#687386] cursor-pointer"
               >
@@ -1371,6 +1638,19 @@ export default function PosPage() {
 
         </div>
       </Modal>
+
+      {/* WhatsApp Share Receipt Modal (Photo or Text) */}
+      <InvoiceShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        sale={completedSale}
+        tenantName={liveTenant?.name || tenant?.name || currentBranch?.name_ar || 'سستمهالي'}
+        tenantLogoUrl={liveTenant?.logo_url || tenant?.logo_url}
+        receiptFooter={receiptFooter}
+        branchAddress={currentBranch?.address || 'القاهرة، مصر'}
+        branchPhone={currentBranch?.phone || '01558516263'}
+        isRtl={lang === 'ar'}
+      />
 
       {/* Quick Register Customer Modal (Name & Phone only) */}
       <Modal
@@ -1420,6 +1700,179 @@ export default function PosPage() {
               className="px-4 py-1.5 bg-[#246BFD] hover:bg-[#1A54D4] text-white font-bold rounded-lg shadow-xs cursor-pointer"
             >
               {savingQuickCustomer ? t('loading') : (lang === 'ar' ? 'حفظ العميل فوراً' : 'Save Customer')}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Quick Add Product Modal (Triggered when uncataloged barcode is scanned) */}
+      <Modal
+        isOpen={isQuickProductOpen}
+        onClose={() => setIsQuickProductOpen(false)}
+        title={lang === 'ar' ? 'إضافة صنف جديد سريعاً إلى الكتالوج والسلة' : 'Quick Add New Product to Catalog & Cart'}
+        maxWidth="md"
+      >
+        <form onSubmit={handleSaveQuickProduct} className="space-y-4 text-xs">
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-blue-900">
+            <div className="flex items-center gap-2">
+              <Barcode className="w-5 h-5 text-[#246BFD]" />
+              <div>
+                <p className="text-[11px] text-blue-700 font-semibold">
+                  {lang === 'ar' ? 'باركود الصنف الممسوح:' : 'Scanned Barcode:'}
+                </p>
+                <p className="text-sm font-mono font-bold text-[#0B1730] tracking-wider">
+                  {quickBarcode || '—'}
+                </p>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded-full bg-blue-200/70 text-blue-800 text-[10px] font-bold">
+              {lang === 'ar' ? 'صنف جديد غير مسجل' : 'New Product'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-[#0B1730] mb-1">
+                {lang === 'ar' ? 'اسم الصنف بالعربية' : 'Product Name (Arabic)'} *
+              </label>
+              <input
+                type="text"
+                required
+                autoFocus
+                value={quickNameAr}
+                onChange={(e) => setQuickNameAr(e.target.value)}
+                placeholder={lang === 'ar' ? 'مثال: شيبسي بالجبنة 50 جم' : 'e.g. Cheese Chips 50g'}
+                className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#246BFD] bg-white font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-[#0B1730] mb-1">
+                {lang === 'ar' ? 'اسم الصنف بالإنجليزية (اختياري)' : 'Product Name (English)'}
+              </label>
+              <input
+                type="text"
+                value={quickNameEn}
+                onChange={(e) => setQuickNameEn(e.target.value)}
+                placeholder={lang === 'ar' ? 'اختياري...' : 'Optional...'}
+                className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#246BFD] bg-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block font-bold text-[#0B1730] mb-1">
+                {lang === 'ar' ? 'سعر البيع (ج.م)' : 'Selling Price'} *
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                required
+                value={quickSellingPrice}
+                onChange={(e) => setQuickSellingPrice(e.target.value)}
+                placeholder="0.00"
+                className="w-full px-3 py-2 border border-blue-300 bg-blue-50/30 rounded-lg focus:outline-none focus:border-[#246BFD] font-bold text-sm text-[#0B1730]"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-[#0B1730] mb-1">
+                {lang === 'ar' ? 'سعر التكلفة (ج.م)' : 'Cost Price'}
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={quickCostPrice}
+                onChange={(e) => setQuickCostPrice(e.target.value)}
+                placeholder="0.00"
+                className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#246BFD] bg-white"
+              />
+            </div>
+
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block font-bold text-[#0B1730] mb-1">
+                {lang === 'ar' ? 'الكمية الأولية بالفرع' : 'Initial Stock'}
+              </label>
+              <input
+                type="number"
+                step="1"
+                value={quickInitialStock}
+                onChange={(e) => setQuickInitialStock(e.target.value)}
+                placeholder="10"
+                className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#246BFD] bg-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-[#0B1730] mb-1">
+                {lang === 'ar' ? 'القسم / التصنيف' : 'Category'}
+              </label>
+              <select
+                value={quickCategory}
+                onChange={(e) => setQuickCategory(e.target.value)}
+                className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#246BFD] bg-white text-xs"
+              >
+                {availableCategories.length > 0 ? (
+                  availableCategories.map(cat => (
+                    <option key={cat.id} value={cat.id}>
+                      {lang === 'ar' ? (cat.name_ar || cat.name_en) : (cat.name_en || cat.name_ar)}
+                    </option>
+                  ))
+                ) : (
+                  <option value="cat_general">{lang === 'ar' ? 'عام' : 'General'}</option>
+                )}
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-bold text-[#0B1730] mb-1">
+                {lang === 'ar' ? 'وحدة القياس' : 'Unit'}
+              </label>
+              <select
+                value={quickUnit}
+                onChange={(e) => setQuickUnit(e.target.value)}
+                className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#246BFD] bg-white text-xs"
+              >
+                {availableUnits.length > 0 ? (
+                  availableUnits.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {lang === 'ar' ? (u.name_ar || u.name_en) : (u.name_en || u.name_ar)}
+                    </option>
+                  ))
+                ) : (
+                  <option value="unit_piece">{lang === 'ar' ? 'قطعة (Piece)' : 'Piece'}</option>
+                )}
+              </select>
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-[#E5EAF2] flex justify-end gap-2.5">
+            <button
+              type="button"
+              onClick={() => setIsQuickProductOpen(false)}
+              className="px-4 py-2 border border-gray-300 rounded-xl text-gray-700 font-bold hover:bg-gray-50 transition-colors cursor-pointer"
+            >
+              {t('cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={savingQuickProduct}
+              className="px-5 py-2 bg-[#246BFD] hover:bg-[#1A54D4] text-white font-bold rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              {savingQuickProduct ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>{lang === 'ar' ? 'جاري الحفظ والإضافة...' : 'Saving...'}</span>
+                </>
+              ) : (
+                <>
+                  <PackagePlus className="w-4 h-4" />
+                  <span>{lang === 'ar' ? 'حفظ وإضافة للسلة فوراً' : 'Save & Add to Cart'}</span>
+                </>
+              )}
             </button>
           </div>
         </form>

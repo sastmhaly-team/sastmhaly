@@ -10,10 +10,12 @@ import { exportToCsv } from '@/lib/export/csv';
 import { ExportButton } from '@/components/reports/ExportButton';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
 import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
+import { getPendingOfflineSales } from '@/lib/offline/offline-manager';
 import { 
   Receipt, Search, Filter, Printer, RotateCcw, 
-  Eye, CheckCircle2, AlertTriangle, Download, Calendar, DollarSign
+  Eye, CheckCircle2, AlertTriangle, Download, Calendar, DollarSign, MessageCircle
 } from 'lucide-react';
+import { InvoiceShareModal } from '@/components/invoice/InvoiceShareModal';
 
 export default function SalesManagementPage() {
   const { user, tenant, activeBranchId } = useAuth();
@@ -43,6 +45,36 @@ export default function SalesManagementPage() {
   const [liveTenant, setLiveTenant] = useState<{ id: string; name: string; logo_url?: string } | null>(null);
   const [receiptFooter, setReceiptFooter] = useState<string>('');
   const [visibleCount, setVisibleCount] = useState<number>(20);
+  const [sharingSaleId, setSharingSaleId] = useState<string | null>(null);
+  const [shareModalSale, setShareModalSale] = useState<(Sale & { items?: SaleItem[] }) | null>(null);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+
+  const handleShareWhatsApp = async (sale: Sale | (Sale & { items?: SaleItem[] })) => {
+    setSharingSaleId(sale.id);
+    try {
+      let items = (sale as any).items as SaleItem[] | undefined;
+      if (!items || items.length === 0) {
+        try {
+          const res = await fetch(`/api/merchant/sales?tenantId=${tenantId}&saleId=${sale.id}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.sale?.items) {
+              items = data.sale.items;
+            }
+          }
+        } catch (err) {
+          console.warn('Could not fetch items for whatsapp share', err);
+        }
+      }
+
+      setShareModalSale({ ...sale, items });
+      setIsShareModalOpen(true);
+    } catch (err) {
+      console.error('Error opening share modal', err);
+    } finally {
+      setSharingSaleId(null);
+    }
+  };
 
   const handlePrintReceipt = () => {
     const receipt = document.getElementById('printable-receipt');
@@ -60,6 +92,40 @@ export default function SalesManagementPage() {
     window.print();
   };
 
+  const mergeWithOfflineSales = (serverSales: Sale[]): Sale[] => {
+    const offline = getPendingOfflineSales();
+    const serverSaleNumbers = new Set(serverSales.map(s => s.sale_number));
+    const serverIds = new Set(serverSales.map(s => s.id));
+
+    // Only include offline sales that are NOT yet recorded on the server
+    const uniqueOffline: Sale[] = offline
+      .filter(os => !serverSaleNumbers.has(os.sale_number) && !serverIds.has(os.id))
+      .map(os => ({
+        id: os.id,
+        tenant_id: os.tenant_id,
+        branch_id: os.branch_id,
+        register_id: os.register_id,
+        session_id: os.session_id,
+        cashier_id: os.cashier_id,
+        customer_id: os.customer_id || undefined,
+        customer_name: os.customer_name || undefined,
+        sale_number: os.sale_number,
+        subtotal: os.subtotal,
+        discount_amount: os.discount_amount,
+        tax_amount: os.tax_amount,
+        total_amount: os.total_amount,
+        paid_amount: os.paid_amount,
+        change_amount: os.change_amount,
+        payment_method: os.payment_method as any,
+        status: 'completed' as const,
+        created_at: os.offline_at,
+        cashier_name: user?.full_name || user?.username || 'كاشير (أوفلاين)',
+        branch_name: 'الفرع الحالي (أوفلاين)',
+      }));
+
+    return [...uniqueOffline, ...serverSales];
+  };
+
   const fetchSales = async () => {
     try {
       const branchParam = effectiveBranchId && effectiveBranchId !== 'all' ? `&branchId=${effectiveBranchId}` : '';
@@ -67,7 +133,7 @@ export default function SalesManagementPage() {
       
       const cached = getCachedData<any>(url);
       if (cached) {
-        if (cached.sales) setSales(cached.sales);
+        if (cached.sales) setSales(mergeWithOfflineSales(cached.sales));
         if (cached.tenant) setLiveTenant(cached.tenant);
         if (cached.settings?.receipt_footer) setReceiptFooter(cached.settings.receipt_footer);
         setLoading(false);
@@ -76,13 +142,15 @@ export default function SalesManagementPage() {
       }
 
       await fetchWithCache<any>(url, (data) => {
-        if (data.sales) setSales(data.sales);
+        if (data.sales) setSales(mergeWithOfflineSales(data.sales));
         if (data.tenant) setLiveTenant(data.tenant);
         if (data.settings?.receipt_footer) setReceiptFooter(data.settings.receipt_footer);
         setLoading(false);
       });
     } catch (e) {
       console.error(e);
+      // Even if network fails, show local offline sales
+      setSales(prev => mergeWithOfflineSales(prev));
     } finally {
       setLoading(false);
     }
@@ -90,6 +158,15 @@ export default function SalesManagementPage() {
 
   useEffect(() => {
     fetchSales();
+
+    const handleSync = () => {
+      fetchSales();
+    };
+
+    window.addEventListener('sastmhaly_offline_sync', handleSync);
+    return () => {
+      window.removeEventListener('sastmhaly_offline_sync', handleSync);
+    };
   }, [tenantId, effectiveBranchId]);
 
   const handleViewDetail = async (saleId: string) => {
@@ -341,6 +418,20 @@ export default function SalesManagementPage() {
                       {getStatusBadge(sale.status)}
                     </td>
                     <td className="py-3 px-4 text-end space-x-1 rtl:space-x-reverse">
+                      {/* WhatsApp Share Button */}
+                      <button
+                        onClick={() => handleShareWhatsApp(sale)}
+                        disabled={sharingSaleId === sale.id}
+                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                        title={isRtl ? 'مشاركة الفاتورة عبر واتساب' : 'Share invoice via WhatsApp'}
+                      >
+                        {sharingSaleId === sale.id ? (
+                          <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <MessageCircle className="w-4 h-4" />
+                        )}
+                      </button>
+
                       <button
                         onClick={() => handleViewDetail(sale.id)}
                         className="p-1.5 text-[#246BFD] hover:bg-[#F0F9FF] rounded-lg transition-colors"
@@ -400,6 +491,16 @@ export default function SalesManagementPage() {
                 </span>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleShareWhatsApp(selectedSale)}
+                  disabled={sharingSaleId === selectedSale.id}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                  title={isRtl ? 'مشاركة الفاتورة عبر واتساب' : 'Share invoice via WhatsApp'}
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>{isRtl ? 'مشاركة واتساب' : 'WhatsApp'}</span>
+                </button>
+
                 <button
                   onClick={handlePrintReceipt}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0B1730] text-white rounded-lg text-xs font-semibold hover:bg-[#172033] cursor-pointer"
@@ -623,6 +724,19 @@ export default function SalesManagementPage() {
           </form>
         )}
       </Modal>
+
+      {/* Invoice WhatsApp Share Modal (Photo or Text) */}
+      <InvoiceShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        sale={shareModalSale}
+        tenantName={liveTenant?.name || tenant?.name}
+        tenantLogoUrl={liveTenant?.logo_url || tenant?.logo_url}
+        receiptFooter={receiptFooter}
+        branchAddress="القاهرة، مصر"
+        branchPhone="01558516263"
+        isRtl={isRtl}
+      />
     </div>
   );
 }

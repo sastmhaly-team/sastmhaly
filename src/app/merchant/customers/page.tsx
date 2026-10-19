@@ -9,6 +9,7 @@ import { exportToCsv } from '@/lib/export/csv';
 import { ExportButton } from '@/components/reports/ExportButton';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
 import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
+import { saveOfflineCustomer } from '@/lib/offline/offline-manager';
 import { 
   Users, Plus, Search, Download, 
   CreditCard, Phone, Sparkles, AlertTriangle, Edit3, PlusCircle
@@ -95,18 +96,55 @@ export default function CustomersManagementPage() {
     }
     setSubmittingCustomer(true);
     try {
-      const res = await fetch('/api/merchant/customers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let createdCustomer: any = null;
+
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        createdCustomer = {
+          id: `cust_off_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
           tenant_id: tenantId,
           ...newCustomer,
           phone: cleanedPhone,
-          credit_limit: Number(newCustomer.credit_limit)
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
+          credit_limit: Number(newCustomer.credit_limit) || 2000,
+          current_balance: 0,
+          loyalty_points: 0,
+        };
+        saveOfflineCustomer(createdCustomer);
+      } else {
+        try {
+          const res = await fetch('/api/merchant/customers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tenant_id: tenantId,
+              ...newCustomer,
+              phone: cleanedPhone,
+              credit_limit: Number(newCustomer.credit_limit)
+            })
+          });
+          const data = await res.json();
+          if (data.success) {
+            createdCustomer = data.customer;
+          } else {
+            alert(data.error || 'Failed to create customer');
+            setSubmittingCustomer(false);
+            return;
+          }
+        } catch (fetchErr) {
+          createdCustomer = {
+            id: `cust_off_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+            tenant_id: tenantId,
+            ...newCustomer,
+            phone: cleanedPhone,
+            credit_limit: Number(newCustomer.credit_limit) || 2000,
+            current_balance: 0,
+            loyalty_points: 0,
+          };
+          saveOfflineCustomer(createdCustomer);
+        }
+      }
+
+      if (createdCustomer) {
+        setCustomers(prev => [createdCustomer, ...prev]);
         setAddModalOpen(false);
         setNewCustomer({
           code: '',
@@ -117,9 +155,6 @@ export default function CustomersManagementPage() {
           tax_id: '',
           credit_limit: 2000
         });
-        fetchCustomers();
-      } else {
-        alert(data.error || 'Failed to create customer');
       }
     } catch (e) {
       console.error(e);

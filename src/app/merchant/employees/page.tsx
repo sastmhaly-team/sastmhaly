@@ -13,6 +13,7 @@ import { Modal } from '@/components/ui/Modal';
 import { ExportButton } from '@/components/reports/ExportButton';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
+import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Users, UserCheck, UserX, Clock, Calendar, DollarSign, Wallet, 
   FileText, CheckCircle2, AlertCircle, Printer, TrendingUp, Plus, 
@@ -134,23 +135,24 @@ export default function EmployeesManagementPage() {
       const empUrl = `/api/merchant/employees?tenantId=${tenantId}${effectiveBranchId ? `&branchId=${effectiveBranchId}` : ''}`;
       const brUrl = `/api/merchant/branches?tenantId=${tenantId}`;
 
-      const [empRes, brRes] = await Promise.all([
-        fetch(empUrl),
-        fetch(brUrl)
+      const cachedEmp = getCachedData<any>(empUrl);
+      const cachedBr = getCachedData<any>(brUrl);
+      if (cachedEmp?.users) setEmployees(cachedEmp.users);
+      if (cachedBr?.branches) setBranches(cachedBr.branches);
+
+      await Promise.all([
+        fetchWithCache<any>(empUrl, (empData) => {
+          if (empData.users) setEmployees(empData.users);
+        }),
+        fetchWithCache<any>(brUrl, (brData) => {
+          if (brData.branches) {
+            setBranches(brData.branches);
+            if (!newEmployee.branch_id && brData.branches.length > 0) {
+              setNewEmployee(prev => ({ ...prev, branch_id: effectiveBranchId || brData.branches[0].id }));
+            }
+          }
+        }),
       ]);
-
-      const empData = await empRes.json();
-      const brData = await brRes.json();
-
-      if (empData.users) {
-        setEmployees(empData.users);
-      }
-      if (brData.branches) {
-        setBranches(brData.branches);
-        if (!newEmployee.branch_id && brData.branches.length > 0) {
-          setNewEmployee(prev => ({ ...prev, branch_id: effectiveBranchId || brData.branches[0].id }));
-        }
-      }
     } catch (e) {
       console.error(e);
     } finally {
