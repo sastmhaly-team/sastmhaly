@@ -7,6 +7,7 @@ import { Supplier } from '@/lib/types';
 import { Modal } from '@/components/ui/Modal';
 import { exportToCsv } from '@/lib/export/csv';
 import { ExportButton } from '@/components/reports/ExportButton';
+import { ImportButton } from '@/components/ui/ImportButton';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
 import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
@@ -168,6 +169,16 @@ export default function SuppliersManagementPage() {
     { key: 'current_balance', labelEn: 'Payable Balance (EGP)', labelAr: 'الرصيد المستحق (ج.م)' }
   ];
 
+  const supplierImportColumns = [
+    { key: 'name', labelAr: 'اسم المورد / الشركة', labelEn: 'Supplier Name', required: true, example: 'شركة الأهرام للتجارة' },
+    { key: 'phone', labelAr: 'رقم الهاتف', labelEn: 'Phone Number', required: true, example: '01099887766' },
+    { key: 'contact_person', labelAr: 'المسؤول / مندوب المبيعات', labelEn: 'Contact Person', example: 'أ / حسام الدين' },
+    { key: 'email', labelAr: 'البريد الإلكتروني', labelEn: 'Email', example: 'ahram@supply.com' },
+    { key: 'tax_id', labelAr: 'السجل / البطاقة الضريبية', labelEn: 'Tax ID', example: '554-332-119' },
+    { key: 'payment_terms', labelAr: 'شروط السداد', labelEn: 'Payment Terms', example: '30 Days Net' },
+    { key: 'opening_balance', labelAr: 'رصيد أول المدة', labelEn: 'Opening Balance', example: '0' },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -183,7 +194,19 @@ export default function SuppliersManagementPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <ImportButton
+            entityNameAr="الموردين"
+            entityNameEn="Suppliers"
+            columns={supplierImportColumns}
+            apiEndpoint="/api/merchant/suppliers"
+            extraPayload={{ tenant_id: tenantId }}
+            onSuccess={fetchSuppliers}
+            sampleRows={[
+              { name: 'شركة النيل للصناعات الغذائية', phone: '01234567890', contact_person: 'م / شريف', email: 'nile@foods.com', tax_id: '998-776-554', payment_terms: 'Cash on Delivery', opening_balance: 0 }
+            ]}
+          />
+
           <ExportButton
             filename="Suppliers"
             data={suppliers}

@@ -387,7 +387,7 @@ export default function PosPage() {
             const match = items.find((it: any) => it.productId === p.id);
             if (!match) return p;
             const current = Number(p.current_stock ?? (p as any).stock_quantity ?? 0);
-            const updated = Math.max(0, current - match.quantity);
+            const updated = current - match.quantity;
             return { ...p, current_stock: updated };
           }));
         }
@@ -562,62 +562,14 @@ export default function PosPage() {
     if (!activeWeightedProduct) return;
     const weight = parseFloat(inputWeight) || 1.0;
 
-    // Check available stock for weighted item
-    if (activeWeightedProduct.track_stock === 1) {
-      const stock = activeWeightedProduct.current_stock ?? 0;
-      if (stock <= 0) {
-        posAudio.playVoid();
-        alert(
-          lang === 'ar'
-            ? `عفواً، الصنف "${activeWeightedProduct.name_ar || activeWeightedProduct.name_en}" غير متوفر في المخزون (الرصيد: 0)!`
-            : `Sorry, "${activeWeightedProduct.name_en}" is out of stock (Available: 0)!`
-        );
-        return;
-      }
-      if (weight > stock) {
-        posAudio.playVoid();
-        alert(
-          lang === 'ar'
-            ? `عفواً، الوزن المطلوب (${weight} كجم) يتجاوز الرصيد المتوفر في المخزون (${stock} كجم)!`
-            : `Requested weight (${weight}kg) exceeds available stock (${stock}kg)!`
-        );
-        return;
-      }
-    }
-
+    // Negative stock is permitted: notify cashier subtly if out of stock but continue
     addToCart(activeWeightedProduct, weight);
     setIsWeightOpen(false);
     setActiveWeightedProduct(null);
   };
 
   const addToCart = (product: Product, qty: number = 1) => {
-    // Stock validation
-    if (product.track_stock === 1) {
-      const stock = product.current_stock ?? 0;
-      const existingInCart = cart.find(item => item.product.id === product.id)?.quantity || 0;
-      const requestedTotal = existingInCart + qty;
-
-      if (stock <= 0) {
-        posAudio.playVoid();
-        alert(
-          lang === 'ar'
-            ? `عفواً، الصنف "${product.name_ar || product.name_en}" غير متوفر في المخزون (الرصيد: 0)!`
-            : `Sorry, "${product.name_en}" is out of stock (Available: 0)!`
-        );
-        return;
-      }
-
-      if (requestedTotal > stock) {
-        posAudio.playVoid();
-        alert(
-          lang === 'ar'
-            ? `عفواً، لا يمكن إضافة الكمية المطلوبة (${requestedTotal}). الرصيد المتوفر في المخزون هو (${stock}) فقط للصنف "${product.name_ar || product.name_en}".`
-            : `Requested quantity (${requestedTotal}) exceeds available stock (${stock}) for "${product.name_en}".`
-        );
-        return;
-      }
-    }
-
+    // POS permits selling even if stock is 0 or negative (البيع بالسالب)
     posAudio.playBeep();
     setCart(prev => {
       const existingIndex = prev.findIndex(item => item.product.id === product.id);
@@ -649,20 +601,6 @@ export default function PosPage() {
     if (newQty <= 0) {
       removeItem(index);
       return;
-    }
-
-    const item = cart[index];
-    if (item.product.track_stock === 1) {
-      const stock = item.product.current_stock ?? 0;
-      if (newQty > stock) {
-        posAudio.playVoid();
-        alert(
-          lang === 'ar'
-            ? `عفواً، الكمية المطلوبة (${newQty}) تتجاوز الرصيد المتوفر في المخزون (${stock}) للصنف "${item.product.name_ar || item.product.name_en}".`
-            : `Requested quantity (${newQty}) exceeds available stock (${stock}) for "${item.product.name_en}".`
-        );
-        return;
-      }
     }
 
     posAudio.playBeep();
@@ -835,7 +773,7 @@ export default function PosPage() {
         const sold = soldItems.find(si => si.productId === p.id);
         if (!sold) return p;
         const current = Number(p.current_stock ?? (p as any).stock_quantity ?? 0);
-        const updated = Math.max(0, current - sold.quantity);
+        const updated = current - sold.quantity;
         return { ...p, current_stock: updated };
       }));
 
@@ -1017,8 +955,14 @@ export default function PosPage() {
                 <span className="text-xs font-extrabold text-[#0B1730]">
                   {product.selling_price} <span className="text-[10px] font-normal text-[#687386]">{t('currency')}</span>
                 </span>
-                <span className={`text-[10px] font-bold ${product.current_stock && product.current_stock <= product.min_stock_alert ? 'text-[#EF4444]' : 'text-[#10B981]'}`}>
-                  {product.current_stock ?? 0} {product.unit_name_en || 'PCS'}
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                  (product.current_stock ?? 0) <= 0
+                    ? 'bg-rose-50 text-rose-600 border border-rose-200'
+                    : product.current_stock && product.current_stock <= product.min_stock_alert
+                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                    : 'text-[#10B981]'
+                }`}>
+                  {product.current_stock ?? 0} {product.unit_name_en || 'PCS'} {(product.current_stock ?? 0) <= 0 ? (lang === 'ar' ? '(سحب بالسالب)' : '(Negative)') : ''}
                 </span>
               </div>
             </div>
@@ -1123,12 +1067,23 @@ export default function PosPage() {
           ) : (
             cart.map((item, idx) => {
               const lineTotal = (item.unit_price * item.quantity) - item.discount;
+              const stock = item.product.track_stock === 1 ? Number(item.product.current_stock ?? 0) : null;
+              const isNegative = stock !== null && (item.quantity > stock || stock <= 0);
+              const remainingStock = stock !== null ? stock - item.quantity : 0;
               return (
                 <div key={idx} className="py-2.5 flex items-center justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-[#0B1730] truncate">
-                      {lang === 'ar' ? item.product.name_ar : item.product.name_en}
-                    </p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-xs font-bold text-[#0B1730] truncate">
+                        {lang === 'ar' ? item.product.name_ar : item.product.name_en}
+                      </p>
+                      {isNegative && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-rose-50 text-rose-600 border border-rose-200">
+                          <AlertCircle className="w-2.5 h-2.5 shrink-0" />
+                          {lang === 'ar' ? `رصيد بالسالب (${remainingStock})` : `Negative (${remainingStock})`}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[11px] text-[#687386]">
                       {item.unit_price} {t('currency')} × {item.quantity}
                     </p>

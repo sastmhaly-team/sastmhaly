@@ -11,6 +11,7 @@ import {
 } from '@/lib/types';
 import { Modal } from '@/components/ui/Modal';
 import { ExportButton } from '@/components/reports/ExportButton';
+import { ImportButton } from '@/components/ui/ImportButton';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
@@ -851,9 +852,28 @@ export default function EmployeesManagementPage() {
         </div>
 
         {/* Global Action / Export based on active tab */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {activeTab === 'directory' && (
             <>
+              <ImportButton
+                entityNameAr="الموظفين"
+                entityNameEn="Employees"
+                columns={[
+                  { key: 'full_name', labelAr: 'الاسم الكامل', labelEn: 'Full Name', required: true, example: 'محمد سامي' },
+                  { key: 'phone', labelAr: 'رقم الهاتف (11 رقم)', labelEn: 'Phone Number (11 digits)', required: true, example: '01012345678' },
+                  { key: 'role', labelAr: 'الدور (cashier / accountant / branch_manager)', labelEn: 'Role', example: 'cashier' },
+                  { key: 'password', labelAr: 'كلمة المرور', labelEn: 'Password', example: '123456' },
+                  { key: 'job_title', labelAr: 'المسمى الوظيفي', labelEn: 'Job Title', example: 'كاشير' },
+                  { key: 'base_salary', labelAr: 'الراتب الأساسي', labelEn: 'Base Salary', example: '4500' },
+                  { key: 'email', labelAr: 'البريد الإلكتروني', labelEn: 'Email', example: 'sami@sastmhaly.com' },
+                ]}
+                apiEndpoint="/api/merchant/employees"
+                extraPayload={{ tenant_id: tenantId, branch_id: effectiveBranchId }}
+                onSuccess={fetchData}
+                sampleRows={[
+                  { full_name: 'أحمد محمود السيد', phone: '01200112233', role: 'cashier', password: 'password123', job_title: 'كاشير وردية أولى', base_salary: 4200, email: 'ahmed@sastmhaly.com' }
+                ]}
+              />
               <ExportButton
                 filename="Staff_Directory"
                 data={filteredEmployees}

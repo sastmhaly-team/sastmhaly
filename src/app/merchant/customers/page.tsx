@@ -7,6 +7,7 @@ import { Customer } from '@/lib/types';
 import { Modal } from '@/components/ui/Modal';
 import { exportToCsv } from '@/lib/export/csv';
 import { ExportButton } from '@/components/reports/ExportButton';
+import { ImportButton } from '@/components/ui/ImportButton';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
 import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { saveOfflineCustomer } from '@/lib/offline/offline-manager';
@@ -272,6 +273,15 @@ export default function CustomersManagementPage() {
     { key: 'loyalty_points', labelEn: 'Loyalty Points', labelAr: 'نقاط الولاء' }
   ];
 
+  const customerImportColumns = [
+    { key: 'name', labelAr: 'اسم العميل', labelEn: 'Customer Name', required: true, example: 'أحمد محمود' },
+    { key: 'phone', labelAr: 'رقم الهاتف', labelEn: 'Phone Number', required: true, example: '01012345678' },
+    { key: 'email', labelAr: 'البريد الإلكتروني', labelEn: 'Email', example: 'ahmed@gmail.com' },
+    { key: 'address', labelAr: 'العنوان', labelEn: 'Address', example: 'المعادي، القاهرة' },
+    { key: 'credit_limit', labelAr: 'الحد الائتماني', labelEn: 'Credit Limit', example: '3000' },
+    { key: 'tax_id', labelAr: 'الرقم الضريبي', labelEn: 'Tax ID', example: '123-456-789' },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -287,7 +297,19 @@ export default function CustomersManagementPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <ImportButton
+            entityNameAr="العملاء"
+            entityNameEn="Customers"
+            columns={customerImportColumns}
+            apiEndpoint="/api/merchant/customers"
+            extraPayload={{ tenant_id: tenantId }}
+            onSuccess={fetchCustomers}
+            sampleRows={[
+              { name: 'محمد علي', phone: '01123456789', email: 'mohamed@example.com', address: 'مدينة نصر، القاهرة', credit_limit: 5000, tax_id: '' }
+            ]}
+          />
+
           <ExportButton
             filename="Customers"
             data={customers}

@@ -7,6 +7,7 @@ import { Expense, Branch } from '@/lib/types';
 import { Modal } from '@/components/ui/Modal';
 import { exportToCsv } from '@/lib/export/csv';
 import { ExportButton } from '@/components/reports/ExportButton';
+import { ImportButton } from '@/components/ui/ImportButton';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
 import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
@@ -167,6 +168,14 @@ export default function ExpensesManagementPage() {
     }
   };
 
+  const expenseImportColumns = [
+    { key: 'category', labelAr: 'التصنيف / البند', labelEn: 'Expense Category', required: true, example: 'Utilities' },
+    { key: 'amount', labelAr: 'المبلغ المنصرف (ج.م)', labelEn: 'Amount', required: true, example: '750' },
+    { key: 'description', labelAr: 'بيان وتفاصيل المصروف', labelEn: 'Description', example: 'فاتورة كهرباء المحل لشهر أكتوبر' },
+    { key: 'payee', labelAr: 'الجهة أو الشخص المستلم', labelEn: 'Payee', example: 'محصل شركة الكهرباء' },
+    { key: 'payment_source', labelAr: 'مصدر الدفع (cash_drawer / bank_account / petty_cash)', labelEn: 'Payment Source', example: 'cash_drawer' },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -182,7 +191,19 @@ export default function ExpensesManagementPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <ImportButton
+            entityNameAr="المصروفات"
+            entityNameEn="Expenses"
+            columns={expenseImportColumns}
+            apiEndpoint="/api/merchant/expenses"
+            extraPayload={{ tenant_id: tenantId, branch_id: effectiveBranchId }}
+            onSuccess={fetchData}
+            sampleRows={[
+              { category: 'Rent', amount: 4500, description: 'إيجار فرع وسط البلد', payee: 'المالك / الحاج توفيق', payment_source: 'bank_account' }
+            ]}
+          />
+
           <ExportButton
             filename="Operating_Expenses"
             data={expenses}

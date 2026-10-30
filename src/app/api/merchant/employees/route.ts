@@ -28,6 +28,57 @@ export async function POST(request: NextRequest) {
       job_title, base_salary, salary_type, daily_hours, national_id, hire_date, shift_name
     } = body;
 
+    if (body.bulk && Array.isArray(body.items)) {
+      if (!tenant_id) {
+        return NextResponse.json({ error: 'tenant_id is required' }, { status: 400 });
+      }
+      let successCount = 0;
+      const errors: string[] = [];
+
+      for (let i = 0; i < body.items.length; i++) {
+        const item = body.items[i];
+        try {
+          if (!item.full_name || !item.phone) {
+            errors.push(`Row #${i + 1}: Name and phone are required`);
+            continue;
+          }
+          const cleanedPhone = String(item.phone).replace(/\D/g, '').trim();
+          const empPassword = item.password || '123456';
+          const empEmail = item.email || `emp_${cleanedPhone || Date.now()}@sastmhaly.com`;
+          const empUsername = item.username || cleanedPhone || `user_${Date.now()}_${i}`;
+
+          await createUser({
+            tenant_id,
+            branch_id: item.branch_id || branch_id || undefined,
+            email: empEmail,
+            username: empUsername,
+            password_hash: empPassword,
+            full_name: item.full_name.trim(),
+            phone: cleanedPhone || item.phone,
+            role: item.role || 'cashier',
+            job_title: item.job_title || 'موظف',
+            base_salary: item.base_salary ? Number(item.base_salary) : 4000,
+            salary_type: item.salary_type || 'monthly',
+            daily_hours: item.daily_hours ? Number(item.daily_hours) : 8,
+            national_id: item.national_id || undefined,
+            hire_date: item.hire_date || new Date().toISOString().split('T')[0],
+            shift_name: item.shift_name || 'الوردية الصباحية',
+          });
+          successCount++;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Error';
+          errors.push(`Row #${i + 1} (${item.full_name}): ${msg}`);
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        successCount,
+        errorCount: errors.length,
+        errors,
+      });
+    }
+
     if (!tenant_id || !full_name || !phone || !password) {
       return NextResponse.json({ 
         error: 'Full name, 11-digit phone number, and password are required' 

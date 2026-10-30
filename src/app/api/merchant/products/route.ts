@@ -39,17 +39,43 @@ export async function POST(request: NextRequest) {
       let successCount = 0;
       const errors: string[] = [];
 
-      for (const item of items) {
+      const existingCats = await getCategories(tenantId);
+      const defaultCatId = existingCats[0]?.id || 'cat_general';
+      const existingUnits = await getUnits(tenantId);
+      const defaultUnitId = existingUnits[0]?.id || 'unit_piece';
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
         try {
-          if (!item.name_en || !item.barcode || !item.selling_price) {
-            errors.push(`Row missing required fields: ${JSON.stringify(item)}`);
+          const nameAr = (item.name_ar || item.name_en || '').trim();
+          const nameEn = (item.name_en || item.name_ar || '').trim();
+          const barcode = String(item.barcode || '').trim();
+          const sellingPrice = Number(item.selling_price);
+
+          if ((!nameAr && !nameEn) || !barcode || isNaN(sellingPrice) || sellingPrice <= 0) {
+            errors.push(`Row #${i + 1}: Name, barcode, and valid selling price are required`);
             continue;
           }
-          await createProduct(tenantId, item);
+
+          const productPayload = {
+            sku: item.sku?.trim() || `SKU-${Date.now().toString().slice(-4)}-${i + 1}`,
+            barcode,
+            name_en: nameEn,
+            name_ar: nameAr,
+            category_id: item.category_id || defaultCatId,
+            unit_id: item.unit_id || defaultUnitId,
+            cost_price: Number(item.cost_price) || 0,
+            selling_price: sellingPrice,
+            min_stock_alert: item.min_stock_alert ? Number(item.min_stock_alert) : 5,
+            initial_stock: item.initial_stock ? Number(item.initial_stock) : 0,
+            branch_id: item.branch_id || body.branch_id || undefined,
+          };
+
+          await createProduct(tenantId, productPayload);
           successCount++;
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : 'Error';
-          errors.push(`Barcode ${item.barcode}: ${msg}`);
+          errors.push(`Row #${i + 1} (Barcode ${item.barcode}): ${msg}`);
         }
       }
 

@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth/context';
 import { useLanguage } from '@/lib/i18n/context';
 import { InventoryBalance, InventoryMovement, Product } from '@/lib/types';
 import { ExportButton } from '@/components/reports/ExportButton';
+import { ImportButton } from '@/components/ui/ImportButton';
 import { Modal } from '@/components/ui/Modal';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
 import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
@@ -175,6 +176,13 @@ export default function MerchantInventoryPage() {
     return true;
   });
 
+  const inventoryImportColumns = [
+    { key: 'barcode', labelAr: 'الباركود أو كود الصنف (SKU)', labelEn: 'Barcode or SKU', required: true, example: '6221234567890' },
+    { key: 'quantity', labelAr: 'الرصيد الفعلي الجديد', labelEn: 'Quantity Balance', required: true, example: '100' },
+    { key: 'unit_cost', labelAr: 'متوسط سعر التكلفة (ج.م)', labelEn: 'Unit Cost', example: '12.50' },
+    { key: 'notes', labelAr: 'ملاحظات الجرد أو التحديث', labelEn: 'Notes', example: 'جرد مستودع أولي' },
+  ];
+
   return (
     <div className="space-y-6">
       
@@ -191,7 +199,22 @@ export default function MerchantInventoryPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <ImportButton
+            entityNameAr="أرصدة المخزون"
+            entityNameEn="Inventory Stock"
+            columns={inventoryImportColumns}
+            apiEndpoint="/api/merchant/inventory"
+            extraPayload={{ 
+              tenant_id: tenant?.id || 'tenant_albaraka', 
+              branch_id: activeBranchId !== 'all' ? activeBranchId : (branches[0]?.id || '') 
+            }}
+            onSuccess={fetchInventory}
+            sampleRows={[
+              { barcode: '62210001', quantity: 75, unit_cost: 18.5, notes: 'استيراد رصيد بداية' }
+            ]}
+          />
+
           {activeTab === 'balances' ? (
             <ExportButton
               filename="sastmhaly_inventory_balances"

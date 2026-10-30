@@ -30,6 +30,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'tenant_id is required' }, { status: 400 });
     }
 
+    // 0. Bulk Import
+    if (body.bulk && Array.isArray(body.items)) {
+      let successCount = 0;
+      const errors: string[] = [];
+
+      for (let i = 0; i < body.items.length; i++) {
+        const item = body.items[i];
+        try {
+          if (!item.name || !item.phone) {
+            errors.push(`Row #${i + 1}: Name and phone are required (${JSON.stringify(item)})`);
+            continue;
+          }
+          const cleanedPhone = String(item.phone).replace(/\D/g, '').trim();
+          const custCode = item.code || `CUST-${Date.now().toString().slice(-4)}${i + 1}`;
+          await createCustomer(tenant_id, {
+            code: custCode,
+            name: item.name.trim(),
+            phone: cleanedPhone || item.phone,
+            email: item.email?.trim() || undefined,
+            address: item.address?.trim() || undefined,
+            tax_id: item.tax_id?.trim() || undefined,
+            credit_limit: item.credit_limit ? Number(item.credit_limit) : 1000,
+          });
+          successCount++;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Error';
+          errors.push(`Row #${i + 1} (${item.name}): ${msg}`);
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        successCount,
+        errorCount: errors.length,
+        errors,
+      });
+    }
+
     // 1. Debt collection (Paying off debt)
     if (action === 'collect') {
       const payAmount = Number(payment_amount);

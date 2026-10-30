@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth/context';
 import { useLanguage } from '@/lib/i18n/context';
 import { Product, Category, Unit } from '@/lib/types';
 import { ExportButton } from '@/components/reports/ExportButton';
+import { ImportButton } from '@/components/ui/ImportButton';
 import { Modal } from '@/components/ui/Modal';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
@@ -518,16 +519,38 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
             <span>{lang === 'ar' ? 'إدارة الأقسام (Categories)' : 'Manage Categories'}</span>
           </button>
 
-          <button
-            onClick={() => {
-              setImportText(sampleCsvTemplate);
-              setIsImportOpen(true);
+          <ImportButton
+            entityNameAr="المنتجات والأصناف"
+            entityNameEn="Products"
+            columns={[
+              { key: 'name_ar', labelAr: 'اسم الصنف بالعربي', labelEn: 'Arabic Name', required: true, example: 'شاي العروسة 250 جم' },
+              { key: 'name_en', labelAr: 'اسم الصنف بالإنجليزي', labelEn: 'English Name', required: true, example: 'El-Aroosa Tea 250g' },
+              { key: 'barcode', labelAr: 'الباركود الدولي', labelEn: 'Barcode', required: true, example: '6221000123456' },
+              { key: 'sku', labelAr: 'كود التخزين (SKU)', labelEn: 'SKU Code', example: 'TEA-001' },
+              { key: 'selling_price', labelAr: 'سعر البيع', labelEn: 'Selling Price', required: true, example: '35.00' },
+              { key: 'cost_price', labelAr: 'سعر التكلفة', labelEn: 'Cost Price', example: '28.00' },
+              { key: 'min_stock_alert', labelAr: 'حد التنبيه', labelEn: 'Min Stock Alert', example: '5' },
+              { key: 'initial_stock', labelAr: 'الرصيد الابتدائي', labelEn: 'Initial Stock', example: '25' },
+            ]}
+            apiEndpoint="/api/merchant/products"
+            extraPayload={{ 
+              tenant_id: tenant?.id || 'tenant_albaraka',
+              branch_id: activeBranchId !== 'all' ? activeBranchId : 'br_downtown'
             }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E5EAF2] bg-white text-xs font-semibold text-[#172033] hover:bg-[#F7F9FC] transition-colors cursor-pointer"
-          >
-            <Upload className="w-3.5 h-3.5 text-[#10B981]" />
-            <span>{lang === 'ar' ? 'استيراد CSV' : 'Import CSV'}</span>
-          </button>
+            onSuccess={fetchProducts}
+            sampleRows={[
+              { 
+                name_ar: 'جبنة دومتي فيتا 500 جم', 
+                name_en: 'Domty Feta Cheese 500g', 
+                barcode: '6222000987654', 
+                sku: 'DOM-001', 
+                selling_price: 42.50, 
+                cost_price: 36.00, 
+                min_stock_alert: 10, 
+                initial_stock: 30 
+              }
+            ]}
+          />
 
           <button
             onClick={() => setIsCreateOpen(true)}

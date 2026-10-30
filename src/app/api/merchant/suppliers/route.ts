@@ -20,6 +20,43 @@ export async function POST(request: NextRequest) {
     const { action, supplier_id, payment_amount, payment_method, tenant_id, ...supplierData } = body;
     const tenantId = tenant_id || 'tenant_albaraka';
 
+    if (body.bulk && Array.isArray(body.items)) {
+      let successCount = 0;
+      const errors: string[] = [];
+
+      for (let i = 0; i < body.items.length; i++) {
+        const item = body.items[i];
+        try {
+          if (!item.name || !item.phone) {
+            errors.push(`Row #${i + 1}: Name and phone are required (${JSON.stringify(item)})`);
+            continue;
+          }
+          const supCode = item.code || `SUP-${Date.now().toString().slice(-4)}${i + 1}`;
+          await createSupplier(tenantId, {
+            code: supCode,
+            name: item.name.trim(),
+            contact_person: item.contact_person?.trim() || undefined,
+            phone: String(item.phone).trim(),
+            email: item.email?.trim() || undefined,
+            tax_id: item.tax_id?.trim() || undefined,
+            payment_terms: item.payment_terms || '30 Days Net',
+            opening_balance: item.opening_balance ? Number(item.opening_balance) : 0,
+          });
+          successCount++;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Error';
+          errors.push(`Row #${i + 1} (${item.name}): ${msg}`);
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        successCount,
+        errorCount: errors.length,
+        errors,
+      });
+    }
+
     if (action === 'payment') {
       // Record payment against supplier balance
       const payAmount = Number(payment_amount);
