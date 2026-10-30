@@ -118,6 +118,7 @@ export async function createTenant(data: {
   currency?: string;
   plan_id: string;
   duration_months?: number;
+  duration_days?: number;
   custom_start_date?: string;
   custom_end_date?: string;
   owner_full_name?: string;
@@ -159,6 +160,8 @@ export async function createTenant(data: {
   if (data.custom_end_date) {
     const p = new Date(data.custom_end_date);
     if (!isNaN(p.getTime())) { expiresAt = p; } else { expiresAt.setMonth(expiresAt.getMonth() + 1); }
+  } else if (data.duration_days && data.duration_days > 0) {
+    expiresAt.setDate(expiresAt.getDate() + Number(data.duration_days));
   } else {
     const months = data.duration_months && data.duration_months > 0 ? Number(data.duration_months) : 1;
     expiresAt.setMonth(expiresAt.getMonth() + months);
@@ -313,6 +316,7 @@ export async function deleteTenant(id: string): Promise<{ success: boolean; erro
 
 export async function renewSubscription(tenantId: string, options: {
   duration_months?: number;
+  duration_days?: number;
   custom_start_date?: string;
   custom_end_date?: string;
   status?: 'active' | 'suspended';
@@ -327,6 +331,8 @@ export async function renewSubscription(tenantId: string, options: {
   if (options.custom_end_date) {
     const p = new Date(options.custom_end_date);
     if (!isNaN(p.getTime())) { expiresAt = p; } else { expiresAt.setMonth(expiresAt.getMonth() + 1); }
+  } else if (options.duration_days && options.duration_days > 0) {
+    expiresAt.setDate(expiresAt.getDate() + Number(options.duration_days));
   } else {
     const months = options.duration_months && options.duration_months > 0 ? Number(options.duration_months) : 1;
     expiresAt.setMonth(expiresAt.getMonth() + months);

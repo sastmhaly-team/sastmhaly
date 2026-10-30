@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { 
       name, legal_name, phone, email, slug, owner_name, password,
-      duration_months, custom_start_date, custom_end_date,
+      duration_months, duration_days, custom_start_date, custom_end_date,
       branch_address, branch_city, main_branch_address, main_branch_city
     } = body;
 
@@ -54,7 +54,8 @@ export async function POST(request: NextRequest) {
       phone: cleanedPhone,
       email: merchantEmail,
       plan_id: 'plan_all_inclusive',
-      duration_months: duration_months ? Number(duration_months) : 1,
+      duration_months: duration_months ? Number(duration_months) : undefined,
+      duration_days: duration_days ? Number(duration_days) : undefined,
       custom_start_date: custom_start_date || undefined,
       custom_end_date: custom_end_date || undefined,
       main_branch_address: branch_address || main_branch_address || undefined,
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, action, status, duration_months, custom_start_date, custom_end_date } = body;
+    const { id, action, status, duration_months, duration_days, custom_start_date, custom_end_date } = body;
     if (!id) {
       return NextResponse.json({ error: 'Missing tenant id' }, { status: 400 });
     }
@@ -96,6 +97,7 @@ export async function PATCH(request: NextRequest) {
     if (action === 'renew') {
       const updated = await renewSubscription(id, {
         duration_months: duration_months ? Number(duration_months) : undefined,
+        duration_days: duration_days ? Number(duration_days) : undefined,
         custom_start_date,
         custom_end_date,
       });

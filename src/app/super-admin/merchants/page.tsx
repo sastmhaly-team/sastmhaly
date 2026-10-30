@@ -12,19 +12,29 @@ import {
   Calendar, Clock, RefreshCw, AlertTriangle, Trash2, Loader2, Edit2, Eye
 } from 'lucide-react';
 
-const DURATION_PRESETS = [
-  { months: 1, labelAr: 'شهر واحد', labelEn: '1 Month' },
-  { months: 2, labelAr: 'شهرين', labelEn: '2 Months' },
-  { months: 3, labelAr: '3 شهور', labelEn: '3 Months' },
-  { months: 4, labelAr: '4 شهور', labelEn: '4 Months' },
-  { months: 5, labelAr: '5 شهور', labelEn: '5 Months' },
-  { months: 6, labelAr: '6 شهور', labelEn: '6 Months' },
-  { months: 7, labelAr: '7 شهور', labelEn: '7 Months' },
-  { months: 8, labelAr: '8 شهور', labelEn: '8 Months' },
-  { months: 9, labelAr: '9 شهور', labelEn: '9 Months' },
-  { months: 10, labelAr: '10 شهور', labelEn: '10 Months' },
-  { months: 11, labelAr: '11 شهر', labelEn: '11 Months' },
-  { months: 12, labelAr: '12 شهر (سنة)', labelEn: '12 Months (1 Year)' },
+export interface DurationPreset {
+  id: string;
+  months?: number;
+  days?: number;
+  labelAr: string;
+  labelEn: string;
+}
+
+const DURATION_PRESETS: DurationPreset[] = [
+  { id: '1d', days: 1, labelAr: 'يوم واحد', labelEn: '1 Day' },
+  { id: '1w', days: 7, labelAr: 'أسبوع واحد', labelEn: '1 Week' },
+  { id: '1m', months: 1, labelAr: 'شهر واحد', labelEn: '1 Month' },
+  { id: '2m', months: 2, labelAr: 'شهرين', labelEn: '2 Months' },
+  { id: '3m', months: 3, labelAr: '3 شهور', labelEn: '3 Months' },
+  { id: '4m', months: 4, labelAr: '4 شهور', labelEn: '4 Months' },
+  { id: '5m', months: 5, labelAr: '5 شهور', labelEn: '5 Months' },
+  { id: '6m', months: 6, labelAr: '6 شهور', labelEn: '6 Months' },
+  { id: '7m', months: 7, labelAr: '7 شهور', labelEn: '7 Months' },
+  { id: '8m', months: 8, labelAr: '8 شهور', labelEn: '8 Months' },
+  { id: '9m', months: 9, labelAr: '9 شهور', labelEn: '9 Months' },
+  { id: '10m', months: 10, labelAr: '10 شهور', labelEn: '10 Months' },
+  { id: '11m', months: 11, labelAr: '11 شهر', labelEn: '11 Months' },
+  { id: '12m', months: 12, labelAr: '12 شهر (سنة)', labelEn: '12 Months (1 Year)' },
 ];
 
 export default function SuperAdminMerchantsPage() {
@@ -53,7 +63,7 @@ export default function SuperAdminMerchantsPage() {
   const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
   const [selectedMerchantForRenew, setSelectedMerchantForRenew] = useState<Tenant | null>(null);
   const [renewDurationType, setRenewDurationType] = useState<'preset' | 'custom'>('preset');
-  const [renewDurationMonths, setRenewDurationMonths] = useState<number>(1);
+  const [renewPresetId, setRenewPresetId] = useState<string>('1m');
   const [renewCustomStartDate, setRenewCustomStartDate] = useState('');
   const [renewCustomEndDate, setRenewCustomEndDate] = useState('');
   const [renewSubmitting, setRenewSubmitting] = useState(false);
@@ -85,7 +95,7 @@ export default function SuperAdminMerchantsPage() {
 
   // Provisioning duration state
   const [durationType, setDurationType] = useState<'preset' | 'custom'>('preset');
-  const [durationMonths, setDurationMonths] = useState<number>(1);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('1m');
   const [customStartDate, setCustomStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [customEndDate, setCustomEndDate] = useState(
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
@@ -217,9 +227,11 @@ export default function SuperAdminMerchantsPage() {
 
     setFormSubmitting(true);
     try {
+      const selectedPreset = DURATION_PRESETS.find(p => p.id === selectedPresetId) || DURATION_PRESETS[2];
       const payload = {
         ...formData,
-        duration_months: durationType === 'preset' ? durationMonths : undefined,
+        duration_months: durationType === 'preset' ? selectedPreset.months : undefined,
+        duration_days: durationType === 'preset' ? selectedPreset.days : undefined,
         custom_start_date: durationType === 'custom' ? customStartDate : undefined,
         custom_end_date: durationType === 'custom' ? customEndDate : undefined,
       };
@@ -247,7 +259,7 @@ export default function SuperAdminMerchantsPage() {
           branch_city: 'Cairo',
         });
         setDurationType('preset');
-        setDurationMonths(1);
+        setSelectedPresetId('1m');
       } else {
         setFormError(data.error || 'Failed to create merchant');
       }
@@ -261,7 +273,7 @@ export default function SuperAdminMerchantsPage() {
   const handleOpenRenewModal = (merchant: Tenant) => {
     setSelectedMerchantForRenew(merchant);
     setRenewDurationType('preset');
-    setRenewDurationMonths(1);
+    setRenewPresetId('1m');
     setRenewCustomStartDate(new Date().toISOString().split('T')[0]);
     setRenewCustomEndDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
     setRenewError('');
@@ -286,10 +298,12 @@ export default function SuperAdminMerchantsPage() {
 
     setRenewSubmitting(true);
     try {
+      const selectedPreset = DURATION_PRESETS.find(p => p.id === renewPresetId) || DURATION_PRESETS[2];
       const payload = {
         id: selectedMerchantForRenew.id,
         action: 'renew',
-        duration_months: renewDurationType === 'preset' ? renewDurationMonths : undefined,
+        duration_months: renewDurationType === 'preset' ? selectedPreset.months : undefined,
+        duration_days: renewDurationType === 'preset' ? selectedPreset.days : undefined,
         custom_start_date: renewDurationType === 'custom' ? renewCustomStartDate : undefined,
         custom_end_date: renewDurationType === 'custom' ? renewCustomEndDate : undefined,
       };
@@ -1072,7 +1086,7 @@ export default function SuperAdminMerchantsPage() {
                         : 'text-[#687386] hover:text-[#0B1730]'
                     }`}
                   >
-                    {lang === 'ar' ? 'خيارات سريعة (بالشهور)' : 'Quick Presets'}
+                    {lang === 'ar' ? 'خيارات سريعة (يوم، أسبوع، شهور)' : 'Quick Presets'}
                   </button>
                   <button
                     type="button"
@@ -1089,14 +1103,14 @@ export default function SuperAdminMerchantsPage() {
               </div>
 
               {durationType === 'preset' ? (
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
                   {DURATION_PRESETS.map((p) => {
-                    const isSelected = durationMonths === p.months;
+                    const isSelected = selectedPresetId === p.id;
                     return (
                       <button
                         type="button"
-                        key={p.months}
-                        onClick={() => setDurationMonths(p.months)}
+                        key={p.id}
+                        onClick={() => setSelectedPresetId(p.id)}
                         className={`p-2 rounded-lg text-xs font-bold text-center border transition-all cursor-pointer ${
                           isSelected
                             ? 'bg-[#EFF6FF] border-[#246BFD] text-[#246BFD] shadow-2xs ring-1 ring-[#246BFD]'
@@ -1143,9 +1157,19 @@ export default function SuperAdminMerchantsPage() {
                 <span>
                   {lang === 'ar' ? 'تاريخ انتهاء الاشتراك المتوقع:' : 'Expected Expiry Date:'}{' '}
                   <strong className="text-[#0B1730] font-mono">
-                    {durationType === 'preset'
-                      ? new Date(Date.now() + durationMonths * 30 * 24 * 60 * 60 * 1000).toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US')
-                      : (customEndDate ? new Date(customEndDate).toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US') : '-')}
+                    {(() => {
+                      if (durationType === 'preset') {
+                        const p = DURATION_PRESETS.find(item => item.id === selectedPresetId) || DURATION_PRESETS[2];
+                        const exp = new Date();
+                        if (p.days) {
+                          exp.setDate(exp.getDate() + p.days);
+                        } else if (p.months) {
+                          exp.setMonth(exp.getMonth() + p.months);
+                        }
+                        return exp.toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US');
+                      }
+                      return customEndDate ? new Date(customEndDate).toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US') : '-';
+                    })()}
                   </strong>
                 </span>
               </div>
@@ -1239,7 +1263,7 @@ export default function SuperAdminMerchantsPage() {
                       : 'text-[#687386] hover:text-[#0B1730]'
                   }`}
                 >
-                  {lang === 'ar' ? 'خيارات سريعة (بالشهور)' : 'Quick Presets'}
+                  {lang === 'ar' ? 'خيارات سريعة (يوم، أسبوع، شهور)' : 'Quick Presets'}
                 </button>
                 <button
                   type="button"
@@ -1256,14 +1280,14 @@ export default function SuperAdminMerchantsPage() {
             </div>
 
             {renewDurationType === 'preset' ? (
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
                 {DURATION_PRESETS.map((p) => {
-                  const isSelected = renewDurationMonths === p.months;
+                  const isSelected = renewPresetId === p.id;
                   return (
                     <button
                       type="button"
-                      key={p.months}
-                      onClick={() => setRenewDurationMonths(p.months)}
+                      key={p.id}
+                      onClick={() => setRenewPresetId(p.id)}
                       className={`p-2 rounded-lg text-xs font-bold text-center border transition-all cursor-pointer ${
                         isSelected
                           ? 'bg-[#EFF6FF] border-[#246BFD] text-[#246BFD] shadow-2xs ring-1 ring-[#246BFD]'
@@ -1303,6 +1327,33 @@ export default function SuperAdminMerchantsPage() {
                 </div>
               </div>
             )}
+
+            {/* Expiry calculation preview */}
+            <div className="mt-2 text-[11px] text-[#687386] flex items-center gap-1.5 bg-[#EFF6FF]/50 p-2 rounded-lg border border-[#DBEAFE]">
+              <Calendar className="w-3.5 h-3.5 text-[#246BFD] shrink-0" />
+              <span>
+                {lang === 'ar' ? 'تاريخ انتهاء الاشتراك الجديد المتوقع:' : 'Expected New Expiry Date:'}{' '}
+                <strong className="text-[#0B1730] font-mono">
+                  {(() => {
+                    if (renewDurationType === 'preset') {
+                      const p = DURATION_PRESETS.find(item => item.id === renewPresetId) || DURATION_PRESETS[2];
+                      const currentExp = selectedMerchantForRenew?.sub_expires_at
+                        ? new Date(selectedMerchantForRenew.sub_expires_at)
+                        : new Date();
+                      const base = currentExp > new Date() ? currentExp : new Date();
+                      const exp = new Date(base);
+                      if (p.days) {
+                        exp.setDate(exp.getDate() + p.days);
+                      } else if (p.months) {
+                        exp.setMonth(exp.getMonth() + p.months);
+                      }
+                      return exp.toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US');
+                    }
+                    return renewCustomEndDate ? new Date(renewCustomEndDate).toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US') : '-';
+                  })()}
+                </strong>
+              </span>
+            </div>
           </div>
 
           <div className="pt-3 border-t border-[#E5EAF2] flex items-center justify-end gap-2">
