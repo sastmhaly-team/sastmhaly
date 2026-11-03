@@ -2060,12 +2060,17 @@ export default function SuperAdminMerchantsPage() {
           <div className="p-3 rounded-lg bg-[#FFFBEB] border border-[#FDE68A] text-[11px] text-[#92400E] space-y-1">
             <div className="font-bold flex items-center gap-1">
               <span>💡</span>
-              <span>{lang === 'ar' ? 'حل رسالة حماية Windows SmartScreen الزرقاء:' : 'Fix for Windows SmartScreen Warning:'}</span>
+              <span>{lang === 'ar' ? 'مميزات تطبيق ويندوز وكيفية التثبيت:' : 'Windows App Features & Installation:'}</span>
             </div>
             <p>
               {lang === 'ar'
-                ? 'الحزمة تحتوي على ملف مباشر باسم "تشغيل_سستمهالي - [اسم المتجر].bat". عند الضغط عليه مرتين يعمل النظام فوراً دون أي تحذير من Windows. أما عند تشغيل المثبت .exe، اضغط على "More info" (مزيد من المعلومات) ثم اختر "Run anyway" (تشغيل على أي حال).'
-                : 'Use the included .bat script to launch immediately without any SmartScreen warning, or click "More info" then "Run anyway" if running the .exe installer.'}
+                ? 'الحزمة تحتوي على ملف تثبيت تنفيذي حقيقي (.exe) يقوم بتثبيت سستمهالي على الكمبيوتر ويضيف اختصاراً لسطح المكتب وقائمة Start. يعمل التطبيق كنافذة تطبيق مستقلة تماماً بدون متصفح أو روابط أو اتصال بالإنترنت.'
+                : 'The package contains a real Windows installer (.exe) that installs Sastmhaly to your PC and creates desktop shortcuts. Runs in a dedicated app window without any browser or internet.'}
+            </p>
+            <p className="text-[10px] text-[#B45309] mt-1">
+              {lang === 'ar'
+                ? '📌 إذا ظهرت شاشة الحماية الزرقاء Windows SmartScreen لأول مرة: اضغط على "More info" ثم اختر "Run anyway".'
+                : '📌 If Windows SmartScreen blue screen appears on first run: click "More info" then "Run anyway".'}
             </p>
           </div>
 

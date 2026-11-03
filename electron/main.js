@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, Menu } = require('electron');
 const path = require('path');
 const http = require('http');
+const fs = require('fs');
 const { spawn } = require('child_process');
 
 let mainWindow = null;
@@ -47,24 +48,94 @@ function startLocalServer() {
   const isDev = process.env.NODE_ENV !== 'production' && !app.isPackaged;
   const projectRoot = isDev ? path.join(__dirname, '..') : path.join(process.resourcesPath, 'app');
 
-  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const args = isDev ? ['run', 'dev', '--', '-p', String(PORT)] : ['run', 'start', '--', '-p', String(PORT)];
+  // Look for standalone server.js
+  const possibleStandalonePaths = [
+    path.join(projectRoot, '.next', 'standalone', 'server.js'),
+    path.join(projectRoot, 'server.js'),
+    path.join(__dirname, '..', '.next', 'standalone', 'server.js')
+  ];
 
-  serverProcess = spawn(npmCmd, args, {
-    cwd: projectRoot,
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      OFFLINE_MODE: 'true',
-      USE_LOCAL_DB: 'true',
-      DATABASE_MODE: 'sqlite'
-    },
-    stdio: 'inherit'
-  });
+  let standalonePath = null;
+  for (const p of possibleStandalonePaths) {
+    if (fs.existsSync(p)) {
+      standalonePath = p;
+      break;
+    }
+  }
 
-  serverProcess.on('error', (err) => {
-    console.error('Failed to spawn local server:', err);
-  });
+  if (standalonePath) {
+    console.log('[Sastmhaly Electron] Starting standalone server from:', standalonePath);
+    // Electron executable itself acts as Node.js runtime when ELECTRON_RUN_AS_NODE is set!
+    serverProcess = spawn(process.execPath, [standalonePath], {
+      cwd: path.dirname(standalonePath),
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: '1',
+        PORT: String(PORT),
+        OFFLINE_MODE: 'true',
+        USE_LOCAL_DB: 'true',
+        DATABASE_MODE: 'sqlite',
+        LOCAL_DATA_DIR: userDataDir
+      },
+      stdio: 'pipe'
+    });
+  } else {
+    console.log('[Sastmhaly Electron] Falling back to npm/node in:', projectRoot);
+    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const args = isDev ? ['run', 'dev', '--', '-p', String(PORT)] : ['run', 'start', '--', '-p', String(PORT)];
+
+    serverProcess = spawn(npmCmd, args, {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        PORT: String(PORT),
+        OFFLINE_MODE: 'true',
+        USE_LOCAL_DB: 'true',
+        DATABASE_MODE: 'sqlite',
+        LOCAL_DATA_DIR: userDataDir
+      },
+      stdio: 'inherit'
+    });
+  }
+
+  if (serverProcess) {
+    serverProcess.stdout?.on('data', (d) => console.log(`[Next.js] ${d}`));
+    serverProcess.stderr?.on('data', (d) => console.error(`[Next.js Error] ${d}`));
+    serverProcess.on('error', (err) => {
+      console.error('Failed to spawn local server:', err);
+    });
+  }
+}
+
+/**
+ * Find merchant credentials if configured
+ */
+function getMerchantLoginUrl() {
+  const candidateConfigPaths = [
+    path.join(process.cwd(), 'sastmhaly_config.json'),
+    path.join(path.dirname(process.execPath), 'sastmhaly_config.json'),
+    path.join(userDataDir, 'sastmhaly_config.json'),
+    path.join(app.getAppPath(), '..', 'sastmhaly_config.json'),
+    path.join(process.resourcesPath || '', 'sastmhaly_config.json')
+  ];
+
+  for (const cfgPath of candidateConfigPaths) {
+    if (fs.existsSync(cfgPath)) {
+      try {
+        const raw = fs.readFileSync(cfgPath, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (parsed.phone) {
+          const phone = encodeURIComponent(parsed.phone);
+          const pass = encodeURIComponent(parsed.password || '');
+          return `${APP_URL}/login?phone=${phone}&pass=${pass}`;
+        }
+      } catch (e) {
+        console.error('Error reading config file:', e);
+      }
+    }
+  }
+
+  return `${APP_URL}/login`;
 }
 
 /**
@@ -79,6 +150,7 @@ async function createMainWindow() {
     title: 'سستمهالي - نظام نقاط البيع وإدارة المتاجر (النسخة المكتبية)',
     backgroundColor: '#0B1730',
     icon: path.join(__dirname, '..', 'public', 'logo.png'),
+    autoHideMenuBar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -139,12 +211,14 @@ async function createMainWindow() {
     </html>
   `)}`);
 
+  const initialUrl = getMerchantLoginUrl();
+
   try {
     await checkServerReady();
-    mainWindow.loadURL(APP_URL);
+    mainWindow.loadURL(initialUrl);
   } catch (err) {
     console.error('Failed to load application:', err);
-    mainWindow.loadURL(APP_URL);
+    mainWindow.loadURL(initialUrl);
   }
 
   // Application Menu

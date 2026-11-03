@@ -1,0 +1,129 @@
+; ====================================================================
+; Sastmhaly POS - Windows Installer Script (NSIS)
+; ====================================================================
+Unicode True
+RequestExecutionLevel user
+SetCompressor /SOLID lzma
+
+!define APP_NAME "سستمهالي - Sastmhaly POS"
+!define APP_PUBLISHER "Sastmhaly"
+!define APP_VERSION "1.0.0"
+!define APP_EXE "Sastmhaly_POS.exe"
+!define APP_DIR "SastmhalyPOS"
+
+Name "${APP_NAME}"
+OutFile "Sastmhaly-POS-Setup.exe"
+InstallDir "$LOCALAPPDATA\${APP_DIR}"
+InstallDirRegKey HKCU "Software\${APP_DIR}" ""
+Icon "app.ico"
+UninstallIcon "app.ico"
+
+VIProductVersion "1.0.0.0"
+VIAddVersionKey "ProductName" "${APP_NAME}"
+VIAddVersionKey "CompanyName" "${APP_PUBLISHER}"
+VIAddVersionKey "FileDescription" "برنامج تثبيت سستمهالي لنقاط البيع"
+VIAddVersionKey "FileVersion" "${APP_VERSION}"
+VIAddVersionKey "LegalCopyright" "Copyright © 2026 ${APP_PUBLISHER}"
+
+; Modern UI
+!include "MUI2.nsh"
+
+!define MUI_ICON "app.ico"
+!define MUI_UNICON "app.ico"
+!define MUI_ABORTWARNING
+
+; Interface Settings
+!define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXE}"
+!define MUI_FINISHPAGE_RUN_TEXT "تشغيل سستمهالي الآن"
+!define MUI_FINISHPAGE_SHOWREADME ""
+!define MUI_FINISHPAGE_SHOWREADME_TEXT "إنشاء اختصار على سطح المكتب"
+!define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateDesktopShortcut
+
+; Pages
+!insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_PAGE_FINISH
+
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+
+; Languages
+!insertmacro MUI_LANGUAGE "Arabic"
+
+; ====================================================================
+; Installation Section
+; ====================================================================
+Section "MainSection" SEC01
+  SetOutPath "$INSTDIR"
+  
+  ; Write basic executable and script files
+  File "app.ico"
+  File "run_app.vbs"
+  File "Sastmhaly_POS.exe"
+  File "node.exe"
+
+  ; Copy merchant config if present next to installer
+  IfFileExists "$EXEDIR\sastmhaly_config.json" 0 +2
+    CopyFiles /SILENT "$EXEDIR\sastmhaly_config.json" "$INSTDIR\sastmhaly_config.json"
+
+  ; Extract the Next.js standalone runtime
+  SetOutPath "$INSTDIR"
+  File "/Users/rogerpeter/sastmhaly/.next/standalone/server.js"
+  File "/Users/rogerpeter/sastmhaly/.next/standalone/package.json"
+  
+  SetOutPath "$INSTDIR\.next"
+  File /r "/Users/rogerpeter/sastmhaly/.next/standalone/.next\*"
+
+  SetOutPath "$INSTDIR\public"
+  File /r "/Users/rogerpeter/sastmhaly/.next/standalone/public\*"
+
+  SetOutPath "$INSTDIR\node_modules"
+  File /r "/Users/rogerpeter/sastmhaly/.next/standalone/node_modules\*"
+
+  SetOutPath "$INSTDIR\data"
+  File /r "/Users/rogerpeter/sastmhaly/.next/standalone/data\*"
+
+  SetOutPath "$INSTDIR"
+
+  ; Create Desktop Shortcut
+  CreateShortCut "$DESKTOP\سستمهالي - نقاط البيع.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\app.ico" 0
+  
+  ; Create Start Menu Shortcuts
+  CreateDirectory "$SMPROGRAMS\سستمهالي"
+  CreateShortCut "$SMPROGRAMS\سستمهالي\سستمهالي - نقاط البيع.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\app.ico" 0
+  CreateShortCut "$SMPROGRAMS\سستمهالي\إلغاء التثبيت.lnk" "$INSTDIR\uninstall.exe" "" "" 0
+
+  ; Create Uninstaller
+  WriteUninstaller "$INSTDIR\uninstall.exe"
+
+  ; Add to Windows Add/Remove Programs
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_DIR}" "DisplayName" "${APP_NAME}"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_DIR}" "DisplayIcon" "$INSTDIR\app.ico"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_DIR}" "DisplayVersion" "${APP_VERSION}"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_DIR}" "Publisher" "${APP_PUBLISHER}"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_DIR}" "UninstallString" "$INSTDIR\uninstall.exe"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_DIR}" "InstallLocation" "$INSTDIR"
+SectionEnd
+
+Function CreateDesktopShortcut
+  CreateShortCut "$DESKTOP\سستمهالي - نقاط البيع.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\app.ico" 0
+FunctionEnd
+
+; ====================================================================
+; Uninstallation Section
+; ====================================================================
+Section "Uninstall"
+  ; Remove Desktop and Start Menu Shortcuts
+  Delete "$DESKTOP\سستمهالي - نقاط البيع.lnk"
+  Delete "$SMPROGRAMS\سستمهالي\سستمهالي - نقاط البيع.lnk"
+  Delete "$SMPROGRAMS\سستمهالي\إلغاء التثبيت.lnk"
+  RMDir "$SMPROGRAMS\سستمهالي"
+
+  ; Remove Installed Directory
+  RMDir /r "$INSTDIR"
+
+  ; Remove Registry Keys
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_DIR}"
+  DeleteRegKey HKCU "Software\${APP_DIR}"
+SectionEnd

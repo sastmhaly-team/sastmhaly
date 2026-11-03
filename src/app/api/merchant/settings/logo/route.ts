@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { updateTenantSettings } from '@/lib/db/supabase-queries';
 
-export const BUCKET_NAME = 'merchant-logos';
+const BUCKET_NAME = 'merchant-logos';
 
 export async function POST(req: NextRequest) {
   try {

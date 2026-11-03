@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { execSync } from 'child_process';
 
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -45,11 +46,16 @@ export async function GET(request: NextRequest) {
 - رقم الهاتف (اسم المستخدم): ${phone}
 - كلمة المرور: ${password}
 
-طريقة التشغيل الفوري:
+طريقة التثبيت والتشغيل على ويندوز:
 1. قم بفك الضغط عن هذا المجلد.
-2. اضغط مرتين على ملف التشغيل السريع:
-   ${os === 'mac' ? `تشغيل_سستمهالي - ${safeMerchantName}.command` : `تشغيل_سستمهالي - ${safeMerchantName}.bat`}
-3. سيفتح النظام تلقائياً على جهازك بوضع أوفلاين وتفتح شاشة تسجيل الدخول ببياناتك مباشرة!
+2. اضغط مرتين على ملف التثبيت:
+   "تثبيت_سستمهالي - ${safeMerchantName}.exe"
+3. اضغط "التالي" ثم "تثبيت" (يستغرق بضع ثوانٍ فقط).
+4. سيتم إنشاء أيقونة على سطح المكتب باسم "سستمهالي - نقاط البيع".
+5. سيفتح النظام فوراً كتطبيق مثبت مستقل بدون متصفح أو روابط، ومسجّل ببياناتك تلقائياً!
+
+ملاحظة: إذا ظهر تنبيه الحماية Windows SmartScreen:
+اضغط على "More info" (مزيد من المعلومات) ثم "Run anyway" (تشغيل على أي حال).
 =======================================================`;
 
     fs.writeFileSync(path.join(tmpDir, 'بيانات_تسجيل_الدخول.txt'), credsContent, 'utf-8');
@@ -69,21 +75,59 @@ export async function GET(request: NextRequest) {
     const projectRoot = process.cwd();
 
     if (os === 'mac') {
-      // Mac specific bundle
+      // Mac specific bundle — shell-script .app that opens Safari/browser to the local server
       const macCommandContent = `#!/bin/bash
+# Sastmhaly POS - ${merchantName}
 DIR="$( cd "$( dirname "\${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-cd "$DIR"
-echo "======================================================="
-echo "  سستمهالي - النسخة المكتبية الأوفلاين"
-echo "  المتجر: ${merchantName}"
-echo "  رقم الهاتف: ${phone}"
-echo "======================================================="
+
+# Find the project root (where package.json is)
+SEARCH="$DIR"
+PROJECT=""
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if [ -f "$SEARCH/package.json" ]; then
+    PROJECT="$SEARCH"
+    break
+  fi
+  SEARCH="$(dirname "$SEARCH")"
+done
+
+if [ -z "$PROJECT" ]; then
+  osascript -e 'display dialog "خطأ: لم يتم العثور على مجلد المشروع." with title "سستمهالي - خطأ" buttons {"موافق"} default button "موافق" with icon stop'
+  exit 1
+fi
+
+PORT=3456
+PHONE="${phone}"
+PASS="${password}"
+
+# Check if server already running
+if lsof -Pi :$PORT -sTCP:LISTEN -t > /dev/null 2>&1; then
+  open "http://localhost:$PORT/login?phone=$PHONE&pass=$PASS"
+  exit 0
+fi
+
+# Notify start
+osascript -e 'display notification "جاري تشغيل النظام..." with title "سستمهالي POS"'
+
+cd "$PROJECT"
 export OFFLINE_MODE=true
 export DATABASE_MODE=sqlite
-export MERCHANT_ID="${tenant.id}"
-export PORT=3456
-open "http://localhost:3456/login?phone=${phone}&pass=${password}"
-npm run dev -- -p 3456
+export PORT=$PORT
+
+# Start server in background
+(npm run dev -- -p $PORT >> /tmp/sastmhaly_mac.log 2>&1) &
+SERVER_PID=$!
+
+# Wait for server ready (up to 60 seconds)
+for i in $(seq 1 60); do
+  sleep 1
+  if curl -s "http://localhost:$PORT" > /dev/null 2>&1; then
+    open "http://localhost:$PORT/login?phone=$PHONE&pass=$PASS"
+    break
+  fi
+done
+
+wait $SERVER_PID
 `;
       const scriptPath = path.join(tmpDir, `تشغيل_سستمهالي - ${safeMerchantName}.command`);
       fs.writeFileSync(scriptPath, macCommandContent, { encoding: 'utf-8', mode: 0o755 });
@@ -94,52 +138,29 @@ npm run dev -- -p 3456
         execSync(`cp -R "${macAppSource}" "${tmpDir}/"`);
       }
     } else {
-      // Windows specific bundle
-      const winBatContent = `@echo off
-chcp 65001 > nul
-title سستمهالي - ${merchantName} (النسخة المكتبية)
-echo =======================================================
-echo   سستمهالي لنقاط البيع وإدارة المتاجر
-echo   المتجر: ${merchantName}
-echo   رقم هاتف الدخول: ${phone}
-echo =======================================================
-set OFFLINE_MODE=true
-set DATABASE_MODE=sqlite
-set MERCHANT_ID=${tenant.id}
-set MERCHANT_NAME=${merchantName}
-set DEFAULT_PHONE=${phone}
-set DEFAULT_PASS=${password}
-set PORT=3456
-start "" "http://localhost:3456/login?phone=${phone}&pass=${password}"
-npm run dev -- -p 3456
-pause
-`;
-      const batPath = path.join(tmpDir, `تشغيل_سستمهالي - ${safeMerchantName}.bat`);
-      fs.writeFileSync(batPath, winBatContent, 'utf-8');
+      // Windows specific bundle - Real installable application
+      const setupExeSource = path.join(projectRoot, 'offline', 'windows', 'Sastmhaly-POS-Setup.exe');
+      if (fs.existsSync(setupExeSource)) {
+        fs.copyFileSync(setupExeSource, path.join(tmpDir, `تثبيت_سستمهالي - ${safeMerchantName}.exe`));
+      }
 
-      // Copy Main Application executable (Sastmhaly_POS.exe)
+      // Copy standalone portable launcher
       const launcherSource = path.join(projectRoot, 'offline', 'windows', 'Sastmhaly_POS.exe');
       if (fs.existsSync(launcherSource)) {
-        fs.copyFileSync(launcherSource, path.join(tmpDir, `سستمهالي - ${safeMerchantName}.exe`));
+        fs.copyFileSync(launcherSource, path.join(tmpDir, `تشغيل_مباشر - ${safeMerchantName}.exe`));
       }
 
-      // Copy Setup.exe if present
-      const exeSource = path.join(projectRoot, 'offline', 'windows', 'Sastmhaly-POS-Setup.exe');
-      if (fs.existsSync(exeSource)) {
-        fs.copyFileSync(exeSource, path.join(tmpDir, 'برنامج_التثبيت_Setup.exe'));
-      }
-
-      // Copy valid BMP app.ico
+      // Copy app icon
       const icoSource = path.join(projectRoot, 'offline', 'windows', 'app.ico');
       if (fs.existsSync(icoSource)) {
         fs.copyFileSync(icoSource, path.join(tmpDir, 'app.ico'));
       }
-    }
 
-    // Copy electron launcher if present
-    const electronSource = path.join(projectRoot, 'electron');
-    if (fs.existsSync(electronSource)) {
-      execSync(`cp -R "${electronSource}" "${tmpDir}/"`);
+      // Copy runner script for portable launch
+      const vbsSource = path.join(projectRoot, 'offline', 'windows', 'run_app.vbs');
+      if (fs.existsSync(vbsSource)) {
+        fs.copyFileSync(vbsSource, path.join(tmpDir, 'run_app.vbs'));
+      }
     }
 
     // Create the ZIP archive

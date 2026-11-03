@@ -1,0 +1,120 @@
+name: Build Desktop Apps
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. v1.0.0)'
+        required: false
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Electron build tools
+        run: npm install --save-dev electron electron-builder
+
+      - name: Build Next.js
+        run: npm run build
+        env:
+          DATABASE_MODE: sqlite
+          OFFLINE_MODE: 'true'
+          NEXT_PUBLIC_OFFLINE_MODE: 'true'
+
+      - name: Build Windows Electron app
+        run: npx electron-builder --win nsis portable
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            dist-desktop/*.exe
+            dist-desktop/*.yml
+          if-no-files-found: warn
+
+      - name: Create/Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: dist-desktop/*.exe
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+          name: Sastmhaly POS Desktop
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-mac:
+    name: Build macOS DMG
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Electron build tools
+        run: npm install --save-dev electron electron-builder
+
+      - name: Build Next.js
+        run: npm run build
+        env:
+          DATABASE_MODE: sqlite
+          OFFLINE_MODE: 'true'
+          NEXT_PUBLIC_OFFLINE_MODE: 'true'
+
+      - name: Build macOS Electron app
+        run: npx electron-builder --mac dmg
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: |
+            dist-desktop/*.dmg
+          if-no-files-found: warn
+
+      - name: Create/Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: dist-desktop/*.dmg
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+          name: Sastmhaly POS Desktop
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

@@ -45,3 +45,8 @@ next-env.d.ts
 *.db-wal
 *.db-shm
 *.db-journal
+
+# desktop build outputs
+/dist-desktop/
+*.log
+offline/windows/node.exe

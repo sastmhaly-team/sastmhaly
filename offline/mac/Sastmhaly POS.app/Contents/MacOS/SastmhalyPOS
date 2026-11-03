@@ -1,0 +1,67 @@
+#!/bin/bash
+# Sastmhaly POS - Offline Desktop App for macOS
+# This script starts the local POS server and opens the app
+
+APP_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../.." > /dev/null 2>&1 && pwd )"
+PROJECT_DIR="$(dirname "$(dirname "$(dirname "$APP_DIR")")")"
+
+# Find the project directory (where package.json is)
+# Walk up from the app bundle to find the project
+SEARCH_DIR="$APP_DIR"
+PROJECT_FOUND=""
+for i in 1 2 3 4 5 6 7 8; do
+  SEARCH_DIR="$(dirname "$SEARCH_DIR")"
+  if [ -f "$SEARCH_DIR/package.json" ]; then
+    PROJECT_FOUND="$SEARCH_DIR"
+    break
+  fi
+done
+
+# Show loading dialog
+osascript -e 'display notification "جاري تشغيل سستمهالي..." with title "Sastmhaly POS"' 2>/dev/null
+
+PORT=3456
+
+# Check if server is already running
+if lsof -Pi :$PORT -sTCP:LISTEN -t > /dev/null 2>&1; then
+  # Server already running, just open browser
+  open "http://localhost:$PORT/login"
+  exit 0
+fi
+
+if [ -n "$PROJECT_FOUND" ]; then
+  cd "$PROJECT_FOUND"
+  
+  # Check for config file (per-merchant bundle)
+  CONFIG_FILE="$(dirname "$(dirname "$APP_DIR")")/sastmhaly_config.json"
+  if [ -f "$CONFIG_FILE" ]; then
+    PHONE=$(python3 -c "import json,sys; d=json.load(open('$CONFIG_FILE')); print(d.get('phone',''))" 2>/dev/null)
+    PASS=$(python3 -c "import json,sys; d=json.load(open('$CONFIG_FILE')); print(d.get('password',''))" 2>/dev/null)
+    LOGIN_URL="http://localhost:$PORT/login?phone=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$PHONE'))" 2>/dev/null)&pass=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$PASS'))" 2>/dev/null)"
+  else
+    LOGIN_URL="http://localhost:$PORT/login"
+  fi
+  
+  export OFFLINE_MODE=true
+  export DATABASE_MODE=sqlite
+  export PORT=$PORT
+
+  # Start the dev server in background, then open browser after delay
+  (npm run dev -- -p $PORT > /tmp/sastmhaly.log 2>&1) &
+  SERVER_PID=$!
+  
+  # Wait for server to be ready (up to 45 seconds)
+  for i in $(seq 1 45); do
+    sleep 1
+    if curl -s "http://localhost:$PORT" > /dev/null 2>&1; then
+      open "$LOGIN_URL"
+      break
+    fi
+  done
+  
+  # Keep the app running until the server dies
+  wait $SERVER_PID
+else
+  osascript -e 'display dialog "خطأ: لم يتم العثور على مجلد المشروع.\nتأكد من وضع التطبيق داخل مجلد المشروع." with title "Sastmhaly POS - خطأ" buttons {"موافق"} default button "موافق" with icon stop'
+fi
+
