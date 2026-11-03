@@ -75,14 +75,18 @@ Section "MainSection" SEC01
   SetOutPath "$INSTDIR\.next"
   File /r "/Users/rogerpeter/sastmhaly/.next/standalone/.next\*"
 
+  ; Ensure all static assets (CSS, JS chunks, media) are explicitly extracted
+  SetOutPath "$INSTDIR\.next\static"
+  File /r "/Users/rogerpeter/sastmhaly/.next/static\*"
+
   SetOutPath "$INSTDIR\public"
-  File /r "/Users/rogerpeter/sastmhaly/.next/standalone/public\*"
+  File /r "/Users/rogerpeter/sastmhaly/public\*"
 
   SetOutPath "$INSTDIR\node_modules"
   File /r "/Users/rogerpeter/sastmhaly/.next/standalone/node_modules\*"
 
   SetOutPath "$INSTDIR\data"
-  File /r "/Users/rogerpeter/sastmhaly/.next/standalone/data\*"
+  File /nonfatal /r "/Users/rogerpeter/sastmhaly/data\*"
 
   SetOutPath "$INSTDIR"
 
