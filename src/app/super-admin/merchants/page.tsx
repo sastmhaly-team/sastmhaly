@@ -9,7 +9,8 @@ import { Tenant } from '@/lib/types';
 import { 
   Building2, Plus, Search, Filter, CheckCircle2, 
   Ban, ShieldCheck, ArrowUpRight, Store, Phone, Mail, Sparkles, MapPin, AlertCircle,
-  Calendar, Clock, RefreshCw, AlertTriangle, Trash2, Loader2, Edit2, Eye
+  Calendar, Clock, RefreshCw, AlertTriangle, Trash2, Loader2, Edit2, Eye,
+  Laptop, Download, Monitor
 } from 'lucide-react';
 
 export interface DurationPreset {
@@ -75,6 +76,11 @@ export default function SuperAdminMerchantsPage() {
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
+  // Offline Package Download Modal
+  const [isOfflineModalOpen, setIsOfflineModalOpen] = useState(false);
+  const [offlineTargetMerchant, setOfflineTargetMerchant] = useState<Tenant | null>(null);
+  const [downloadingBundle, setDownloadingBundle] = useState<'windows' | 'mac' | null>(null);
+
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [branchSubmitting, setBranchSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
@@ -91,6 +97,7 @@ export default function SuperAdminMerchantsPage() {
     password: '',
     branch_address: '',
     branch_city: 'Cairo',
+    deployment_type: 'cloud' as 'cloud' | 'offline',
   });
 
   // Provisioning duration state
@@ -247,6 +254,9 @@ export default function SuperAdminMerchantsPage() {
       if (res.ok && data.success) {
         await fetchMerchants();
         setIsModalOpen(false);
+        const wasOffline = formData.deployment_type === 'offline';
+        const createdTenant = data.tenant;
+
         setFormData({
           name: '',
           legal_name: '',
@@ -257,9 +267,15 @@ export default function SuperAdminMerchantsPage() {
           password: '',
           branch_address: '',
           branch_city: 'Cairo',
+          deployment_type: 'cloud',
         });
         setDurationType('preset');
         setSelectedPresetId('1m');
+
+        if (wasOffline && createdTenant) {
+          setOfflineTargetMerchant(createdTenant);
+          setIsOfflineModalOpen(true);
+        }
       } else {
         setFormError(data.error || 'Failed to create merchant');
       }
@@ -268,6 +284,20 @@ export default function SuperAdminMerchantsPage() {
     } finally {
       setFormSubmitting(false);
     }
+  };
+
+  const handleDownloadMerchantBundle = (merchant: Tenant, os: 'windows' | 'mac') => {
+    setDownloadingBundle(os);
+    const url = `/api/super-admin/merchants/download-bundle?tenant_id=${merchant.id}&os=${os}`;
+    const link = document.createElement('a');
+    link.href = url;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setTimeout(() => {
+      setDownloadingBundle(null);
+    }, 2500);
   };
 
   const handleOpenRenewModal = (merchant: Tenant) => {
@@ -724,9 +754,22 @@ export default function SuperAdminMerchantsPage() {
                                 {m.products_count ?? 0}
                               </span>
                             </div>
-                            {m.legal_name && (
-                              <p className="text-[10px] text-[#687386]">{m.legal_name}</p>
-                            )}
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {m.deployment_type === 'offline' ? (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                  <Laptop className="w-2.5 h-2.5" />
+                                  <span>{lang === 'ar' ? 'أوفلاين' : 'Offline'}</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
+                                  <Building2 className="w-2.5 h-2.5" />
+                                  <span>{lang === 'ar' ? 'سحابي' : 'Cloud'}</span>
+                                </span>
+                              )}
+                              {m.legal_name && (
+                                <p className="text-[10px] text-[#687386]">{m.legal_name}</p>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -841,6 +884,19 @@ export default function SuperAdminMerchantsPage() {
                           >
                             <Store className="w-3 h-3" />
                             <span>{lang === 'ar' ? 'الفروع' : 'Branches'}</span>
+                          </button>
+
+                          {/* Download Pre-configured Offline Bundle */}
+                          <button
+                            onClick={() => {
+                              setOfflineTargetMerchant(m);
+                              setIsOfflineModalOpen(true);
+                            }}
+                            className="px-2 py-1 rounded-lg text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 hover:bg-amber-600 hover:text-white transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+                            title={lang === 'ar' ? 'تحميل حزمة التشغيل الأوفلاين الخاصة بهذا المتجر' : 'Download Offline Package'}
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>{lang === 'ar' ? 'حزمة أوفلاين' : 'Offline App'}</span>
                           </button>
 
                           {m.status === 'active' ? (
@@ -1022,6 +1078,50 @@ export default function SuperAdminMerchantsPage() {
                 placeholder="owner@madina.com"
                 className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] text-xs focus:border-[#246BFD] focus:outline-none"
               />
+            </div>
+
+            {/* Deployment Type: Cloud vs Offline */}
+            <div className="sm:col-span-2 p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
+              <label className="block text-xs font-bold text-[#172033] mb-2 flex items-center gap-1.5">
+                <Laptop className="w-4 h-4 text-[#246BFD]" />
+                <span>{lang === 'ar' ? 'نوع نشر وتشغيل المتجر (سحابي أو أوفلاين) *' : 'Deployment Mode *'}</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, deployment_type: 'cloud' })}
+                  className={`p-2.5 rounded-lg text-xs font-bold text-center border transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                    formData.deployment_type === 'cloud'
+                      ? 'bg-[#EFF6FF] border-[#246BFD] text-[#246BFD] ring-1 ring-[#246BFD]'
+                      : 'bg-white border-[#E5EAF2] text-[#4A5568] hover:border-[#246BFD]/50'
+                  }`}
+                >
+                  <Building2 className="w-4 h-4" />
+                  <span>{lang === 'ar' ? '🌐 سحابي أونلاين (Cloud)' : '🌐 Cloud Online'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, deployment_type: 'offline' })}
+                  className={`p-2.5 rounded-lg text-xs font-bold text-center border transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                    formData.deployment_type === 'offline'
+                      ? 'bg-[#EFF6FF] border-[#246BFD] text-[#246BFD] ring-1 ring-[#246BFD]'
+                      : 'bg-white border-[#E5EAF2] text-[#4A5568] hover:border-[#246BFD]/50'
+                  }`}
+                >
+                  <Laptop className="w-4 h-4" />
+                  <span>{lang === 'ar' ? '💻 أوفلاين محلي (Offline)' : '💻 Local Offline'}</span>
+                </button>
+              </div>
+              {formData.deployment_type === 'offline' && (
+                <p className="text-[11px] text-[#246BFD] mt-2 font-medium flex items-center gap-1.5 bg-[#EFF6FF] p-2 rounded-lg border border-[#BFDBFE]">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    {lang === 'ar'
+                      ? 'سيتم إعداد حزمة أوفلاين فورية للمتجر فور الإنشاء، مبرمجة برقم هاتف وكلمة مرور المالك واسم المتجر بالعربي.'
+                      : 'An offline bundle will be immediately prepared for this merchant with their credentials & Arabic store name.'}
+                  </span>
+                </p>
+              )}
             </div>
 
             {/* Main Branch Location */}
@@ -1886,6 +1986,96 @@ export default function SuperAdminMerchantsPage() {
                   <span>{lang === 'ar' ? 'تأكيد الحذف النهائي' : 'Confirm Delete'}</span>
                 </>
               )}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Offline Package Download Modal for a Merchant */}
+      <Modal
+        isOpen={isOfflineModalOpen}
+        onClose={() => setIsOfflineModalOpen(false)}
+        title={
+          lang === 'ar'
+            ? `تحميل حزمة التشغيل الأوفلاين: ${offlineTargetMerchant?.name || ''}`
+            : `Download Offline Package: ${offlineTargetMerchant?.name || ''}`
+        }
+        maxWidth="lg"
+      >
+        <div className="space-y-4">
+          <div className="p-3.5 rounded-xl bg-[#F0F9FF] border border-[#BAE6FD] text-xs text-[#0369A1] space-y-1.5">
+            <div className="font-bold flex items-center gap-1.5 text-sm text-[#0B1730]">
+              <Laptop className="w-4 h-4 text-[#246BFD]" />
+              <span>{lang === 'ar' ? 'حزمة مهيأة ومجهزة مسبقاً لهذا المتجر' : 'Pre-configured Offline Package'}</span>
+            </div>
+            <p>
+              {lang === 'ar'
+                ? `الملف الذي سيتم تحميله يحمل اسم المتجر باللغة العربية، ومبرمج تلقائياً برقم هاتف وكلمة مرور المالك لتسجيل الدخول فوراً بدون أي إعدادات يدوية.`
+                : `The package is custom-named with the Arabic store name and pre-loaded with the owner's phone & password.`}
+            </p>
+            <div className="pt-2 border-t border-[#BAE6FD] flex flex-wrap items-center gap-4 text-[11px] font-mono text-[#0B1730]">
+              <span>📱 {lang === 'ar' ? 'رقم هاتف الدخول:' : 'Login Phone:'} <strong>{offlineTargetMerchant?.phone}</strong></span>
+              <span>🏪 {lang === 'ar' ? 'المتجر:' : 'Store:'} <strong>{offlineTargetMerchant?.name}</strong></span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+            {/* Windows Download Button */}
+            <button
+              onClick={() => offlineTargetMerchant && handleDownloadMerchantBundle(offlineTargetMerchant, 'windows')}
+              disabled={downloadingBundle !== null}
+              className="p-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white border border-slate-700 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02] shadow-md group"
+            >
+              <div className="w-10 h-10 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <Monitor className="w-5 h-5" />
+              </div>
+              <div className="text-center">
+                <div className="text-xs text-sky-300 font-semibold">{lang === 'ar' ? 'تحميل حزمة' : 'Download Bundle'}</div>
+                <div className="text-sm font-extrabold flex items-center justify-center gap-1.5 mt-0.5">
+                  <span>Windows (ويندوز)</span>
+                  <Download className={`w-3.5 h-3.5 text-sky-400 ${downloadingBundle === 'windows' ? 'animate-bounce' : ''}`} />
+                </div>
+              </div>
+            </button>
+
+            {/* Mac Download Button */}
+            <button
+              onClick={() => offlineTargetMerchant && handleDownloadMerchantBundle(offlineTargetMerchant, 'mac')}
+              disabled={downloadingBundle !== null}
+              className="p-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white border border-slate-700 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02] shadow-md group"
+            >
+              <div className="w-10 h-10 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <Laptop className="w-5 h-5" />
+              </div>
+              <div className="text-center">
+                <div className="text-xs text-emerald-300 font-semibold">{lang === 'ar' ? 'تحميل حزمة' : 'Download Bundle'}</div>
+                <div className="text-sm font-extrabold flex items-center justify-center gap-1.5 mt-0.5">
+                  <span>macOS (ماك)</span>
+                  <Download className={`w-3.5 h-3.5 text-emerald-400 ${downloadingBundle === 'mac' ? 'animate-bounce' : ''}`} />
+                </div>
+              </div>
+            </button>
+          </div>
+
+          <div className="p-3 rounded-lg bg-[#FFFBEB] border border-[#FDE68A] text-[11px] text-[#92400E] space-y-1">
+            <div className="font-bold flex items-center gap-1">
+              <span>💡</span>
+              <span>{lang === 'ar' ? 'حل رسالة حماية Windows SmartScreen الزرقاء:' : 'Fix for Windows SmartScreen Warning:'}</span>
+            </div>
+            <p>
+              {lang === 'ar'
+                ? 'الحزمة تحتوي على ملف مباشر باسم "تشغيل_سستمهالي - [اسم المتجر].bat". عند الضغط عليه مرتين يعمل النظام فوراً دون أي تحذير من Windows. أما عند تشغيل المثبت .exe، اضغط على "More info" (مزيد من المعلومات) ثم اختر "Run anyway" (تشغيل على أي حال).'
+                : 'Use the included .bat script to launch immediately without any SmartScreen warning, or click "More info" then "Run anyway" if running the .exe installer.'}
+            </p>
+          </div>
+
+          <div className="pt-2 border-t border-[#E5EAF2] flex justify-end">
+            <button
+              type="button"
+              onClick={() => setIsOfflineModalOpen(false)}
+              className="px-4 py-2 rounded-lg border border-[#E5EAF2] text-xs font-bold text-[#687386] hover:bg-gray-100 cursor-pointer"
+            >
+              {lang === 'ar' ? 'إغلاق' : 'Close'}
             </button>
           </div>
         </div>

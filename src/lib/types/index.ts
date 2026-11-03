@@ -31,6 +31,8 @@ export interface Tenant {
   days_remaining?: number;
   is_expired?: boolean;
   products_count?: number;
+  deployment_type?: 'cloud' | 'offline';
+  initial_password?: string;
 }
 
 export interface TenantSettings {

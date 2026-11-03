@@ -19,6 +19,21 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Auto-fill credentials if provided in URL (e.g. for offline merchant launch package)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlPhone = params.get('phone') || params.get('auto_phone');
+      const urlPass = params.get('pass') || params.get('auto_pass');
+      if (urlPhone) {
+        setPhone(urlPhone.replace(/\D/g, '').slice(0, 11));
+      }
+      if (urlPass) {
+        setPassword(urlPass);
+      }
+    }
+  }, []);
+
   // If already logged in, automatically redirect to appropriate workspace
   useEffect(() => {
     if (!isLoading && user) {

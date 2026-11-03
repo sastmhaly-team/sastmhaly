@@ -66,8 +66,11 @@ export async function getTenants(): Promise<Tenant[]> {
       isExpired = r.status === 'suspended';
     }
     const productsCount = productCountMap.get(r.id) || 0;
+    const isOffline = r.legal_name?.includes('[OFFLINE]') || r.deployment_type === 'offline';
     return { 
       ...r, 
+      legal_name: r.legal_name ? r.legal_name.replace(' [OFFLINE]', '') : r.legal_name,
+      deployment_type: isOffline ? 'offline' : 'cloud',
       sub_status: sub?.status, 
       sub_expires_at: sub?.expires_at, 
       days_remaining: daysRemaining, 

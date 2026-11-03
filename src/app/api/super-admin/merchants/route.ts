@@ -16,7 +16,8 @@ export async function POST(request: NextRequest) {
     const { 
       name, legal_name, phone, email, slug, owner_name, password,
       duration_months, duration_days, custom_start_date, custom_end_date,
-      branch_address, branch_city, main_branch_address, main_branch_city
+      branch_address, branch_city, main_branch_address, main_branch_city,
+      deployment_type
     } = body;
 
     if (!name || !phone || !password) {
@@ -45,12 +46,15 @@ export async function POST(request: NextRequest) {
     const tenantId = `tenant_${Date.now()}`;
     const merchantEmail = email || `owner_${cleanedPhone}@sastmhaly.com`;
 
+    const isOffline = deployment_type === 'offline';
+    const finalLegalName = (legal_name || name) + (isOffline ? ' [OFFLINE]' : '');
+
     // 1. Create Tenant with unified All-Inclusive Plan & selected subscription duration & main branch location
     const newTenant = await createTenant({
       id: tenantId,
       slug: finalSlug,
       name,
-      legal_name: legal_name || name,
+      legal_name: finalLegalName,
       phone: cleanedPhone,
       email: merchantEmail,
       plan_id: 'plan_all_inclusive',
@@ -76,7 +80,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      tenant: newTenant,
+      tenant: {
+        ...newTenant,
+        deployment_type: isOffline ? 'offline' : 'cloud',
+        initial_password: password
+      },
       message: 'Merchant provisioned successfully with subscription duration.'
     });
   } catch (error: unknown) {

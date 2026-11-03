@@ -126,23 +126,14 @@ export default function LandingPage() {
             <a href="#hr" className="hover:text-[#0071E3] hover:scale-105 transition-all duration-200">
               {lang === 'ar' ? 'الموظفين' : 'Staff & HR'}
             </a>
-            <Link href="/download" className="hover:text-[#0071E3] hover:scale-105 transition-all duration-200 font-bold text-[#0071E3] flex items-center gap-1">
-              <Download className="w-3.5 h-3.5" />
-              <span>{lang === 'ar' ? 'تحميل البرنامج (أوفلاين)' : 'Download App'}</span>
-            </Link>
+            <a href="#stats" className="hover:text-[#0071E3] hover:scale-105 transition-all duration-200">
+              {lang === 'ar' ? 'الأداء' : 'Performance'}
+            </a>
           </div>
 
           {/* Right Action Buttons */}
           <div className="flex items-center gap-3">
             <LanguageToggle />
-
-            <Link
-              href="/download"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#0071E3]/10 hover:bg-[#0071E3]/20 text-[#0071E3] text-[12px] font-bold transition-all duration-300 hover:scale-105"
-            >
-              <Monitor className="w-3.5 h-3.5" />
-              <span>{lang === 'ar' ? 'نسخة الكمبيوتر' : 'Desktop App'}</span>
-            </Link>
 
             <Link
               href="/login"
@@ -208,16 +199,6 @@ export default function LandingPage() {
                 {lang === 'ar' ? 'دخول المنظومة' : 'Launch Platform'}
               </span>
               <ArrowRight className="w-4 h-4 rtl:rotate-180 group-hover:translate-x-1.5 rtl:group-hover:-translate-x-1.5 transition-transform duration-300" />
-            </Link>
-
-            <Link
-              href="/download"
-              className="group w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold transition-all duration-300 shadow-md hover:shadow-xl hover:scale-[1.03] active:scale-95 hover:-translate-y-1"
-            >
-              <Download className="w-4 h-4 text-sky-400 group-hover:scale-125 transition-transform duration-300" />
-              <span>
-                {lang === 'ar' ? 'تحميل نسخة الكمبيوتر (أوفلاين)' : 'Download Desktop App'}
-              </span>
             </Link>
 
             <a
