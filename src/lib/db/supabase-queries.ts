@@ -5,6 +5,16 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import * as sqlite from './queries';
+
+export function isOfflineMode(): boolean {
+  return (
+    process.env.OFFLINE_MODE === 'true' ||
+    process.env.DATABASE_MODE === 'sqlite' ||
+    process.env.IS_OFFLINE_BUNDLE === 'true' ||
+    Boolean(process.env.NEXT_PUBLIC_OFFLINE_MODE)
+  );
+}
 import {
   Tenant, Branch, User, Category, Unit, Product,
   InventoryBalance, InventoryMovement, StockTransfer, StockTransferItem,
@@ -28,6 +38,9 @@ function uid(prefix: string) {
 // ============================================================================
 
 export async function getTenants(): Promise<Tenant[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getTenants(...arguments);
+  }
   const supabase = getSupabase();
   const [tenantsRes, productsRes] = await Promise.all([
     supabase
@@ -81,6 +94,9 @@ export async function getTenants(): Promise<Tenant[]> {
 }
 
 export async function getTenant(id: string): Promise<Tenant | undefined> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getTenant(...arguments);
+  }
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('tenants')
@@ -104,6 +120,9 @@ export async function getTenant(id: string): Promise<Tenant | undefined> {
 }
 
 export async function getTenantBySlug(slug: string): Promise<Tenant | undefined> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getTenantBySlug(...arguments);
+  }
   const supabase = getSupabase();
   const { data } = await supabase.from('tenants').select('*').eq('slug', slug).single();
   return data as Tenant | undefined;
@@ -130,6 +149,9 @@ export async function createTenant(data: {
   main_branch_address?: string;
   main_branch_city?: string;
 }): Promise<Tenant> {
+  if (isOfflineMode()) {
+    return (sqlite as any).createTenant(...arguments);
+  }
   const supabase = getSupabase();
   const currency = data.currency || 'EGP';
 
@@ -267,12 +289,18 @@ export async function createTenant(data: {
 }
 
 export async function updateTenantStatus(id: string, status: 'active' | 'suspended' | 'trial' | 'archived') {
+  if (isOfflineMode()) {
+    return (sqlite as any).updateTenantStatus(...arguments);
+  }
   const supabase = getSupabase();
   await supabase.from('tenants').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
   await supabase.from('subscriptions').update({ status: status === 'suspended' ? 'suspended' : 'active' }).eq('tenant_id', id);
 }
 
 export async function deleteTenant(id: string): Promise<{ success: boolean; error?: string }> {
+  if (isOfflineMode()) {
+    return (sqlite as any).deleteTenant(...arguments);
+  }
   const supabase = getSupabase();
   try {
     // Delete all child data in reverse dependency order
@@ -324,6 +352,9 @@ export async function renewSubscription(tenantId: string, options: {
   custom_end_date?: string;
   status?: 'active' | 'suspended';
 }) {
+  if (isOfflineMode()) {
+    return (sqlite as any).renewSubscription(...arguments);
+  }
   const supabase = getSupabase();
   let startsAt = new Date();
   if (options.custom_start_date) {
@@ -354,6 +385,9 @@ export async function renewSubscription(tenantId: string, options: {
 }
 
 export async function getPlatformOverviewMetrics() {
+  if (isOfflineMode()) {
+    return (sqlite as any).getPlatformOverviewMetrics(...arguments);
+  }
   const supabase = getSupabase();
   const [tenantsRes, branchesRes, usersRes, subsRes, activityRes, plansRes] = await Promise.all([
     supabase.from('tenants').select('status'),
@@ -386,12 +420,18 @@ export async function getPlatformOverviewMetrics() {
 // ============================================================================
 
 export async function getBranches(tenantId: string): Promise<Branch[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getBranches(...arguments);
+  }
   const supabase = getSupabase();
   const { data } = await supabase.from('branches').select('*').eq('tenant_id', tenantId).order('is_main', { ascending: false }).order('code');
   return (data || []) as Branch[];
 }
 
 export async function getBranch(tenantId: string, branchId: string): Promise<Branch | undefined> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getBranch(...arguments);
+  }
   const supabase = getSupabase();
   const { data } = await supabase.from('branches').select('*').eq('tenant_id', tenantId).eq('id', branchId).single();
   return data as Branch | undefined;
@@ -401,6 +441,9 @@ export async function createBranch(tenantId: string, data: {
   code: string; name_en: string; name_ar: string; phone: string;
   address: string; city?: string; opening_hours?: string; manager_name?: string;
 }): Promise<Branch> {
+  if (isOfflineMode()) {
+    return (sqlite as any).createBranch(...arguments);
+  }
   const supabase = getSupabase();
   const id = uid('br');
   const { data: branch, error } = await supabase.from('branches').insert({
@@ -421,6 +464,9 @@ export async function updateBranch(tenantId: string, branchId: string, data: Par
   address: string; city: string; opening_hours: string; manager_name: string;
   is_active: number; is_main: number;
 }>): Promise<Branch> {
+  if (isOfflineMode()) {
+    return (sqlite as any).updateBranch(...arguments);
+  }
   const supabase = getSupabase();
   const updates: any = {};
   if (data.code !== undefined) updates.code = data.code.toUpperCase();
@@ -447,6 +493,9 @@ export async function updateBranch(tenantId: string, branchId: string, data: Par
 }
 
 export async function deleteBranch(tenantId: string, branchId: string): Promise<{ success: boolean; error?: string }> {
+  if (isOfflineMode()) {
+    return (sqlite as any).deleteBranch(...arguments);
+  }
   const supabase = getSupabase();
   const { count } = await supabase.from('users').select('id', { count: 'exact', head: true }).eq('branch_id', branchId);
   if (count && count > 0) return { success: false, error: 'لا يمكن حذف فرع به موظفون' };
@@ -456,6 +505,9 @@ export async function deleteBranch(tenantId: string, branchId: string): Promise<
 }
 
 export async function getUsers(tenantId?: string, branchId?: string): Promise<User[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getUsers(...arguments);
+  }
   const supabase = getSupabase();
   let query = supabase.from('users').select('*');
   if (tenantId) query = query.eq('tenant_id', tenantId);
@@ -465,6 +517,9 @@ export async function getUsers(tenantId?: string, branchId?: string): Promise<Us
 }
 
 export async function getUserByUsernameOrEmail(identifier: string): Promise<(User & { password_hash: string }) | undefined> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getUserByUsernameOrEmail(...arguments);
+  }
   const supabase = getSupabase();
   const clean = identifier.trim();
   const { data } = await supabase.from('users').select('*')
@@ -481,6 +536,9 @@ export async function createUser(data: {
   job_title?: string; base_salary?: number; salary_type?: string;
   daily_hours?: number; national_id?: string; hire_date?: string; shift_name?: string;
 }): Promise<User> {
+  if (isOfflineMode()) {
+    return (sqlite as any).createUser(...arguments);
+  }
   const supabase = getSupabase();
   const id = uid('usr');
   const payload: any = {
@@ -523,6 +581,9 @@ export async function updateUser(id: string, tenantId: string, data: {
   job_title?: string; base_salary?: number; salary_type?: string;
   daily_hours?: number; national_id?: string; hire_date?: string; shift_name?: string;
 }): Promise<User> {
+  if (isOfflineMode()) {
+    return (sqlite as any).updateUser(...arguments);
+  }
   const supabase = getSupabase();
   const updates: any = {};
   if (data.full_name !== undefined) updates.full_name = data.full_name;
@@ -568,6 +629,9 @@ export async function updateUser(id: string, tenantId: string, data: {
 }
 
 export async function deleteUser(id: string, tenantId: string): Promise<boolean> {
+  if (isOfflineMode()) {
+    return (sqlite as any).deleteUser(...arguments);
+  }
   const supabase = getSupabase();
   const { error } = await supabase.from('users').delete().eq('id', id).eq('tenant_id', tenantId);
   return !error;
@@ -578,12 +642,18 @@ export async function deleteUser(id: string, tenantId: string): Promise<boolean>
 // ============================================================================
 
 export async function getCategories(tenantId: string): Promise<Category[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getCategories(...arguments);
+  }
   const supabase = getSupabase();
   const { data } = await supabase.from('categories').select('*').eq('tenant_id', tenantId).eq('is_active', 1).order('name_en');
   return (data || []) as Category[];
 }
 
 export async function createCategory(tenantId: string, data: { name_ar: string; name_en?: string; code?: string; color?: string }): Promise<Category> {
+  if (isOfflineMode()) {
+    return (sqlite as any).createCategory(...arguments);
+  }
   const supabase = getSupabase();
   const id = uid('cat');
   const code = (data.code || `CAT_${Date.now().toString().slice(-4)}`).toUpperCase();
@@ -596,6 +666,9 @@ export async function createCategory(tenantId: string, data: { name_ar: string; 
 }
 
 export async function updateCategory(tenantId: string, id: string, data: { name_ar: string; name_en?: string; code?: string; color?: string }): Promise<Category> {
+  if (isOfflineMode()) {
+    return (sqlite as any).updateCategory(...arguments);
+  }
   const supabase = getSupabase();
   const { data: existing } = await supabase.from('categories').select('*').eq('id', id).eq('tenant_id', tenantId).single();
   if (!existing) throw new Error('Category not found');
@@ -611,6 +684,9 @@ export async function updateCategory(tenantId: string, id: string, data: { name_
 }
 
 export async function deleteCategory(tenantId: string, id: string): Promise<{ success: boolean; error?: string }> {
+  if (isOfflineMode()) {
+    return (sqlite as any).deleteCategory(...arguments);
+  }
   const supabase = getSupabase();
   const { count } = await supabase.from('products').select('id', { count: 'exact', head: true }).eq('category_id', id).eq('tenant_id', tenantId);
   if (count && count > 0) return { success: false, error: `لا يمكن حذف هذا القسم لأن هناك ${count} منتجات مسجلة عليه` };
@@ -619,6 +695,9 @@ export async function deleteCategory(tenantId: string, id: string): Promise<{ su
 }
 
 export async function getUnits(tenantId: string): Promise<Unit[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getUnits(...arguments);
+  }
   const supabase = getSupabase();
   const { data } = await supabase.from('units').select('*').eq('tenant_id', tenantId).order('name_en');
   return (data || []) as Unit[];
@@ -627,6 +706,9 @@ export async function getUnits(tenantId: string): Promise<Unit[]> {
 export async function getProducts(tenantId: string, options?: {
   search?: string; categoryId?: string; branchId?: string; lowStockOnly?: boolean;
 }): Promise<Product[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getProducts(...arguments);
+  }
   const supabase = getSupabase();
 
   let query = supabase.from('products').select(`
@@ -667,6 +749,9 @@ export async function getProducts(tenantId: string, options?: {
 }
 
 export async function getProductByBarcode(tenantId: string, barcode: string): Promise<Product | undefined> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getProductByBarcode(...arguments);
+  }
   const supabase = getSupabase();
   const { data } = await supabase.from('products')
     .select(`*, categories(name_en, name_ar), units(name_en, name_ar)`)
@@ -690,6 +775,9 @@ export async function createProduct(tenantId: string, data: {
   tax_rate?: number; min_stock_alert?: number; is_weighted?: number;
   has_batch_tracking?: number; initial_stock?: number; branch_id?: string;
 }): Promise<Product> {
+  if (isOfflineMode()) {
+    return (sqlite as any).createProduct(...arguments);
+  }
   const supabase = getSupabase();
   const id = `prod_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
@@ -738,6 +826,9 @@ export async function updateProduct(tenantId: string, id: string, data: Partial<
   min_stock_alert: number; is_weighted: number; has_batch_tracking: number;
   is_active: number; image_url: string;
 }>, stockOptions?: { current_stock?: number; branch_id?: string }): Promise<Product> {
+  if (isOfflineMode()) {
+    return (sqlite as any).updateProduct(...arguments);
+  }
   const supabase = getSupabase();
   const { data: product, error } = await supabase.from('products').update(data)
     .eq('id', id).eq('tenant_id', tenantId).select().single();
@@ -806,6 +897,9 @@ export async function updateProduct(tenantId: string, id: string, data: Partial<
 }
 
 export async function deleteProduct(tenantId: string, id: string): Promise<{ success: boolean; error?: string }> {
+  if (isOfflineMode()) {
+    return (sqlite as any).deleteProduct(...arguments);
+  }
   const supabase = getSupabase();
   try {
     await supabase.from('inventory_balances').delete().eq('product_id', id).eq('tenant_id', tenantId);
@@ -826,6 +920,9 @@ export async function deleteProduct(tenantId: string, id: string): Promise<{ suc
 // ============================================================================
 
 export async function getInventoryBalances(tenantId: string, branchId?: string): Promise<InventoryBalance[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getInventoryBalances(...arguments);
+  }
   const supabase = getSupabase();
   let query = supabase.from('inventory_balances').select('*, products(name_en, name_ar, sku, barcode)').eq('tenant_id', tenantId);
   if (branchId) query = query.eq('branch_id', branchId);
@@ -837,6 +934,9 @@ export async function getInventoryBalances(tenantId: string, branchId?: string):
 }
 
 export async function getInventoryMovements(tenantId: string, options?: { branchId?: string; limit?: number }): Promise<InventoryMovement[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getInventoryMovements(...arguments);
+  }
   const supabase = getSupabase();
   let query = supabase.from('inventory_movements').select('*, products(name_en, name_ar), branches(name_ar)').eq('tenant_id', tenantId);
   if (options?.branchId) query = query.eq('branch_id', options.branchId);
@@ -849,6 +949,9 @@ export async function getInventoryMovements(tenantId: string, options?: { branch
 }
 
 export async function getBatches(tenantId: string, branchId?: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).getBatches(...arguments);
+  }
   const supabase = getSupabase();
   let query = supabase.from('product_batches').select('*, products(name_en, name_ar, sku), branches(name_ar)').eq('tenant_id', tenantId);
   if (branchId) query = query.eq('branch_id', branchId);
@@ -861,6 +964,9 @@ export async function getBatches(tenantId: string, branchId?: string) {
 }
 
 export async function getStockTransfers(tenantId: string): Promise<StockTransfer[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getStockTransfers(...arguments);
+  }
   const supabase = getSupabase();
   const { data } = await supabase.from('stock_transfers')
     .select('*, from_branch:branches!stock_transfers_from_branch_id_fkey(name_ar), to_branch:branches!stock_transfers_to_branch_id_fkey(name_ar), stock_transfer_items(*)')
@@ -877,6 +983,9 @@ export async function createStockTransfer(tenantId: string, data: {
   from_branch_id: string; to_branch_id: string; notes?: string;
   created_by: string; items: { product_id: string; quantity_sent?: number; quantity?: number }[];
 }): Promise<StockTransfer> {
+  if (isOfflineMode()) {
+    return (sqlite as any).createStockTransfer(...arguments);
+  }
   const supabase = getSupabase();
   const id = uid('trn');
   const transferNumber = `TRF-${Date.now().toString().slice(-6)}`;
@@ -917,6 +1026,9 @@ export async function createStockTransfer(tenantId: string, data: {
 }
 
 export async function receiveStockTransfer(tenantId: string, transferId: string, receivedBy: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).receiveStockTransfer(...arguments);
+  }
   const supabase = getSupabase();
   const { data: transfer } = await supabase.from('stock_transfers')
     .select('*, stock_transfer_items(*)')
@@ -997,6 +1109,9 @@ export async function receiveStockTransfer(tenantId: string, transferId: string,
 }
 
 export async function cancelStockTransfer(tenantId: string, transferId: string, canceledBy: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).cancelStockTransfer(...arguments);
+  }
   const supabase = getSupabase();
   const { data: transfer } = await supabase.from('stock_transfers').select('status').eq('id', transferId).single();
   if (!transfer) throw new Error('Transfer not found');
@@ -1014,6 +1129,9 @@ export async function cancelStockTransfer(tenantId: string, transferId: string, 
 // ============================================================================
 
 export async function getCashRegisters(tenantId: string, branchId?: string): Promise<CashRegister[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getCashRegisters(...arguments);
+  }
   const supabase = getSupabase();
   let query = supabase.from('cash_registers').select('*, branches(name_ar)').eq('tenant_id', tenantId);
   if (branchId) query = query.eq('branch_id', branchId);
@@ -1022,6 +1140,9 @@ export async function getCashRegisters(tenantId: string, branchId?: string): Pro
 }
 
 export async function getCashSessions(tenantId: string, branchId?: string): Promise<CashSession[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getCashSessions(...arguments);
+  }
   const supabase = getSupabase();
   let query = supabase.from('cash_sessions')
     .select('*, cash_registers(name), users(full_name), branches(name_ar)')
@@ -1036,6 +1157,9 @@ export async function getCashSessions(tenantId: string, branchId?: string): Prom
 }
 
 export async function getActiveCashSession(tenantId: string, branchId: string, registerId?: string): Promise<CashSession | undefined> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getActiveCashSession(...arguments);
+  }
   const supabase = getSupabase();
   let query = supabase.from('cash_sessions')
     .select('*, cash_registers(name), users(full_name)')
@@ -1053,6 +1177,9 @@ export async function getActiveCashSession(tenantId: string, branchId: string, r
 export async function openCashSession(tenantId: string, data: {
   branch_id: string; register_id: string; cashier_id: string; opening_float: number;
 }): Promise<CashSession> {
+  if (isOfflineMode()) {
+    return (sqlite as any).openCashSession(...arguments);
+  }
   const supabase = getSupabase();
   const sessionId = `sess_${Date.now()}`;
   const sessionNumber = `SES-${Date.now().toString().slice(-6)}`;
@@ -1075,6 +1202,9 @@ export async function openCashSession(tenantId: string, data: {
 }
 
 export async function closeCashSession(tenantId: string, sessionId: string, countedCash: number, notes?: string): Promise<CashSession> {
+  if (isOfflineMode()) {
+    return (sqlite as any).closeCashSession(...arguments);
+  }
   const supabase = getSupabase();
 
   const [cashSalesRes, payInsRes, payOutsRes] = await Promise.all([
@@ -1120,6 +1250,9 @@ export interface CreateSaleInput {
 }
 
 export async function commitSaleTransaction(input: CreateSaleInput): Promise<Sale & { items?: any[] }> {
+  if (isOfflineMode()) {
+    return (sqlite as any).commitSaleTransaction(...arguments);
+  }
   const supabase = getSupabase();
 
   // 0. Idempotency Check: prevent duplicate sales if already synced or submitted
@@ -1312,6 +1445,9 @@ export async function commitSaleTransaction(input: CreateSaleInput): Promise<Sal
 }
 
 export async function getSales(tenantId: string, options?: { branchId?: string; limit?: number }): Promise<Sale[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getSales(...arguments);
+  }
   const supabase = getSupabase();
   let query = supabase.from('sales').select(`
     *, customers(name), users(full_name), branches(name_ar),
@@ -1327,6 +1463,9 @@ export async function getSales(tenantId: string, options?: { branchId?: string; 
 }
 
 export async function getSale(tenantId: string, saleId: string): Promise<(Sale & { items: SaleItem[] }) | undefined> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getSale(...arguments);
+  }
   const supabase = getSupabase();
   const { data: sale } = await supabase.from('sales').select(`
     *, customers(name, phone), users(full_name), branches(name_en, name_ar, address, phone)
@@ -1357,6 +1496,9 @@ export async function processSaleReturn(tenantId: string, data: {
   reason: string; createdBy: string;
   items?: { product_id: string; quantity: number; unit_price: number; cost_price: number }[];
 }) {
+  if (isOfflineMode()) {
+    return (sqlite as any).processSaleReturn(...arguments);
+  }
   const supabase = getSupabase();
   const sale = await getSale(tenantId, data.saleId);
   if (!sale) throw new Error('Sale not found');
@@ -1396,6 +1538,9 @@ export async function processSaleReturn(tenantId: string, data: {
 // ============================================================================
 
 export async function getSuppliers(tenantId: string): Promise<Supplier[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getSuppliers(...arguments);
+  }
   const supabase = getSupabase();
   const { data } = await supabase.from('suppliers').select('*').eq('tenant_id', tenantId).order('name');
   return (data || []) as Supplier[];
@@ -1405,6 +1550,9 @@ export async function createSupplier(tenantId: string, data: {
   code: string; name: string; contact_person?: string; phone: string;
   email?: string; tax_id?: string; payment_terms?: string; opening_balance?: number;
 }): Promise<Supplier> {
+  if (isOfflineMode()) {
+    return (sqlite as any).createSupplier(...arguments);
+  }
   const supabase = getSupabase();
   const id = uid('sup');
   const { data: supplier, error } = await supabase.from('suppliers').insert({
@@ -1419,6 +1567,9 @@ export async function createSupplier(tenantId: string, data: {
 }
 
 export async function getPurchaseOrders(tenantId: string, branchId?: string): Promise<PurchaseOrder[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getPurchaseOrders(...arguments);
+  }
   const supabase = getSupabase();
   let query = supabase.from('purchase_orders').select('*, suppliers(name), branches(name_ar), purchase_order_items(*)').eq('tenant_id', tenantId);
   if (branchId) query = query.eq('branch_id', branchId);
@@ -1433,6 +1584,9 @@ export async function createPurchaseOrder(tenantId: string, data: {
   branch_id: string; supplier_id: string; notes?: string; created_by: string;
   items: { product_id: string; quantity_ordered?: number; quantity?: number; unit_cost?: number }[];
 }): Promise<PurchaseOrder> {
+  if (isOfflineMode()) {
+    return (sqlite as any).createPurchaseOrder(...arguments);
+  }
   const supabase = getSupabase();
   const id = uid('po');
   const poNumber = `PO-${Date.now().toString().slice(-6)}`;
@@ -1476,6 +1630,9 @@ export async function createPurchaseOrder(tenantId: string, data: {
 }
 
 export async function receivePurchaseOrderGoods(tenantId: string, poId: string, receivedBy: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).receivePurchaseOrderGoods(...arguments);
+  }
   const supabase = getSupabase();
   const { data: po } = await supabase.from('purchase_orders').select('*, purchase_order_items(*)').eq('id', poId).single();
   if (!po) throw new Error('PO not found');
@@ -1514,6 +1671,9 @@ export async function receivePurchaseOrderGoods(tenantId: string, poId: string, 
 // ============================================================================
 
 export async function getCustomers(tenantId: string): Promise<Customer[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getCustomers(...arguments);
+  }
   const supabase = getSupabase();
   const { data } = await supabase.from('customers').select('*').eq('tenant_id', tenantId).order('name');
   return (data || []) as Customer[];
@@ -1523,6 +1683,9 @@ export async function createCustomer(tenantId: string, data: {
   id?: string; code: string; name: string; phone: string; email?: string;
   address?: string; tax_id?: string; credit_limit?: number;
 }): Promise<Customer> {
+  if (isOfflineMode()) {
+    return (sqlite as any).createCustomer(...arguments);
+  }
   const supabase = getSupabase();
 
   // If customer already exists with this phone or ID for this tenant, return it
@@ -1557,6 +1720,9 @@ export async function createCustomer(tenantId: string, data: {
 // ============================================================================
 
 export async function getExpenses(tenantId: string, branchId?: string): Promise<Expense[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getExpenses(...arguments);
+  }
   const supabase = getSupabase();
   let query = supabase.from('expenses').select('*, branches(name_ar)').eq('tenant_id', tenantId);
   if (branchId) query = query.eq('branch_id', branchId);
@@ -1570,6 +1736,9 @@ export async function createExpense(tenantId: string, data: {
   payment_source: 'cash_drawer' | 'bank_account' | 'petty_cash';
   payee?: string; description: string; created_by: string;
 }): Promise<Expense> {
+  if (isOfflineMode()) {
+    return (sqlite as any).createExpense(...arguments);
+  }
   const supabase = getSupabase();
   const id = `exp_${Date.now()}`;
 
@@ -1614,12 +1783,18 @@ export async function createExpense(tenantId: string, data: {
 }
 
 export async function getChartOfAccounts(tenantId: string): Promise<Account[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getChartOfAccounts(...arguments);
+  }
   const supabase = getSupabase();
   const { data } = await supabase.from('chart_of_accounts').select('*').eq('tenant_id', tenantId).order('account_code');
   return (data || []) as Account[];
 }
 
 export async function getJournalEntries(tenantId: string): Promise<JournalEntry[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getJournalEntries(...arguments);
+  }
   const supabase = getSupabase();
   const { data: entries } = await supabase.from('journal_entries').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(50);
   if (!entries) return [];
@@ -1645,6 +1820,9 @@ export async function getJournalEntries(tenantId: string): Promise<JournalEntry[
 // ============================================================================
 
 export async function getMerchantDashboardKpis(tenantId: string, branchId?: string, startDate?: string, endDate?: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).getMerchantDashboardKpis(...arguments);
+  }
   const supabase = getSupabase();
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).toISOString();
@@ -1846,6 +2024,9 @@ export async function getMerchantDashboardKpis(tenantId: string, branchId?: stri
 // ============================================================================
 
 export async function getNotifications(tenantId: string, branchId?: string): Promise<Notification[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getNotifications(...arguments);
+  }
   const supabase = getSupabase();
   let query = supabase.from('notifications').select('*').eq('tenant_id', tenantId);
   if (branchId) query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
@@ -1855,11 +2036,17 @@ export async function getNotifications(tenantId: string, branchId?: string): Pro
 }
 
 export async function markNotificationRead(id: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).markNotificationRead(...arguments);
+  }
   const supabase = getSupabase();
   await supabase.from('notifications').update({ is_read: 1 }).eq('id', id);
 }
 
 export async function getAuditLogs(tenantId?: string, limit: number = 50): Promise<AuditLog[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getAuditLogs(...arguments);
+  }
   const supabase = getSupabase();
   let query = supabase.from('audit_logs').select('*, users(full_name), tenants(name)').order('created_at', { ascending: false }).limit(limit);
   if (tenantId) query = query.eq('tenant_id', tenantId);
@@ -1870,6 +2057,9 @@ export async function getAuditLogs(tenantId?: string, limit: number = 50): Promi
 }
 
 export async function getTenantSettings(tenantId: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).getTenantSettings(...arguments);
+  }
   const supabase = getSupabase();
   const [tenantRes, settingsRes] = await Promise.all([
     supabase.from('tenants').select('*').eq('id', tenantId).single(),
@@ -1884,6 +2074,9 @@ export async function updateTenantSettings(tenantId: string, data: {
   receipt_footer?: string; receipt_width?: '58mm' | '80mm'; scale_barcode_prefix?: string;
   valuation_method?: 'FIFO' | 'WAC'; expiry_warning_days?: number;
 }) {
+  if (isOfflineMode()) {
+    return (sqlite as any).updateTenantSettings(...arguments);
+  }
   const supabase = getSupabase();
   const tenantUpdates: any = {};
   if (data.name !== undefined) tenantUpdates.name = data.name;
@@ -1928,6 +2121,12 @@ export async function getAttendanceRecords(
   branchId?: string,
   userId?: string
 ): Promise<AttendanceRecord[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getAttendanceRecords(...arguments);
+  }
+  if (isOfflineMode()) {
+    return (sqlite as any).getEmployees(...arguments);
+  }
   const supabase = getSupabase();
   try {
     let query = supabase.from('employee_attendance').select('*').eq('tenant_id', tenantId);
@@ -1974,6 +2173,9 @@ export async function upsertAttendanceRecord(
     late_minutes?: number;
   }
 ): Promise<AttendanceRecord> {
+  if (isOfflineMode()) {
+    return (sqlite as any).upsertAttendanceRecord(...arguments);
+  }
   const supabase = getSupabase();
 
   // Calculate total hours if check-in and check-out exist
@@ -2023,6 +2225,9 @@ export async function getEmployeeAdjustments(
   month?: string,
   userId?: string
 ): Promise<EmployeeAdjustment[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getEmployeeAdjustments(...arguments);
+  }
   const supabase = getSupabase();
   try {
     let query = supabase.from('employee_adjustments').select('*').eq('tenant_id', tenantId);
@@ -2064,6 +2269,9 @@ export async function createEmployeeAdjustment(data: {
   reason: string;
   status?: 'pending' | 'approved' | 'settled';
 }): Promise<EmployeeAdjustment> {
+  if (isOfflineMode()) {
+    return (sqlite as any).createEmployeeAdjustment(...arguments);
+  }
   const supabase = getSupabase();
   const id = uid('adj');
   const payload = {
@@ -2090,6 +2298,9 @@ export async function createEmployeeAdjustment(data: {
 }
 
 export async function deleteEmployeeAdjustment(id: string, tenantId: string): Promise<boolean> {
+  if (isOfflineMode()) {
+    return (sqlite as any).deleteEmployeeAdjustment(...arguments);
+  }
   const supabase = getSupabase();
   const { error } = await supabase
     .from('employee_adjustments')
@@ -2104,6 +2315,9 @@ export async function getPayrollRecords(
   month?: string,
   branchId?: string
 ): Promise<PayrollRecord[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).getPayrollRecords(...arguments);
+  }
   const supabase = getSupabase();
   try {
     let query = supabase.from('employee_payroll').select('*').eq('tenant_id', tenantId);
@@ -2140,6 +2354,9 @@ export async function generateMonthlyPayroll(
   month: string,
   branchId?: string
 ): Promise<PayrollRecord[]> {
+  if (isOfflineMode()) {
+    return (sqlite as any).generateMonthlyPayroll(...arguments);
+  }
   const supabase = getSupabase();
 
   // 1. Fetch active employees
@@ -2238,6 +2455,9 @@ export async function markPayrollPaid(
   paymentMethod: 'cash' | 'bank' | 'wallet' = 'cash',
   recordExpense: boolean = true
 ): Promise<PayrollRecord> {
+  if (isOfflineMode()) {
+    return (sqlite as any).markPayrollPaid(...arguments);
+  }
   const supabase = getSupabase();
   const now = new Date().toISOString();
 

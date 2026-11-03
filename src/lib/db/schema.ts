@@ -592,6 +592,65 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Employee Attendance
+CREATE TABLE IF NOT EXISTS employee_attendance (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  branch_id TEXT,
+  user_id TEXT NOT NULL,
+  date TEXT NOT NULL,
+  status TEXT NOT NULL,
+  check_in_time TEXT,
+  check_out_time TEXT,
+  total_hours REAL,
+  late_minutes REAL,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Employee Adjustments (Bonuses, Deductions, Advances)
+CREATE TABLE IF NOT EXISTS employee_adjustments (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  branch_id TEXT,
+  user_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  amount REAL NOT NULL DEFAULT 0.0,
+  date TEXT NOT NULL,
+  month TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'approved',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Employee Monthly Payroll
+CREATE TABLE IF NOT EXISTS employee_payroll (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  branch_id TEXT,
+  user_id TEXT NOT NULL,
+  month TEXT NOT NULL,
+  base_salary REAL NOT NULL DEFAULT 0.0,
+  working_days REAL NOT NULL DEFAULT 30,
+  attended_days REAL NOT NULL DEFAULT 0,
+  absent_days REAL NOT NULL DEFAULT 0,
+  total_bonuses REAL NOT NULL DEFAULT 0.0,
+  total_deductions REAL NOT NULL DEFAULT 0.0,
+  total_advances REAL NOT NULL DEFAULT 0.0,
+  net_salary REAL NOT NULL DEFAULT 0.0,
+  status TEXT NOT NULL DEFAULT 'calculated',
+  paid_at TEXT,
+  payment_method TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- Indexes for maximum query performance across large datasets
 CREATE INDEX IF NOT EXISTS idx_products_tenant ON products(tenant_id, is_active);
 CREATE INDEX IF NOT EXISTS idx_products_barcode ON products(tenant_id, barcode);

@@ -67,6 +67,11 @@ Section "MainSection" SEC01
   IfFileExists "$EXEDIR\sastmhaly_config.json" 0 +2
     CopyFiles /SILENT "$EXEDIR\sastmhaly_config.json" "$INSTDIR\sastmhaly_config.json"
 
+  ; Copy initial database if present next to installer
+  IfFileExists "$EXEDIR\sastmhaly.db" 0 +3
+    CreateDirectory "$INSTDIR\data"
+    CopyFiles /SILENT "$EXEDIR\sastmhaly.db" "$INSTDIR\data\sastmhaly.db"
+
   ; Extract the Next.js standalone runtime
   SetOutPath "$INSTDIR"
   File "/oname=server.js" "/Users/rogerpeter/sastmhaly/offline/windows/standalone_server.js"

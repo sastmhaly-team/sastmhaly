@@ -203,6 +203,38 @@ export function updateTenantStatus(id: string, status: 'active' | 'suspended' | 
   })();
 }
 
+export function deleteTenant(id: string): { success: boolean; error?: string } {
+  try {
+    const txn = db.transaction(() => {
+      const tables = [
+        'sale_return_items', 'sale_returns', 'sale_items', 'sale_payments', 'sales',
+        'cash_movements', 'cash_sessions', 'cash_registers',
+        'inventory_movements', 'inventory_balances', 'product_batches', 'products',
+        'stock_transfer_items', 'stock_transfers', 'purchase_order_items', 'purchase_orders',
+        'customer_payments', 'customers', 'supplier_payments', 'suppliers',
+        'categories', 'units', 'journal_lines', 'journal_entries', 'chart_of_accounts',
+        'expenses', 'audit_logs', 'notifications', 'users', 'branches',
+        'subscription_invoices', 'subscriptions', 'tenant_settings', 'tenants'
+      ];
+      for (const table of tables) {
+        try {
+          if (table === 'tenants') {
+            db.prepare('DELETE FROM tenants WHERE id = ?').run(id);
+          } else {
+            db.prepare(`DELETE FROM ${table} WHERE tenant_id = ?`).run(id);
+          }
+        } catch (e) {
+          // Table might not exist or empty
+        }
+      }
+    });
+    txn();
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 export function renewSubscription(tenantId: string, options: {
   duration_months?: number;
   custom_start_date?: string;
@@ -333,6 +365,41 @@ export function createBranch(tenantId: string, data: {
   `).run(`reg_${id}_01`, tenantId, id, `${data.name_ar} - نقطة بيع 1`);
 
   return getBranch(tenantId, id)!;
+}
+
+export function updateBranch(tenantId: string, branchId: string, data: Partial<{
+  code: string; name_en: string; name_ar: string; phone: string;
+  address: string; city: string; opening_hours: string; manager_name: string;
+  is_active: number; is_main: number;
+}>): Branch {
+  const existing = getBranch(tenantId, branchId);
+  if (!existing) throw new Error('Branch not found');
+
+  const code = (data.code ?? existing.code).toUpperCase();
+  const nameEn = data.name_en ?? existing.name_en;
+  const nameAr = data.name_ar ?? existing.name_ar;
+  const phone = data.phone ?? existing.phone;
+  const address = data.address ?? existing.address;
+  const city = data.city ?? existing.city;
+  const openingHours = data.opening_hours ?? existing.opening_hours;
+  const managerName = data.manager_name ?? existing.manager_name;
+  const isActive = data.is_active ?? existing.is_active;
+  const isMain = data.is_main ?? existing.is_main;
+
+  const txn = db.transaction(() => {
+    if (isMain === 1) {
+      db.prepare('UPDATE branches SET is_main = 0 WHERE tenant_id = ?').run(tenantId);
+    }
+    db.prepare(`
+      UPDATE branches
+      SET code = ?, name_en = ?, name_ar = ?, phone = ?, address = ?, city = ?,
+          opening_hours = ?, manager_name = ?, is_active = ?, is_main = ?
+      WHERE id = ? AND tenant_id = ?
+    `).run(code, nameEn, nameAr, phone, address, city, openingHours, managerName, isActive, isMain, branchId, tenantId);
+  });
+
+  txn();
+  return getBranch(tenantId, branchId)!;
 }
 
 export function deleteBranch(tenantId: string, branchId: string): { success: boolean; error?: string } {
@@ -608,6 +675,90 @@ export function createProduct(tenantId: string, data: {
   return db.prepare('SELECT * FROM products WHERE id = ?').get(id) as Product;
 }
 
+export function updateProduct(tenantId: string, id: string, data: Partial<{
+  name_en: string; name_ar: string; sku: string; barcode: string; additional_barcodes: string;
+  category_id: string; unit_id: string; cost_price: number; selling_price: number;
+  wholesale_price: number; min_selling_price: number; tax_rate: number;
+  min_stock_alert: number; is_weighted: number; has_batch_tracking: number;
+  is_active: number; image_url: string;
+}>, stockOptions?: { current_stock?: number; branch_id?: string }): Product {
+  const existing = db.prepare('SELECT * FROM products WHERE id = ? AND tenant_id = ?').get(id, tenantId) as Product;
+  if (!existing) throw new Error('Product not found');
+
+  const nameEn = data.name_en ?? existing.name_en;
+  const nameAr = data.name_ar ?? existing.name_ar;
+  const sku = data.sku ?? existing.sku;
+  const barcode = data.barcode ?? existing.barcode;
+  const addBarcodes = data.additional_barcodes !== undefined ? data.additional_barcodes : existing.additional_barcodes;
+  const catId = data.category_id ?? existing.category_id;
+  const unitId = data.unit_id ?? existing.unit_id;
+  const cost = data.cost_price ?? existing.cost_price;
+  const sell = data.selling_price ?? existing.selling_price;
+  const whole = data.wholesale_price !== undefined ? data.wholesale_price : existing.wholesale_price;
+  const tax = data.tax_rate ?? existing.tax_rate;
+  const minStock = data.min_stock_alert ?? existing.min_stock_alert;
+  const isWeighted = data.is_weighted ?? existing.is_weighted;
+  const hasBatch = data.has_batch_tracking ?? existing.has_batch_tracking;
+  const isActive = data.is_active ?? existing.is_active;
+
+  const txn = db.transaction(() => {
+    db.prepare(`
+      UPDATE products
+      SET name_en = ?, name_ar = ?, sku = ?, barcode = ?, additional_barcodes = ?,
+          category_id = ?, unit_id = ?, cost_price = ?, selling_price = ?,
+          wholesale_price = ?, tax_rate = ?, min_stock_alert = ?,
+          is_weighted = ?, has_batch_tracking = ?, is_active = ?
+      WHERE id = ? AND tenant_id = ?
+    `).run(
+      nameEn, nameAr, sku, barcode, addBarcodes,
+      catId, unitId, cost, sell, whole, tax, minStock,
+      isWeighted, hasBatch, isActive, id, tenantId
+    );
+
+    if (stockOptions && stockOptions.current_stock !== undefined) {
+      const targetStock = Math.max(0, Number(stockOptions.current_stock));
+      let targetBranchId = stockOptions.branch_id;
+      if (!targetBranchId || targetBranchId === 'all') {
+        const br = db.prepare('SELECT id FROM branches WHERE tenant_id = ? ORDER BY is_main DESC LIMIT 1').get(tenantId) as { id: string } | undefined;
+        targetBranchId = br?.id;
+      }
+
+      if (targetBranchId) {
+        const existingBal = db.prepare('SELECT id, quantity FROM inventory_balances WHERE branch_id = ? AND product_id = ?').get(targetBranchId, id) as { id: string; quantity: number } | undefined;
+        if (existingBal) {
+          db.prepare('UPDATE inventory_balances SET quantity = ?, last_updated = datetime("now") WHERE id = ?').run(targetStock, existingBal.id);
+        } else {
+          db.prepare(`
+            INSERT INTO inventory_balances (id, tenant_id, branch_id, product_id, quantity, avg_cost)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).run(`inv_${id}_${targetBranchId}`, tenantId, targetBranchId, id, targetStock, cost);
+        }
+      }
+    }
+  });
+
+  txn();
+  return db.prepare('SELECT * FROM products WHERE id = ?').get(id) as Product;
+}
+
+export function deleteProduct(tenantId: string, id: string): { success: boolean; error?: string } {
+  try {
+    const txn = db.transaction(() => {
+      db.prepare('DELETE FROM inventory_balances WHERE product_id = ? AND tenant_id = ?').run(id, tenantId);
+      db.prepare('DELETE FROM inventory_movements WHERE product_id = ? AND tenant_id = ?').run(id, tenantId);
+      db.prepare('DELETE FROM product_batches WHERE product_id = ? AND tenant_id = ?').run(id, tenantId);
+      const res = db.prepare('DELETE FROM products WHERE id = ? AND tenant_id = ?').run(id, tenantId);
+      if (res.changes === 0) {
+        db.prepare('UPDATE products SET is_active = 0 WHERE id = ? AND tenant_id = ?').run(id, tenantId);
+      }
+    });
+    txn();
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 // ============================================================================
 // INVENTORY & BATCHES
 // ============================================================================
@@ -752,6 +903,40 @@ export function receiveStockTransfer(tenantId: string, transferId: string, recei
   });
 
   txn();
+}
+
+export function cancelStockTransfer(tenantId: string, transferId: string, canceledBy: string) {
+  const trf = db.prepare('SELECT * FROM stock_transfers WHERE id = ? AND tenant_id = ?').get(transferId, tenantId) as StockTransfer | undefined;
+  if (!trf) throw new Error('Transfer not found');
+  if (trf.status === 'received') throw new Error('Cannot cancel an already completed transfer');
+
+  const txn = db.transaction(() => {
+    // If it was in_transit, restore stock to from_branch
+    if (trf.status === 'in_transit') {
+      const items = db.prepare('SELECT * FROM stock_transfer_items WHERE transfer_id = ?').all(transferId) as StockTransferItem[];
+      for (const item of items) {
+        db.prepare(`
+          UPDATE inventory_balances 
+          SET quantity = quantity + ? 
+          WHERE branch_id = ? AND product_id = ?
+        `).run(item.quantity_sent, trf.from_branch_id, item.product_id);
+
+        db.prepare(`
+          INSERT INTO inventory_movements (id, tenant_id, branch_id, product_id, movement_type, quantity, unit_cost, reference_type, reference_id, notes, created_by)
+          VALUES (?, ?, ?, ?, 'transfer_in', ?, 0, 'stock_transfer_cancel', ?, 'Canceled stock transfer restore', ?)
+        `).run(`mov_${Date.now()}_${Math.random()}`, tenantId, trf.from_branch_id, item.product_id, item.quantity_sent, transferId, canceledBy);
+      }
+    }
+
+    db.prepare(`
+      UPDATE stock_transfers 
+      SET status = 'canceled', approved_by = ?
+      WHERE id = ?
+    `).run(canceledBy, transferId);
+  });
+
+  txn();
+  return { success: true };
 }
 
 // ============================================================================
@@ -1715,4 +1900,300 @@ export function updateTenantSettings(tenantId: string, data: {
 
   txn();
   return getTenantSettings(tenantId);
+}
+
+// ============================================================================
+// HR, ATTENDANCE & PAYROLL (SQLITE OFFLINE)
+// ============================================================================
+
+export function getEmployees(tenantId: string, branchId?: string): User[] {
+  let query = "SELECT * FROM users WHERE tenant_id = ? AND role != 'super_admin'";
+  const params: unknown[] = [tenantId];
+  if (branchId && branchId !== 'all') {
+    query += ' AND branch_id = ?';
+    params.push(branchId);
+  }
+  query += ' ORDER BY created_at DESC';
+  return db.prepare(query).all(...params) as User[];
+}
+
+export function getAttendanceRecords(
+  tenantId: string,
+  options?: { date?: string; startDate?: string; endDate?: string; branchId?: string; userId?: string }
+) {
+  let query = `
+    SELECT a.*, u.full_name as user_name, u.phone as user_phone, b.name_ar as branch_name
+    FROM employee_attendance a
+    JOIN users u ON a.user_id = u.id
+    LEFT JOIN branches b ON a.branch_id = b.id
+    WHERE a.tenant_id = ?
+  `;
+  const params: unknown[] = [tenantId];
+
+  if (options?.date) {
+    query += ' AND a.date = ?';
+    params.push(options.date);
+  }
+  if (options?.startDate) {
+    query += ' AND a.date >= ?';
+    params.push(options.startDate);
+  }
+  if (options?.endDate) {
+    query += ' AND a.date <= ?';
+    params.push(options.endDate);
+  }
+  if (options?.branchId && options.branchId !== 'all') {
+    query += ' AND a.branch_id = ?';
+    params.push(options.branchId);
+  }
+  if (options?.userId) {
+    query += ' AND a.user_id = ?';
+    params.push(options.userId);
+  }
+
+  query += ' ORDER BY a.date DESC, a.created_at DESC';
+  return db.prepare(query).all(...params);
+}
+
+export function upsertAttendanceRecord(
+  tenantId: string,
+  data: {
+    user_id: string;
+    date: string;
+    status: 'present' | 'absent' | 'late' | 'half_day' | 'leave';
+    check_in_time?: string;
+    check_out_time?: string;
+    total_hours?: number;
+    late_minutes?: number;
+    notes?: string;
+    branch_id?: string;
+  }
+) {
+  const existing = db.prepare('SELECT id FROM employee_attendance WHERE tenant_id = ? AND user_id = ? AND date = ?')
+    .get(tenantId, data.user_id, data.date) as { id: string } | undefined;
+
+  let branchId = data.branch_id;
+  if (!branchId) {
+    const user = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(data.user_id) as { branch_id: string } | undefined;
+    branchId = user?.branch_id;
+  }
+
+  if (existing) {
+    db.prepare(`
+      UPDATE employee_attendance
+      SET status = ?, check_in_time = ?, check_out_time = ?, total_hours = ?, late_minutes = ?, notes = ?, branch_id = ?
+      WHERE id = ?
+    `).run(
+      data.status, data.check_in_time || null, data.check_out_time || null,
+      data.total_hours ?? null, data.late_minutes ?? null, data.notes || null,
+      branchId || null, existing.id
+    );
+    return db.prepare('SELECT * FROM employee_attendance WHERE id = ?').get(existing.id);
+  } else {
+    const id = `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    db.prepare(`
+      INSERT INTO employee_attendance (id, tenant_id, branch_id, user_id, date, status, check_in_time, check_out_time, total_hours, late_minutes, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, tenantId, branchId || null, data.user_id, data.date, data.status,
+      data.check_in_time || null, data.check_out_time || null,
+      data.total_hours ?? null, data.late_minutes ?? null, data.notes || null
+    );
+    return db.prepare('SELECT * FROM employee_attendance WHERE id = ?').get(id);
+  }
+}
+
+export function getEmployeeAdjustments(
+  tenantId: string,
+  options?: { month?: string; userId?: string; branchId?: string }
+) {
+  let query = `
+    SELECT j.*, u.full_name as user_name, u.phone as user_phone, b.name_ar as branch_name
+    FROM employee_adjustments j
+    JOIN users u ON j.user_id = u.id
+    LEFT JOIN branches b ON j.branch_id = b.id
+    WHERE j.tenant_id = ?
+  `;
+  const params: unknown[] = [tenantId];
+  if (options?.month) {
+    query += ' AND j.month = ?';
+    params.push(options.month);
+  }
+  if (options?.userId) {
+    query += ' AND j.user_id = ?';
+    params.push(options.userId);
+  }
+  if (options?.branchId && options.branchId !== 'all') {
+    query += ' AND j.branch_id = ?';
+    params.push(options.branchId);
+  }
+  query += ' ORDER BY j.date DESC, j.created_at DESC';
+  return db.prepare(query).all(...params);
+}
+
+export function createEmployeeAdjustment(
+  tenantId: string,
+  data: {
+    user_id: string;
+    branch_id?: string;
+    type: 'advance' | 'bonus' | 'deduction' | 'allowance';
+    amount: number;
+    date: string;
+    reason: string;
+  }
+) {
+  const month = data.date.slice(0, 7);
+  let branchId = data.branch_id;
+  if (!branchId) {
+    const user = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(data.user_id) as { branch_id: string } | undefined;
+    branchId = user?.branch_id;
+  }
+
+  const id = `adj_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  db.prepare(`
+    INSERT INTO employee_adjustments (id, tenant_id, branch_id, user_id, type, amount, date, month, reason, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved')
+  `).run(id, tenantId, branchId || null, data.user_id, data.type, Number(data.amount || 0), data.date, month, data.reason);
+
+  return db.prepare('SELECT * FROM employee_adjustments WHERE id = ?').get(id);
+}
+
+export function deleteEmployeeAdjustment(id: string, tenantId: string) {
+  db.prepare('DELETE FROM employee_adjustments WHERE id = ? AND tenant_id = ?').run(id, tenantId);
+  return { success: true };
+}
+
+export function getPayrollRecords(
+  tenantId: string,
+  options?: { month?: string; branchId?: string; userId?: string }
+) {
+  let query = `
+    SELECT p.*, u.full_name as user_name, u.phone as user_phone, u.job_title, b.name_ar as branch_name
+    FROM employee_payroll p
+    JOIN users u ON p.user_id = u.id
+    LEFT JOIN branches b ON p.branch_id = b.id
+    WHERE p.tenant_id = ?
+  `;
+  const params: unknown[] = [tenantId];
+  if (options?.month) {
+    query += ' AND p.month = ?';
+    params.push(options.month);
+  }
+  if (options?.branchId && options.branchId !== 'all') {
+    query += ' AND p.branch_id = ?';
+    params.push(options.branchId);
+  }
+  if (options?.userId) {
+    query += ' AND p.user_id = ?';
+    params.push(options.userId);
+  }
+  query += ' ORDER BY p.month DESC, p.created_at DESC';
+  return db.prepare(query).all(...params);
+}
+
+export function generateMonthlyPayroll(
+  tenantId: string,
+  month: string,
+  branchId?: string
+) {
+  const users = getEmployees(tenantId, branchId).filter(u => u.is_active === 1);
+  const startDate = `${month}-01`;
+  const endDate = `${month}-31`;
+
+  const attendanceRows = db.prepare('SELECT * FROM employee_attendance WHERE tenant_id = ? AND date >= ? AND date <= ?')
+    .all(tenantId, startDate, endDate) as any[];
+
+  const adjustmentRows = db.prepare('SELECT * FROM employee_adjustments WHERE tenant_id = ? AND month = ?')
+    .all(tenantId, month) as any[];
+
+  const results: any[] = [];
+  const txn = db.transaction(() => {
+    for (const emp of users) {
+      const empAtt = attendanceRows.filter((a: any) => a.user_id === emp.id);
+      const empAdj = adjustmentRows.filter((j: any) => j.user_id === emp.id);
+
+      const attendedDays = empAtt.filter((a: any) => a.status === 'present' || a.status === 'late').length +
+        empAtt.filter((a: any) => a.status === 'half_day').length * 0.5;
+      const absentDays = empAtt.filter((a: any) => a.status === 'absent').length;
+
+      const bonuses = empAdj
+        .filter((a: any) => a.type === 'bonus' || a.type === 'allowance')
+        .reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0);
+
+      const deductions = empAdj
+        .filter((a: any) => a.type === 'deduction')
+        .reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0);
+
+      const advances = empAdj
+        .filter((a: any) => a.type === 'advance')
+        .reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0);
+
+      const baseSalary = Number((emp as any).base_salary || 0);
+      const netSalary = Math.max(0, baseSalary + bonuses - deductions - advances);
+
+      const existing = db.prepare('SELECT id FROM employee_payroll WHERE tenant_id = ? AND user_id = ? AND month = ?')
+        .get(tenantId, emp.id, month) as { id: string } | undefined;
+
+      const recordId = existing ? existing.id : `pr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+      if (existing) {
+        db.prepare(`
+          UPDATE employee_payroll
+          SET base_salary = ?, attended_days = ?, absent_days = ?, total_bonuses = ?, total_deductions = ?, total_advances = ?, net_salary = ?
+          WHERE id = ?
+        `).run(baseSalary, attendedDays, absentDays, bonuses, deductions, advances, netSalary, existing.id);
+      } else {
+        db.prepare(`
+          INSERT INTO employee_payroll (id, tenant_id, branch_id, user_id, month, base_salary, working_days, attended_days, absent_days, total_bonuses, total_deductions, total_advances, net_salary, status)
+          VALUES (?, ?, ?, ?, ?, ?, 30, ?, ?, ?, ?, ?, ?, 'calculated')
+        `).run(recordId, tenantId, emp.branch_id || null, emp.id, month, baseSalary, attendedDays, absentDays, bonuses, deductions, advances, netSalary);
+      }
+
+      const saved = db.prepare('SELECT * FROM employee_payroll WHERE id = ?').get(recordId) as any;
+      results.push({
+        ...saved,
+        user_name: emp.full_name,
+        user_phone: emp.phone || emp.username,
+        job_title: (emp as any).job_title || (emp.role === 'cashier' ? 'كاشير' : 'موظف')
+      });
+    }
+  });
+
+  txn();
+  return results;
+}
+
+export function markPayrollPaid(
+  id: string,
+  tenantId: string,
+  paymentMethod: 'cash' | 'bank' | 'wallet' = 'cash',
+  recordExpense: boolean = true
+) {
+  const now = new Date().toISOString();
+  db.prepare(`
+    UPDATE employee_payroll
+    SET status = 'paid', paid_at = ?, payment_method = ?
+    WHERE id = ? AND tenant_id = ?
+  `).run(now, paymentMethod, id, tenantId);
+
+  const record = db.prepare('SELECT * FROM employee_payroll WHERE id = ?').get(id) as any;
+  if (recordExpense && record && record.net_salary > 0) {
+    try {
+      const emp = db.prepare('SELECT * FROM users WHERE id = ?').get(record.user_id) as User | undefined;
+      const empName = emp?.full_name || 'موظف';
+      const expenseId = `exp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      db.prepare(`
+        INSERT INTO expenses (id, tenant_id, branch_id, category, amount, payment_source, payee, description, created_by)
+        VALUES (?, ?, ?, 'مرتبات وأجور الموظفين', ?, ?, ?, ?, 'system_hr')
+      `).run(
+        expenseId, tenantId, record.branch_id || null,
+        record.net_salary, paymentMethod === 'cash' ? 'cash_drawer' : 'bank_account',
+        empName, `صرف راتب شهر (${record.month}) للموظف: ${empName}`
+      );
+    } catch (e) {
+      // non-fatal
+    }
+  }
+
+  return record;
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getExpenses, createExpense, getSupabase } from '@/lib/db/supabase-queries';
+import { getExpenses, createExpense, getBranches } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -21,10 +21,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { tenant_id, branch_id, ...expenseData } = body;
     const tenantId = tenant_id || 'tenant_albaraka';
-    const supabase = getSupabase();
 
     let effectiveBranchId = branch_id;
-    const { data: tenantBranches } = await supabase.from('branches').select('id').eq('tenant_id', tenantId);
+    const tenantBranches = await getBranches(tenantId);
     if (tenantBranches && tenantBranches.length > 0) {
       const validIds = tenantBranches.map(b => b.id);
       if (!effectiveBranchId || effectiveBranchId === 'all' || !validIds.includes(effectiveBranchId)) {

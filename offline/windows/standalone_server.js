@@ -5,6 +5,9 @@ const fs = require('fs')
 const dir = path.resolve(__dirname)
 
 process.env.NODE_ENV = 'production'
+process.env.OFFLINE_MODE = 'true'
+process.env.DATABASE_MODE = 'sqlite'
+process.env.IS_OFFLINE_BUNDLE = 'true'
 process.chdir(dir)
 
 const currentPort = parseInt(process.env.PORT, 10) || 3456

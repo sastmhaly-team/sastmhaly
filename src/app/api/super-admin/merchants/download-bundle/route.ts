@@ -57,7 +57,31 @@ export async function GET(request: NextRequest) {
 
     zip.file('بيانات_تسجيل_الدخول.txt', credsContent);
 
-    // 2. Pre-configured sastmhaly_config.json
+    // 2. Pre-configured sastmhaly_config.json with merchant data
+    let initialData = {
+      branches: [] as any[],
+      categories: [] as any[],
+      units: [] as any[],
+      products: [] as any[]
+    };
+
+    try {
+      const [branchesRes, categoriesRes, unitsRes, productsRes] = await Promise.all([
+        supabase.from('branches').select('*').eq('tenant_id', tenantId),
+        supabase.from('categories').select('*').eq('tenant_id', tenantId),
+        supabase.from('units').select('*').eq('tenant_id', tenantId),
+        supabase.from('products').select('*').eq('tenant_id', tenantId)
+      ]);
+      initialData = {
+        branches: branchesRes.data || [],
+        categories: categoriesRes.data || [],
+        units: unitsRes.data || [],
+        products: productsRes.data || []
+      };
+    } catch (e) {
+      console.warn('Could not pre-fetch merchant data from Supabase:', e);
+    }
+
     const configData = {
       tenant_id: tenant.id,
       merchant_name: merchantName,
@@ -65,7 +89,8 @@ export async function GET(request: NextRequest) {
       password,
       slug: tenant.slug,
       is_offline: true,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      initial_data: initialData
     };
     zip.file('sastmhaly_config.json', JSON.stringify(configData, null, 2));
 
