@@ -1,0 +1,46 @@
+{
+  "appId": "com.sastmhaly.pos",
+  "productName": "Sastmhaly POS",
+  "copyright": "Copyright © 2026 Sastmhaly POS & ERP",
+  "directories": {
+    "output": "dist-desktop"
+  },
+  "files": [
+    "electron/**/*",
+    ".next/**/*",
+    "public/**/*",
+    "data/**/*",
+    "package.json"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "public/logo.png"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "سستمهالي - Sastmhaly POS"
+  },
+  "mac": {
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "icon": "public/logo.png",
+    "category": "public.app-category.business"
+  }
+}
+

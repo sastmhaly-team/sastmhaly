@@ -2,11 +2,15 @@
   "name": "sastmhaly",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "desktop": "electron electron/main.js",
+    "desktop:dev": "electron electron/main.js",
+    "desktop:build": "next build && electron-builder"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
