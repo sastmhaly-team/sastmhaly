@@ -8,6 +8,7 @@ process.env.NODE_ENV = 'production'
 process.env.OFFLINE_MODE = 'true'
 process.env.DATABASE_MODE = 'sqlite'
 process.env.IS_OFFLINE_BUNDLE = 'true'
+process.env.NEXT_PUBLIC_OFFLINE_MODE = 'true'
 process.chdir(dir)
 
 const currentPort = parseInt(process.env.PORT, 10) || 3456

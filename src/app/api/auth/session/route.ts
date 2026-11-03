@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserByUsernameOrEmail, getTenant, getBranches } from '@/lib/db/supabase-queries';
-import { supabase } from '@/lib/supabase';
+import { getUserByUsernameOrEmail, getTenant, getBranches, isOfflineMode } from '@/lib/db/supabase-queries';
 import { Branch } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
@@ -12,8 +11,9 @@ export async function GET(request: NextRequest) {
   }
 
   let user = await getUserByUsernameOrEmail(username);
-  if (!user) {
+  if (!user && !isOfflineMode()) {
     try {
+      const { supabase } = await import('@/lib/supabase');
       const { data: supaUser } = await supabase
         .from('users')
         .select('*')
@@ -60,8 +60,9 @@ export async function POST(request: NextRequest) {
     }
 
     let user = await getUserByUsernameOrEmail(loginId);
-    if (!user) {
+    if (!user && !isOfflineMode()) {
       try {
+        const { supabase } = await import('@/lib/supabase');
         const { data: supaUser } = await supabase
           .from('users')
           .select('*')

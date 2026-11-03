@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTenant, getSupabase } from '@/lib/db/supabase-queries';
+import { getTenant, isOfflineMode } from '@/lib/db/supabase-queries';
+import { db } from '@/lib/db';
 import path from 'path';
 import fs from 'fs';
 import JSZip from 'jszip';
@@ -20,13 +21,25 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch the merchant owner to get credentials (phone & password)
-    const supabase = getSupabase();
-    const { data: ownerUser } = await supabase
-      .from('users')
-      .select('phone, username, password_hash, full_name')
-      .eq('tenant_id', tenantId)
-      .eq('role', 'merchant_owner')
-      .maybeSingle();
+    let ownerUser: { phone?: string; username?: string; password_hash?: string; full_name?: string } | undefined = undefined;
+
+    if (isOfflineMode()) {
+      ownerUser = db.prepare('SELECT phone, username, password_hash, full_name FROM users WHERE tenant_id = ? AND role = "merchant_owner"').get(tenantId) as any;
+    } else {
+      try {
+        const { getSupabase } = await import('@/lib/db/supabase-queries');
+        const supabase = getSupabase();
+        const { data } = await supabase
+          .from('users')
+          .select('phone, username, password_hash, full_name')
+          .eq('tenant_id', tenantId)
+          .eq('role', 'merchant_owner')
+          .maybeSingle();
+        ownerUser = data || undefined;
+      } catch (e) {
+        ownerUser = db.prepare('SELECT phone, username, password_hash, full_name FROM users WHERE tenant_id = ? AND role = "merchant_owner"').get(tenantId) as any;
+      }
+    }
 
     const phone = ownerUser?.phone || ownerUser?.username || tenant.phone;
     const password = ownerUser?.password_hash || '12345678';
@@ -66,20 +79,40 @@ export async function GET(request: NextRequest) {
     };
 
     try {
-      const [branchesRes, categoriesRes, unitsRes, productsRes] = await Promise.all([
-        supabase.from('branches').select('*').eq('tenant_id', tenantId),
-        supabase.from('categories').select('*').eq('tenant_id', tenantId),
-        supabase.from('units').select('*').eq('tenant_id', tenantId),
-        supabase.from('products').select('*').eq('tenant_id', tenantId)
-      ]);
-      initialData = {
-        branches: branchesRes.data || [],
-        categories: categoriesRes.data || [],
-        units: unitsRes.data || [],
-        products: productsRes.data || []
-      };
+      if (isOfflineMode()) {
+        initialData = {
+          branches: db.prepare('SELECT * FROM branches WHERE tenant_id = ?').all(tenantId) as any[],
+          categories: db.prepare('SELECT * FROM categories WHERE tenant_id = ?').all(tenantId) as any[],
+          units: db.prepare('SELECT * FROM units WHERE tenant_id = ?').all(tenantId) as any[],
+          products: db.prepare('SELECT * FROM products WHERE tenant_id = ?').all(tenantId) as any[]
+        };
+      } else {
+        const { getSupabase } = await import('@/lib/db/supabase-queries');
+        const supabase = getSupabase();
+        const [branchesRes, categoriesRes, unitsRes, productsRes] = await Promise.all([
+          supabase.from('branches').select('*').eq('tenant_id', tenantId),
+          supabase.from('categories').select('*').eq('tenant_id', tenantId),
+          supabase.from('units').select('*').eq('tenant_id', tenantId),
+          supabase.from('products').select('*').eq('tenant_id', tenantId)
+        ]);
+        initialData = {
+          branches: branchesRes.data || [],
+          categories: categoriesRes.data || [],
+          units: unitsRes.data || [],
+          products: productsRes.data || []
+        };
+      }
     } catch (e) {
-      console.warn('Could not pre-fetch merchant data from Supabase:', e);
+      try {
+        initialData = {
+          branches: db.prepare('SELECT * FROM branches WHERE tenant_id = ?').all(tenantId) as any[],
+          categories: db.prepare('SELECT * FROM categories WHERE tenant_id = ?').all(tenantId) as any[],
+          units: db.prepare('SELECT * FROM units WHERE tenant_id = ?').all(tenantId) as any[],
+          products: db.prepare('SELECT * FROM products WHERE tenant_id = ?').all(tenantId) as any[]
+        };
+      } catch (err) {
+        console.warn('Could not pre-fetch merchant data:', err);
+      }
     }
 
     const configData = {
@@ -166,6 +199,37 @@ wait $SERVER_PID
       const vbsSource = path.join(projectRoot, 'offline', 'windows', 'run_app.vbs');
       if (fs.existsSync(vbsSource)) {
         zip.file('run_app.vbs', fs.readFileSync(vbsSource));
+      }
+
+      // Include a pre-configured .bat launcher
+      const batContent = `@echo off
+chcp 65001 >nul
+title سستمهالي - نقاط البيع (خادم محلي)
+cd /d "%~dp0"
+if exist "%~dp0run_app.vbs" (
+  start "" wscript.exe "%~dp0run_app.vbs"
+  exit /b
+)
+set "LOCAL_SERVER=%LOCALAPPDATA%\\SastmhalyPOS"
+if exist "%LOCAL_SERVER%\\run_app.vbs" (
+  cd /d "%LOCAL_SERVER%"
+  start "" wscript.exe "%LOCAL_SERVER%\\run_app.vbs"
+  exit /b
+)
+echo جاري بدء خادم سستمهالي المحلي...
+set OFFLINE_MODE=true
+set DATABASE_MODE=sqlite
+set IS_OFFLINE_BUNDLE=true
+set NEXT_PUBLIC_OFFLINE_MODE=true
+set PORT=3456
+start "" "http://127.0.0.1:3456/login?phone=${phone}&pass=${password}"
+`;
+      zip.file(`تشغيل_سستمهالي - ${safeMerchantName}.bat`, batContent);
+
+      // Include initial SQLite DB if exists
+      const dbSource = path.join(projectRoot, 'data', 'sastmhaly.db');
+      if (fs.existsSync(dbSource)) {
+        zip.file('sastmhaly.db', fs.readFileSync(dbSource));
       }
     }
 

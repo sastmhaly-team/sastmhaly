@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSuppliers, createSupplier } from '@/lib/db/supabase-queries';
-import { supabase } from '@/lib/supabase';
+import { getSuppliers, createSupplier, isOfflineMode } from '@/lib/db/supabase-queries';
+import { db } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -60,18 +60,30 @@ export async function POST(request: NextRequest) {
     if (action === 'payment') {
       // Record payment against supplier balance
       const payAmount = Number(payment_amount);
-      const { data: sup } = await supabase.from('suppliers').select('current_balance').eq('id', supplier_id).single();
-      const currentBal = Number(sup?.current_balance) || 0;
-      await supabase.from('suppliers').update({ current_balance: currentBal - payAmount }).eq('id', supplier_id);
-      await supabase.from('supplier_payments').insert({
-        id: `spay_${Date.now()}`,
-        tenant_id: tenantId,
-        supplier_id,
-        payment_number: `PAY-SUP-${Date.now().toString().slice(-6)}`,
-        amount: payAmount,
-        payment_method: payment_method || 'cash',
-        created_by: 'admin'
-      });
+      if (isOfflineMode()) {
+        const sup = db.prepare('SELECT current_balance FROM suppliers WHERE id = ?').get(supplier_id) as { current_balance: number } | undefined;
+        const currentBal = Number(sup?.current_balance) || 0;
+        db.prepare('UPDATE suppliers SET current_balance = ? WHERE id = ?').run(currentBal - payAmount, supplier_id);
+        db.prepare(`
+          INSERT INTO supplier_payments (id, tenant_id, supplier_id, payment_number, amount, payment_method, created_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(`spay_${Date.now()}`, tenantId, supplier_id, `PAY-SUP-${Date.now().toString().slice(-6)}`, payAmount, payment_method || 'cash', 'admin');
+      } else {
+        const { getSupabase } = await import('@/lib/db/supabase-queries');
+        const supabase = getSupabase();
+        const { data: sup } = await supabase.from('suppliers').select('current_balance').eq('id', supplier_id).single();
+        const currentBal = Number(sup?.current_balance) || 0;
+        await supabase.from('suppliers').update({ current_balance: currentBal - payAmount }).eq('id', supplier_id);
+        await supabase.from('supplier_payments').insert({
+          id: `spay_${Date.now()}`,
+          tenant_id: tenantId,
+          supplier_id,
+          payment_number: `PAY-SUP-${Date.now().toString().slice(-6)}`,
+          amount: payAmount,
+          payment_method: payment_method || 'cash',
+          created_by: 'admin'
+        });
+      }
       return NextResponse.json({ success: true, message: 'Supplier payment recorded and payable balance updated.' });
     }
 

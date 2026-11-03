@@ -115,8 +115,14 @@ export async function fetchWithCache<T = any>(
     onData(cached, true);
   }
 
-  // If browser is currently offline, return cached data immediately
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  // If browser is currently offline and NOT on local server, return cached data immediately
+  const isLocalServer = typeof window !== 'undefined' && (
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname === 'localhost' ||
+    window.location.port === '3456'
+  );
+
+  if (!isLocalServer && typeof navigator !== 'undefined' && !navigator.onLine) {
     if (cached) return cached;
     return {} as T;
   }

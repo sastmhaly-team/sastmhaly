@@ -8,12 +8,32 @@ import { createClient } from '@supabase/supabase-js';
 import * as sqlite from './queries';
 
 export function isOfflineMode(): boolean {
-  return (
+  if (
     process.env.OFFLINE_MODE === 'true' ||
     process.env.DATABASE_MODE === 'sqlite' ||
     process.env.IS_OFFLINE_BUNDLE === 'true' ||
     Boolean(process.env.NEXT_PUBLIC_OFFLINE_MODE)
-  );
+  ) {
+    return true;
+  }
+  // Auto-detect local installation / standalone bundle / desktop offline environment
+  if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const cwd = process.cwd();
+      if (
+        fs.existsSync(path.join(cwd, 'sastmhaly_config.json')) ||
+        fs.existsSync(path.join(cwd, '..', 'sastmhaly_config.json')) ||
+        fs.existsSync(path.join(cwd, 'data', 'sastmhaly.db')) ||
+        fs.existsSync(path.join(cwd, 'node.exe')) ||
+        fs.existsSync(path.join(cwd, 'run_app.vbs'))
+      ) {
+        return true;
+      }
+    } catch {}
+  }
+  return false;
 }
 import {
   Tenant, Branch, User, Category, Unit, Product,

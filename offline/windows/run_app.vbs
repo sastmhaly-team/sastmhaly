@@ -1,12 +1,42 @@
 ' Sastmhaly POS - Silent Native Launcher
 Option Explicit
-Dim oShell, oFSO, appDir, nodeExe, configFile, phone, pass, targetUrl
-Dim http, i, ready, edgePath, chromePath, appLaunched, content
+Dim oShell, oFSO, appDir, installedDir, nodeExe, configFile, phone, pass, targetUrl
+Dim http, i, ready, edgePath, chromePath, appLaunched, content, installerExe, f, files
 
 Set oShell = CreateObject("WScript.Shell")
 Set oFSO = CreateObject("Scripting.FileSystemObject")
 
 appDir = oFSO.GetParentFolderName(WScript.ScriptFullName)
+installedDir = oShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\SastmhalyPOS")
+
+' If server.js is not in the current folder, check if it was installed in AppData
+If Not oFSO.FileExists(appDir & "\server.js") Then
+  If oFSO.FileExists(installedDir & "\server.js") Then
+    ' Copy sastmhaly_config.json from current directory if present
+    If oFSO.FileExists(appDir & "\sastmhaly_config.json") Then
+      On Error Resume Next
+      oFSO.CopyFile appDir & "\sastmhaly_config.json", installedDir & "\sastmhaly_config.json", True
+      On Error GoTo 0
+    End If
+    appDir = installedDir
+  Else
+    ' Not installed and not in current folder - find installer in current folder
+    installerExe = ""
+    Set files = oFSO.GetFolder(appDir).Files
+    For Each f In files
+      If LCase(oFSO.GetExtensionName(f.Name)) = "exe" And (InStr(f.Name, "Setup") > 0 Or InStr(f.Name, "تثبيت") > 0) Then
+        installerExe = f.Path
+        Exit For
+      End If
+    Next
+    If installerExe <> "" Then
+      oShell.Run """" & installerExe & """", 1, True
+      If oFSO.FileExists(installedDir & "\server.js") Then
+        appDir = installedDir
+      End If
+    End If
+  End If
+End If
 
 ' Check if node server is already running on port 3456
 Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
@@ -17,12 +47,15 @@ If Err.Number <> 0 Then
   ' Not running, start server silently using bundled node.exe
   nodeExe = appDir & "\node.exe"
   If Not oFSO.FileExists(nodeExe) Then
-    nodeExe = "node.exe"
+    nodeExe = installedDir & "\node.exe"
+    If Not oFSO.FileExists(nodeExe) Then
+      nodeExe = "node.exe"
+    End If
   End If
   
   ' Set environment and start node server silently (0 = hide window)
   oShell.CurrentDirectory = appDir
-  oShell.Run "cmd /c set OFFLINE_MODE=true&&set DATABASE_MODE=sqlite&&set PORT=3456&&""" & nodeExe & """ server.js > """ & oShell.ExpandEnvironmentStrings("%TEMP%\sastmhaly_server.log") & """ 2>&1", 0, False
+  oShell.Run "cmd /c set OFFLINE_MODE=true&&set DATABASE_MODE=sqlite&&set IS_OFFLINE_BUNDLE=true&&set NEXT_PUBLIC_OFFLINE_MODE=true&&set PORT=3456&&""" & nodeExe & """ server.js > """ & oShell.ExpandEnvironmentStrings("%TEMP%\sastmhaly_server.log") & """ 2>&1", 0, False
   
   ' Wait for server to start (up to 30 seconds)
   ready = False

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCashRegisters, getCashSessions, getActiveCashSession, openCashSession, closeCashSession, getBranches } from '@/lib/db/supabase-queries';
-import { supabase } from '@/lib/supabase';
+import { getCashRegisters, getCashSessions, getActiveCashSession, openCashSession, closeCashSession, getBranches, isOfflineMode } from '@/lib/db/supabase-queries';
+import { db } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -23,14 +23,23 @@ export async function GET(request: NextRequest) {
       const targetBranchId = branchId || branches[0]?.id;
       if (targetBranchId) {
         try {
-          await supabase.from('cash_registers').upsert({
-            id: `reg_${tenantId}_01`,
-            tenant_id: tenantId,
-            branch_id: targetBranchId,
-            code: 'POS-01',
-            name: 'كاشير نقطة البيع 1',
-            is_active: 1
-          }, { onConflict: 'id' });
+          if (isOfflineMode()) {
+            db.prepare(`
+              INSERT OR IGNORE INTO cash_registers (id, tenant_id, branch_id, code, name, is_active)
+              VALUES (?, ?, ?, 'POS-01', 'كاشير نقطة البيع 1', 1)
+            `).run(`reg_${tenantId}_01`, tenantId, targetBranchId);
+          } else {
+            const { getSupabase } = await import('@/lib/db/supabase-queries');
+            const supabase = getSupabase();
+            await supabase.from('cash_registers').upsert({
+              id: `reg_${tenantId}_01`,
+              tenant_id: tenantId,
+              branch_id: targetBranchId,
+              code: 'POS-01',
+              name: 'كاشير نقطة البيع 1',
+              is_active: 1
+            }, { onConflict: 'id' });
+          }
           registers = await getCashRegisters(tenantId, branchId);
         } catch {
           // ignore
@@ -62,14 +71,23 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'movement') {
-      await supabase.from('cash_movements').insert({
-        id: `cm_${Date.now()}`,
-        session_id,
-        type,
-        amount: Number(amount),
-        reason,
-        created_by: 'cashier'
-      });
+      if (isOfflineMode()) {
+        db.prepare(`
+          INSERT INTO cash_movements (id, session_id, type, amount, reason, created_by)
+          VALUES (?, ?, ?, ?, ?, 'cashier')
+        `).run(`cm_${Date.now()}`, session_id, type, Number(amount), reason);
+      } else {
+        const { getSupabase } = await import('@/lib/db/supabase-queries');
+        const supabase = getSupabase();
+        await supabase.from('cash_movements').insert({
+          id: `cm_${Date.now()}`,
+          session_id,
+          type,
+          amount: Number(amount),
+          reason,
+          created_by: 'cashier'
+        });
+      }
       return NextResponse.json({ success: true });
     }
 

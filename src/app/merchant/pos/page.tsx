@@ -375,6 +375,12 @@ export default function PosPage() {
   // Real-time Stock Sync across multiple POS terminals in the SAME branch
   useEffect(() => {
     if (!currentBranch?.id) return;
+    const isLocal = typeof window !== 'undefined' && (
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === 'localhost' ||
+      window.location.port === '3456'
+    );
+    if (isLocal || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
 
     const channelName = `pos_branch_${currentBranch.id}`;
     const channel = supabase.channel(channelName);
@@ -777,8 +783,13 @@ export default function PosPage() {
         return { ...p, current_stock: updated };
       }));
 
-      // 2. Broadcast sold items in real-time to all other POS terminals in this branch (if online)
-      if (currentBranch?.id && navigator.onLine) {
+      // 2. Broadcast sold items in real-time to all other POS terminals in this branch (if online & cloud)
+      const isLocalHost = typeof window !== 'undefined' && (
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname === 'localhost' ||
+        window.location.port === '3456'
+      );
+      if (currentBranch?.id && navigator.onLine && !isLocalHost) {
         supabase.channel(`pos_branch_${currentBranch.id}`).send({
           type: 'broadcast',
           event: 'stock_change',

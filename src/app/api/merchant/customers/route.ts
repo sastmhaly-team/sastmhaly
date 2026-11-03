@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCustomers, createCustomer } from '@/lib/db/supabase-queries';
-import { supabase } from '@/lib/supabase';
+import { getCustomers, createCustomer, isOfflineMode } from '@/lib/db/supabase-queries';
+import { db } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -71,18 +71,25 @@ export async function POST(request: NextRequest) {
     // 1. Debt collection (Paying off debt)
     if (action === 'collect') {
       const payAmount = Number(payment_amount);
-      const { data: cust } = await supabase.from('customers').select('current_balance').eq('id', customer_id).single();
-      const currentBal = Number(cust?.current_balance) || 0;
-      await supabase.from('customers').update({ current_balance: currentBal - payAmount }).eq('id', customer_id);
-      await supabase.from('customer_payments').insert({
-        id: `cpay_${Date.now()}`,
-        tenant_id,
-        customer_id,
-        payment_number: `PAY-CUST-${Date.now().toString().slice(-6)}`,
-        amount: payAmount,
-        payment_method: payment_method || 'cash',
-        created_by: 'cashier'
-      });
+      if (isOfflineMode()) {
+        const cust = db.prepare('SELECT current_balance FROM customers WHERE id = ?').get(customer_id) as { current_balance: number } | undefined;
+        const currentBal = Number(cust?.current_balance) || 0;
+        db.prepare('UPDATE customers SET current_balance = ? WHERE id = ?').run(currentBal - payAmount, customer_id);
+        db.prepare(`INSERT INTO customer_payments (id, tenant_id, customer_id, payment_number, amount, payment_method, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+          `cpay_${Date.now()}`, tenant_id, customer_id, `PAY-CUST-${Date.now().toString().slice(-6)}`, payAmount, payment_method || 'cash', 'cashier'
+        );
+      } else {
+        const { getSupabase } = await import('@/lib/db/supabase-queries');
+        const supabase = getSupabase();
+        const { data: cust } = await supabase.from('customers').select('current_balance').eq('id', customer_id).single();
+        const currentBal = Number(cust?.current_balance) || 0;
+        await supabase.from('customers').update({ current_balance: currentBal - payAmount }).eq('id', customer_id);
+        await supabase.from('customer_payments').insert({
+          id: `cpay_${Date.now()}`, tenant_id, customer_id,
+          payment_number: `PAY-CUST-${Date.now().toString().slice(-6)}`,
+          amount: payAmount, payment_method: payment_method || 'cash', created_by: 'cashier'
+        });
+      }
       return NextResponse.json({ success: true, message: 'Customer debt payment recorded and balance updated.' });
     }
 
@@ -92,9 +99,17 @@ export async function POST(request: NextRequest) {
       if (isNaN(debtVal) || debtVal <= 0) {
         return NextResponse.json({ error: 'Valid debt amount is required' }, { status: 400 });
       }
-      const { data: cust } = await supabase.from('customers').select('current_balance').eq('id', customer_id).single();
-      const currentBal = Number(cust?.current_balance) || 0;
-      await supabase.from('customers').update({ current_balance: currentBal + debtVal }).eq('id', customer_id);
+      if (isOfflineMode()) {
+        const cust = db.prepare('SELECT current_balance FROM customers WHERE id = ?').get(customer_id) as { current_balance: number } | undefined;
+        const currentBal = Number(cust?.current_balance) || 0;
+        db.prepare('UPDATE customers SET current_balance = ? WHERE id = ?').run(currentBal + debtVal, customer_id);
+      } else {
+        const { getSupabase } = await import('@/lib/db/supabase-queries');
+        const supabase = getSupabase();
+        const { data: cust } = await supabase.from('customers').select('current_balance').eq('id', customer_id).single();
+        const currentBal = Number(cust?.current_balance) || 0;
+        await supabase.from('customers').update({ current_balance: currentBal + debtVal }).eq('id', customer_id);
+      }
       return NextResponse.json({ success: true, message: 'Customer debt charged successfully.' });
     }
 
@@ -104,7 +119,13 @@ export async function POST(request: NextRequest) {
       if (isNaN(newLimit) || newLimit < 0) {
         return NextResponse.json({ error: 'Valid credit limit amount is required' }, { status: 400 });
       }
-      await supabase.from('customers').update({ credit_limit: newLimit }).eq('id', customer_id);
+      if (isOfflineMode()) {
+        db.prepare('UPDATE customers SET credit_limit = ? WHERE id = ?').run(newLimit, customer_id);
+      } else {
+        const { getSupabase } = await import('@/lib/db/supabase-queries');
+        const supabase = getSupabase();
+        await supabase.from('customers').update({ credit_limit: newLimit }).eq('id', customer_id);
+      }
       return NextResponse.json({ success: true, message: 'Credit limit updated successfully.' });
     }
 
