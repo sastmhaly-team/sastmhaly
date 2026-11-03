@@ -22,7 +22,7 @@ If Err.Number <> 0 Then
   
   ' Set environment and start node server silently (0 = hide window)
   oShell.CurrentDirectory = appDir
-  oShell.Run "cmd /c set OFFLINE_MODE=true&&set DATABASE_MODE=sqlite&&set PORT=3456&&""" & nodeExe & """ server.js", 0, False
+  oShell.Run "cmd /c set OFFLINE_MODE=true&&set DATABASE_MODE=sqlite&&set PORT=3456&&""" & nodeExe & """ server.js > """ & oShell.ExpandEnvironmentStrings("%TEMP%\sastmhaly_server.log") & """ 2>&1", 0, False
   
   ' Wait for server to start (up to 30 seconds)
   ready = False
