@@ -117,10 +117,22 @@ pause
       const batPath = path.join(tmpDir, `تشغيل_سستمهالي - ${safeMerchantName}.bat`);
       fs.writeFileSync(batPath, winBatContent, 'utf-8');
 
+      // Copy Main Application executable (Sastmhaly_POS.exe)
+      const launcherSource = path.join(projectRoot, 'offline', 'windows', 'Sastmhaly_POS.exe');
+      if (fs.existsSync(launcherSource)) {
+        fs.copyFileSync(launcherSource, path.join(tmpDir, `سستمهالي - ${safeMerchantName}.exe`));
+      }
+
       // Copy Setup.exe if present
       const exeSource = path.join(projectRoot, 'offline', 'windows', 'Sastmhaly-POS-Setup.exe');
       if (fs.existsSync(exeSource)) {
-        fs.copyFileSync(exeSource, path.join(tmpDir, 'Sastmhaly-POS-Setup.exe'));
+        fs.copyFileSync(exeSource, path.join(tmpDir, 'برنامج_التثبيت_Setup.exe'));
+      }
+
+      // Copy valid BMP app.ico
+      const icoSource = path.join(projectRoot, 'offline', 'windows', 'app.ico');
+      if (fs.existsSync(icoSource)) {
+        fs.copyFileSync(icoSource, path.join(tmpDir, 'app.ico'));
       }
     }
 
@@ -164,3 +176,4 @@ pause
     );
   }
 }
+
