@@ -17,3 +17,4 @@ Section
   SetOutPath "$EXEDIR"
   Exec '"$WINDIR\System32\wscript.exe" "$EXEDIR\run_app.vbs"'
 SectionEnd
+
