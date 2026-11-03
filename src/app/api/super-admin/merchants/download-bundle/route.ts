@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getTenant, getSupabase } from '@/lib/db/supabase-queries';
 import path from 'path';
 import fs from 'fs';
-import { execSync } from 'child_process';
-
+import JSZip from 'jszip';
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,9 +33,7 @@ export async function GET(request: NextRequest) {
     const merchantName = tenant.name || 'متجر_سستمهالي';
     const safeMerchantName = merchantName.replace(/[\\/:*?"<>|]/g, '_').trim();
 
-    // Prepare temporary directory for merchant bundle
-    const tmpDir = path.join('/tmp', `sastmhaly_bundle_${tenantId}_${Date.now()}`);
-    fs.mkdirSync(tmpDir, { recursive: true });
+    const zip = new JSZip();
 
     // 1. Credentials text file
     const credsContent = `=======================================================
@@ -58,7 +55,7 @@ export async function GET(request: NextRequest) {
 اضغط على "More info" (مزيد من المعلومات) ثم "Run anyway" (تشغيل على أي حال).
 =======================================================`;
 
-    fs.writeFileSync(path.join(tmpDir, 'بيانات_تسجيل_الدخول.txt'), credsContent, 'utf-8');
+    zip.file('بيانات_تسجيل_الدخول.txt', credsContent);
 
     // 2. Pre-configured sastmhaly_config.json
     const configData = {
@@ -70,17 +67,14 @@ export async function GET(request: NextRequest) {
       is_offline: true,
       created_at: new Date().toISOString()
     };
-    fs.writeFileSync(path.join(tmpDir, 'sastmhaly_config.json'), JSON.stringify(configData, null, 2), 'utf-8');
+    zip.file('sastmhaly_config.json', JSON.stringify(configData, null, 2));
 
     const projectRoot = process.cwd();
 
     if (os === 'mac') {
-      // Mac specific bundle — shell-script .app that opens Safari/browser to the local server
       const macCommandContent = `#!/bin/bash
 # Sastmhaly POS - ${merchantName}
 DIR="$( cd "$( dirname "\${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-
-# Find the project root (where package.json is)
 SEARCH="$DIR"
 PROJECT=""
 for i in 1 2 3 4 5 6 7 8 9 10; do
@@ -100,25 +94,18 @@ PORT=3456
 PHONE="${phone}"
 PASS="${password}"
 
-# Check if server already running
 if lsof -Pi :$PORT -sTCP:LISTEN -t > /dev/null 2>&1; then
   open "http://localhost:$PORT/login?phone=$PHONE&pass=$PASS"
   exit 0
 fi
 
-# Notify start
 osascript -e 'display notification "جاري تشغيل النظام..." with title "سستمهالي POS"'
-
 cd "$PROJECT"
 export OFFLINE_MODE=true
 export DATABASE_MODE=sqlite
 export PORT=$PORT
-
-# Start server in background
 (npm run dev -- -p $PORT >> /tmp/sastmhaly_mac.log 2>&1) &
 SERVER_PID=$!
-
-# Wait for server ready (up to 60 seconds)
 for i in $(seq 1 60); do
   sleep 1
   if curl -s "http://localhost:$PORT" > /dev/null 2>&1; then
@@ -126,62 +113,49 @@ for i in $(seq 1 60); do
     break
   fi
 done
-
 wait $SERVER_PID
 `;
-      const scriptPath = path.join(tmpDir, `تشغيل_سستمهالي - ${safeMerchantName}.command`);
-      fs.writeFileSync(scriptPath, macCommandContent, { encoding: 'utf-8', mode: 0o755 });
+      zip.file(`تشغيل_سستمهالي - ${safeMerchantName}.command`, macCommandContent);
 
-      // Copy signed Sastmhaly POS.app if present
-      const macAppSource = path.join(projectRoot, 'offline', 'mac', 'Sastmhaly POS.app');
-      if (fs.existsSync(macAppSource)) {
-        execSync(`cp -R "${macAppSource}" "${tmpDir}/"`);
+      const macDmgSource = path.join(projectRoot, 'offline', 'mac', 'Sastmhaly-POS.dmg');
+      if (fs.existsSync(macDmgSource)) {
+        zip.file(`Sastmhaly-POS - ${safeMerchantName}.dmg`, fs.readFileSync(macDmgSource));
       }
     } else {
-      // Windows specific bundle - Real installable application
+      // Windows specific bundle
       const setupExeSource = path.join(projectRoot, 'offline', 'windows', 'Sastmhaly-POS-Setup.exe');
       if (fs.existsSync(setupExeSource)) {
-        fs.copyFileSync(setupExeSource, path.join(tmpDir, `تثبيت_سستمهالي - ${safeMerchantName}.exe`));
+        zip.file(`تثبيت_سستمهالي - ${safeMerchantName}.exe`, fs.readFileSync(setupExeSource));
       }
 
-      // Copy standalone portable launcher
       const launcherSource = path.join(projectRoot, 'offline', 'windows', 'Sastmhaly_POS.exe');
       if (fs.existsSync(launcherSource)) {
-        fs.copyFileSync(launcherSource, path.join(tmpDir, `تشغيل_مباشر - ${safeMerchantName}.exe`));
+        zip.file(`تشغيل_مباشر - ${safeMerchantName}.exe`, fs.readFileSync(launcherSource));
       }
 
-      // Copy app icon
       const icoSource = path.join(projectRoot, 'offline', 'windows', 'app.ico');
       if (fs.existsSync(icoSource)) {
-        fs.copyFileSync(icoSource, path.join(tmpDir, 'app.ico'));
+        zip.file('app.ico', fs.readFileSync(icoSource));
       }
 
-      // Copy runner script for portable launch
       const vbsSource = path.join(projectRoot, 'offline', 'windows', 'run_app.vbs');
       if (fs.existsSync(vbsSource)) {
-        fs.copyFileSync(vbsSource, path.join(tmpDir, 'run_app.vbs'));
+        zip.file('run_app.vbs', fs.readFileSync(vbsSource));
       }
     }
 
-    // Create the ZIP archive
+    // Generate in-memory ZIP buffer with JSZip (ZERO dependency on system zip binary)
+    const zipBuffer = await zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 }
+    });
+
     const zipFilenameArabic = `سستمهالي - ${safeMerchantName} - ${os === 'mac' ? 'ماك' : 'ويندوز'}.zip`;
     const zipFilenameAscii = `Sastmhaly_${tenant.slug || 'merchant'}_${os}.zip`;
-    const outZipPath = path.join('/tmp', `bundle_${tenantId}_${Date.now()}.zip`);
-
-    execSync(`cd "${tmpDir}" && zip -r "${outZipPath}" .`, { stdio: 'pipe' });
-
-    const zipBuffer = fs.readFileSync(outZipPath);
-
-    // Clean up temporary files
-    try {
-      execSync(`rm -rf "${tmpDir}" "${outZipPath}"`);
-    } catch (e) {
-      // ignore
-    }
-
     const encodedFilename = encodeURIComponent(zipFilenameArabic);
 
-    return new NextResponse(zipBuffer, {
+    return new NextResponse(new Uint8Array(zipBuffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
@@ -197,4 +171,3 @@ wait $SERVER_PID
     );
   }
 }
-
