@@ -69,7 +69,7 @@ Section "MainSection" SEC01
 
   ; Extract the Next.js standalone runtime
   SetOutPath "$INSTDIR"
-  File "/Users/rogerpeter/sastmhaly/.next/standalone/server.js"
+  File "/oname=server.js" "/Users/rogerpeter/sastmhaly/offline/windows/standalone_server.js"
   File "/Users/rogerpeter/sastmhaly/.next/standalone/package.json"
   
   SetOutPath "$INSTDIR\.next"
