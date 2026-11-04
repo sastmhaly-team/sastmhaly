@@ -184,7 +184,7 @@ wait $SERVER_PID
     } else {
       // Windows specific bundle
       const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-      const setupExeSource = path.join(projectRoot, 'offline', 'windows', 'Sastmhaly-POS-Setup.exe');
+      const setupExeSource = path.join(projectRoot, 'public', 'downloads', 'Sastmhaly-POS-Setup.exe');
       if (!isServerless && fs.existsSync(setupExeSource)) {
         zip.file(`تثبيت_سستمهالي - ${safeMerchantName}.exe`, fs.readFileSync(setupExeSource));
       }

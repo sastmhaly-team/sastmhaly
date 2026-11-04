@@ -8,3 +8,4 @@ set "IS_OFFLINE_BUNDLE=true"
 set "NEXT_PUBLIC_OFFLINE_MODE=true"
 set "PORT=3456"
 start "" wscript.exe "%~dp0run_app.vbs"
+

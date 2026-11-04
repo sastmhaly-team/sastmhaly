@@ -48,5 +48,6 @@ next-env.d.ts
 
 # desktop build outputs
 /dist-desktop/
+/offline/windows/Sastmhaly-POS-Setup.exe
 *.log
 offline/windows/node.exe
