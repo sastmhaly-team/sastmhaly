@@ -3,6 +3,100 @@
  * Local-First, Zero Cloud Dependency, Zero English Text
  */
 
+// Native Desktop Direct Bridge Adapter
+if (window.desktopAPI) {
+  const originalFetch = window.fetch;
+  window.fetch = async function(input, init) {
+    const url = typeof input === 'string' ? input : input.url;
+    if (url.startsWith('/api/')) {
+      const method = (init && init.method) ? init.method.toUpperCase() : 'GET';
+      const body = (init && init.body) ? (typeof init.body === 'string' ? JSON.parse(init.body) : init.body) : null;
+      let resData = null;
+
+      try {
+        if (method === 'GET') {
+          if (url === '/api/status') resData = await window.desktopAPI.getStatus();
+          else if (url === '/api/dashboard') resData = await window.desktopAPI.getDashboard();
+          else if (url === '/api/categories') resData = await window.desktopAPI.getCategories();
+          else if (url === '/api/units') resData = await window.desktopAPI.getUnits();
+          else if (url.startsWith('/api/products')) {
+            const u = new URL('http://local' + url);
+            resData = await window.desktopAPI.getProducts(u.searchParams.get('search') || '', u.searchParams.get('category_id') || '');
+          }
+          else if (url === '/api/inventory') resData = await window.desktopAPI.getInventory();
+          else if (url === '/api/sales') resData = await window.desktopAPI.getSales();
+          else if (url.startsWith('/api/sales/')) {
+            resData = await window.desktopAPI.getSale(url.split('/')[3]);
+          }
+          else if (url.startsWith('/api/customers')) {
+            const u = new URL('http://local' + url);
+            resData = await window.desktopAPI.getCustomers(u.searchParams.get('search') || '');
+          }
+          else if (url === '/api/suppliers') resData = await window.desktopAPI.getSuppliers();
+          else if (url === '/api/purchases') resData = await window.desktopAPI.getPurchases();
+          else if (url === '/api/shifts/current') resData = await window.desktopAPI.getCurrentShift();
+          else if (url === '/api/shifts/history') resData = await window.desktopAPI.getShiftsHistory();
+          else if (url === '/api/expenses') resData = await window.desktopAPI.getExpenses();
+          else if (url === '/api/employees') resData = await window.desktopAPI.getEmployees();
+          else if (url.startsWith('/api/payroll')) {
+            const u = new URL('http://local' + url);
+            resData = await window.desktopAPI.getPayroll(u.searchParams.get('month'), u.searchParams.get('year'));
+          }
+          else if (url.startsWith('/api/reports')) {
+            const u = new URL('http://local' + url);
+            resData = await window.desktopAPI.getReports(u.searchParams.get('type') || 'summary');
+          }
+          else if (url === '/api/settings') resData = await window.desktopAPI.getSettings();
+        } else if (method === 'POST') {
+          if (url === '/api/setup') resData = await window.desktopAPI.setupStore(body);
+          else if (url === '/api/settings') resData = await window.desktopAPI.saveSettings(body);
+          else if (url === '/api/products') resData = await window.desktopAPI.saveProduct(body);
+          else if (url === '/api/inventory/adjustment') resData = await window.desktopAPI.adjustInventory(body);
+          else if (url === '/api/sales') resData = await window.desktopAPI.commitSale(body);
+          else if (url === '/api/customers') resData = await window.desktopAPI.saveCustomer(body);
+          else if (url === '/api/customers/payment') resData = await window.desktopAPI.recordCustomerPayment(body);
+          else if (url === '/api/suppliers') resData = await window.desktopAPI.saveSupplier(body);
+          else if (url === '/api/purchases') resData = await window.desktopAPI.savePurchase(body);
+          else if (url === '/api/shifts/open') resData = await window.desktopAPI.openShift(body);
+          else if (url === '/api/shifts/close') resData = await window.desktopAPI.closeShift(body);
+          else if (url === '/api/shifts/movement') resData = await window.desktopAPI.addCashMovement(body);
+          else if (url === '/api/expenses') resData = await window.desktopAPI.saveExpense(body);
+          else if (url === '/api/employees') resData = await window.desktopAPI.saveEmployee(body);
+          else if (url === '/api/adjustments') resData = await window.desktopAPI.recordAdjustment(body);
+          else if (url === '/api/payroll/calculate') resData = await window.desktopAPI.calculatePayroll(body);
+          else if (url === '/api/payroll/pay') resData = await window.desktopAPI.paySalary(body.payroll_id);
+        } else if (method === 'PUT') {
+          if (url.startsWith('/api/products/')) {
+            resData = await window.desktopAPI.saveProduct({ ...body, id: url.split('/')[3] });
+          }
+        } else if (method === 'DELETE') {
+          if (url.startsWith('/api/products/')) {
+            resData = await window.desktopAPI.deleteProduct(url.split('/')[3]);
+          }
+        }
+
+        if (resData !== null) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => resData,
+            text: async () => JSON.stringify(resData)
+          };
+        }
+      } catch (err) {
+        console.error('Desktop API bridge error:', err);
+        return {
+          ok: false,
+          status: 500,
+          json: async () => ({ success: false, error: err.message }),
+          text: async () => JSON.stringify({ success: false, error: err.message })
+        };
+      }
+    }
+    return originalFetch.apply(this, arguments);
+  };
+}
+
 const app = {
   state: {
     store: {},
