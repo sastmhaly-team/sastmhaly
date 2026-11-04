@@ -6,34 +6,30 @@
 
 import { createClient } from '@supabase/supabase-js';
 import * as sqlite from './queries';
+import { createOfflineMock } from '../supabase';
 
 export function isOfflineMode(): boolean {
   if (
+    (global as any).__IS_OFFLINE__ === true ||
     process.env.OFFLINE_MODE === 'true' ||
     process.env.DATABASE_MODE === 'sqlite' ||
     process.env.IS_OFFLINE_BUNDLE === 'true' ||
+    process.env.PORT === '3456' ||
     Boolean(process.env.NEXT_PUBLIC_OFFLINE_MODE)
   ) {
     return true;
   }
-  // Auto-detect local installation / standalone bundle / desktop offline environment
-  if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    try {
-      const fs = require('fs');
-      const path = require('path');
-      const cwd = process.cwd();
-      if (
-        fs.existsSync(path.join(cwd, 'sastmhaly_config.json')) ||
-        fs.existsSync(path.join(cwd, '..', 'sastmhaly_config.json')) ||
-        fs.existsSync(path.join(cwd, 'data', 'sastmhaly.db')) ||
-        fs.existsSync(path.join(cwd, 'node.exe')) ||
-        fs.existsSync(path.join(cwd, 'run_app.vbs'))
-      ) {
-        return true;
-      }
-    } catch {}
+  // Online only on Vercel or AWS Lambda cloud
+  if (
+    process.env.VERCEL === '1' ||
+    process.env.VERCEL === 'true' ||
+    Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME) ||
+    Boolean(process.env.NEXT_PUBLIC_VERCEL_ENV)
+  ) {
+    return false;
   }
-  return false;
+  // Any standalone, local machine, localhost or Windows PC is 100% offline SQLite
+  return true;
 }
 import {
   Tenant, Branch, User, Category, Unit, Product,
@@ -44,6 +40,9 @@ import {
 } from '../types';
 
 export function getSupabase() {
+  if (isOfflineMode()) {
+    return createOfflineMock();
+  }
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://unctfxlnmqddykxbxxyt.supabase.co';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_6e9lQ6kQ5YNEEzQk6GQAjg_v9H2VATD';
   return createClient(url, key);
@@ -1015,12 +1014,12 @@ export async function createStockTransfer(tenantId: string, data: {
 
   const { data: tenantBranches } = await supabase.from('branches').select('id').eq('tenant_id', tenantId);
   if (tenantBranches && tenantBranches.length > 0) {
-    const validIds = tenantBranches.map(b => b.id);
+    const validIds = (tenantBranches as any[]).map((b: any) => b.id);
     if (!validIds.includes(fromBranch)) {
       fromBranch = validIds[0];
     }
     if (!validIds.includes(toBranch)) {
-      toBranch = validIds.length > 1 ? (validIds.find(id => id !== fromBranch) || validIds[0]) : validIds[0];
+      toBranch = validIds.length > 1 ? (validIds.find((id: any) => id !== fromBranch) || validIds[0]) : validIds[0];
     }
   }
 
@@ -1366,7 +1365,7 @@ export async function commitSaleTransaction(input: CreateSaleInput): Promise<Sal
       .eq('branch_id', branchId)
       .in('product_id', productIds);
 
-    const balanceMap = new Map((currentBalances || []).map((b: any) => [b.product_id, Number(b.quantity) || 0]));
+    const balanceMap = new Map<string, number>((currentBalances || []).map((b: any) => [b.product_id as string, Number(b.quantity) || 0]));
     const balanceUpserts = input.items.map(item => {
       const currentQty = balanceMap.get(item.product_id) ?? 0;
       return {

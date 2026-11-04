@@ -51,12 +51,16 @@ If Not oFSO.FileExists(appDir & "\server.js") Then
   End If
 End If
 
-' Check if node server is already running on port 3456
+' Check if node server is already running and healthy on port 3456
 Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
 On Error Resume Next
-http.Open "GET", "http://127.0.0.1:3456", False
+http.Open "GET", "http://127.0.0.1:3456/login", False
 http.Send
-If Err.Number <> 0 Then
+If Err.Number <> 0 Or http.Status >= 500 Then
+  ' Kill any zombie or hung node.exe
+  oShell.Run "cmd /c taskkill /F /IM node.exe 2>nul", 0, True
+  WScript.Sleep 500
+
   ' Not running, start server silently using bundled node.exe
   nodeExe = appDir & "\node.exe"
   If Not oFSO.FileExists(nodeExe) Then
@@ -68,16 +72,16 @@ If Err.Number <> 0 Then
   
   ' Set environment and start node server silently (0 = hide window)
   oShell.CurrentDirectory = appDir
-  oShell.Run "cmd /c set OFFLINE_MODE=true&&set DATABASE_MODE=sqlite&&set IS_OFFLINE_BUNDLE=true&&set NEXT_PUBLIC_OFFLINE_MODE=true&&set PORT=3456&&""" & nodeExe & """ server.js > """ & oShell.ExpandEnvironmentStrings("%TEMP%\sastmhaly_server.log") & """ 2>&1", 0, False
+  oShell.Run "cmd /c cd /d """ & appDir & """ && set ""OFFLINE_MODE=true"" && set ""DATABASE_MODE=sqlite"" && set ""IS_OFFLINE_BUNDLE=true"" && set ""NEXT_PUBLIC_OFFLINE_MODE=true"" && set ""PORT=3456"" && set ""APP_DIR=" & appDir & """ && """ & nodeExe & """ server.js > """ & oShell.ExpandEnvironmentStrings("%TEMP%\sastmhaly_server.log") & """ 2>&1", 0, False
   
   ' Wait for server to start (up to 30 seconds)
   ready = False
   For i = 1 To 60
     WScript.Sleep 500
     Err.Clear
-    http.Open "GET", "http://127.0.0.1:3456", False
+    http.Open "GET", "http://127.0.0.1:3456/login", False
     http.Send
-    If Err.Number = 0 Then
+    If Err.Number = 0 And http.Status < 500 Then
       ready = True
       Exit For
     End If

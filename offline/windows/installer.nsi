@@ -55,6 +55,11 @@ VIAddVersionKey "LegalCopyright" "Copyright © 2026 ${APP_PUBLISHER}"
 ; Installation Section
 ; ====================================================================
 Section "MainSection" SEC01
+  ; Terminate any previous running instance of the app or background node to release locks
+  ExecWait 'cmd.exe /c taskkill /F /IM node.exe /T 2>nul'
+  ExecWait 'cmd.exe /c taskkill /F /IM Sastmhaly_POS.exe /T 2>nul'
+  Sleep 1000
+
   SetOutPath "$INSTDIR"
   
   ; Write basic executable and script files

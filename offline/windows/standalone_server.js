@@ -9,6 +9,13 @@ process.env.OFFLINE_MODE = 'true'
 process.env.DATABASE_MODE = 'sqlite'
 process.env.IS_OFFLINE_BUNDLE = 'true'
 process.env.NEXT_PUBLIC_OFFLINE_MODE = 'true'
+process.env.PORT = '3456'
+process.env.APP_DIR = dir
+process.env.SASTMHALY_DIR = dir
+global.__IS_OFFLINE__ = true
+delete process.env.VERCEL
+delete process.env.AWS_LAMBDA_FUNCTION_NAME
+delete process.env.NEXT_PUBLIC_VERCEL_ENV
 process.chdir(dir)
 
 const currentPort = parseInt(process.env.PORT, 10) || 3456
@@ -45,6 +52,16 @@ if (!nextConfig.experimental.instantInsights) {
 nextConfig.outputFileTracingRoot = dir
 if (nextConfig.turbopack) nextConfig.turbopack.root = dir
 nextConfig.repoRoot = dir
+
+if (!nextConfig.env) {
+  nextConfig.env = {}
+}
+nextConfig.env.OFFLINE_MODE = 'true'
+nextConfig.env.DATABASE_MODE = 'sqlite'
+nextConfig.env.IS_OFFLINE_BUNDLE = 'true'
+nextConfig.env.NEXT_PUBLIC_OFFLINE_MODE = 'true'
+nextConfig.env.PORT = '3456'
+nextConfig.env.APP_DIR = dir
 
 process.env.__NEXT_PRIVATE_STANDALONE_CONFIG = JSON.stringify(nextConfig)
 

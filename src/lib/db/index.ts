@@ -31,11 +31,47 @@ function getDatabase(): Database.Database {
       }
     }
   } else {
-    const dataDir = path.join(process.cwd(), 'data');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+    // Determine the data directory robustly across all execution contexts
+    const candidateDirs = [
+      process.env.APP_DIR ? path.join(process.env.APP_DIR, 'data') : null,
+      process.env.SASTMHALY_DIR ? path.join(process.env.SASTMHALY_DIR, 'data') : null,
+      path.join(process.cwd(), 'data'),
+      'C:\\SastmhalyPOS\\data',
+      process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'SastmhalyPOS', 'data') : null,
+      path.join(__dirname, '..', '..', '..', 'data'),
+      path.join(path.dirname(process.execPath), 'data'),
+    ].filter(Boolean) as string[];
+
+    let chosenDir = '';
+    // First, check if an existing database file exists in any candidate directory
+    for (const d of candidateDirs) {
+      if (fs.existsSync(path.join(d, 'sastmhaly.db'))) {
+        chosenDir = d;
+        break;
+      }
     }
-    dbPath = path.join(dataDir, 'sastmhaly.db');
+
+    // If no existing db file found, pick the first writable candidate directory
+    if (!chosenDir) {
+      for (const d of candidateDirs) {
+        try {
+          if (!fs.existsSync(d)) {
+            fs.mkdirSync(d, { recursive: true });
+          }
+          chosenDir = d;
+          break;
+        } catch {}
+      }
+    }
+
+    if (!chosenDir) {
+      chosenDir = path.join(process.cwd(), 'data');
+      if (!fs.existsSync(chosenDir)) {
+        fs.mkdirSync(chosenDir, { recursive: true });
+      }
+    }
+
+    dbPath = path.join(chosenDir, 'sastmhaly.db');
   }
 
   const db = new Database(dbPath);
@@ -88,10 +124,12 @@ function getDatabase(): Database.Database {
     // Ensure Merchant from sastmhaly_config.json is auto-seeded if present
     try {
       const configPaths = [
+        process.env.APP_DIR ? path.join(process.env.APP_DIR, 'sastmhaly_config.json') : null,
         path.join(process.cwd(), 'sastmhaly_config.json'),
         path.join(process.cwd(), '..', 'sastmhaly_config.json'),
+        'C:\\SastmhalyPOS\\sastmhaly_config.json',
         path.join(__dirname, '..', '..', '..', 'sastmhaly_config.json')
-      ];
+      ].filter(Boolean) as string[];
       let configData: any = null;
       for (const cp of configPaths) {
         if (fs.existsSync(cp)) {
