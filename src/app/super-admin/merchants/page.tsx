@@ -300,6 +300,22 @@ export default function SuperAdminMerchantsPage() {
     }, 2500);
   };
 
+  const handleDownloadFullWindowsPackage = (merchant: Tenant) => {
+    setDownloadingBundle('windows');
+    // 1. Download offline standalone installer
+    const linkInstaller = document.createElement('a');
+    linkInstaller.href = '/downloads/Sastmhaly-POS-Setup.exe';
+    linkInstaller.download = 'Sastmhaly-POS-Setup.exe';
+    document.body.appendChild(linkInstaller);
+    linkInstaller.click();
+    document.body.removeChild(linkInstaller);
+
+    // 2. Download merchant config bundle
+    setTimeout(() => {
+      handleDownloadMerchantBundle(merchant, 'windows');
+    }, 1200);
+  };
+
   const handleOpenRenewModal = (merchant: Tenant) => {
     setSelectedMerchantForRenew(merchant);
     setRenewDurationType('preset');
@@ -2019,41 +2035,81 @@ export default function SuperAdminMerchantsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-            {/* Windows Download Button */}
-            <button
-              onClick={() => offlineTargetMerchant && handleDownloadMerchantBundle(offlineTargetMerchant, 'windows')}
-              disabled={downloadingBundle !== null}
-              className="p-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white border border-slate-700 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02] shadow-md group"
-            >
-              <div className="w-10 h-10 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Monitor className="w-5 h-5" />
-              </div>
-              <div className="text-center">
-                <div className="text-xs text-sky-300 font-semibold">{lang === 'ar' ? 'تحميل حزمة' : 'Download Bundle'}</div>
-                <div className="text-sm font-extrabold flex items-center justify-center gap-1.5 mt-0.5">
-                  <span>Windows (ويندوز)</span>
-                  <Download className={`w-3.5 h-3.5 text-sky-400 ${downloadingBundle === 'windows' ? 'animate-bounce' : ''}`} />
-                </div>
-              </div>
-            </button>
+          {/* Windows Download Options */}
+          <div className="space-y-2 pt-1">
+            <div className="text-xs font-bold text-slate-800 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Monitor className="w-4 h-4 text-sky-600" />
+                <span>{lang === 'ar' ? 'نسخة ويندوز للعمل أوفلاين (بدون إنترنت 100%)' : 'Windows Offline Edition (100% Local)'}</span>
+              </span>
+              <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-semibold">
+                {lang === 'ar' ? 'خادم محلي + SQLite' : 'Local Server + SQLite'}
+              </span>
+            </div>
 
-            {/* Mac Download Button */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {/* Full Installer Setup (.exe) */}
+              <a
+                href="/downloads/Sastmhaly-POS-Setup.exe"
+                download="Sastmhaly-POS-Setup.exe"
+                className="p-3.5 rounded-xl bg-gradient-to-br from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 text-white border border-slate-700 flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer transition-all hover:scale-[1.01] shadow-md group"
+              >
+                <div className="w-9 h-9 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Download className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-sky-300">
+                    {lang === 'ar' ? '1. تحميل برنامج التثبيت (Setup.exe)' : '1. Download Installer (Setup.exe)'}
+                  </div>
+                  <div className="text-[10px] text-slate-300 mt-0.5">
+                    {lang === 'ar' ? 'حجم 30 ميجا • تثبيت محلي كامل' : '30 MB • Full Offline Runtime'}
+                  </div>
+                </div>
+              </a>
+
+              {/* Merchant Config Bundle (.zip) */}
+              <button
+                onClick={() => offlineTargetMerchant && handleDownloadMerchantBundle(offlineTargetMerchant, 'windows')}
+                disabled={downloadingBundle !== null}
+                className="p-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white border border-slate-700 flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer transition-all hover:scale-[1.01] shadow-md group"
+              >
+                <div className="w-9 h-9 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Download className={`w-4 h-4 ${downloadingBundle === 'windows' ? 'animate-bounce' : ''}`} />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-amber-300">
+                    {lang === 'ar' ? '2. ملف بيانات المتجر (Config ZIP)' : '2. Store Config (Config ZIP)'}
+                  </div>
+                  <div className="text-[10px] text-slate-300 mt-0.5">
+                    {lang === 'ar' ? 'ربط تلقائي بالمتجر والحساب' : 'Pre-configured Store Data'}
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            {/* Quick 1-click Download All for Windows */}
+            <button
+              onClick={() => offlineTargetMerchant && handleDownloadFullWindowsPackage(offlineTargetMerchant)}
+              disabled={downloadingBundle !== null}
+              className="w-full py-2.5 px-3 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-300 text-sky-900 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-xs"
+            >
+              <span>⚡</span>
+              <span>{lang === 'ar' ? 'تحميل برنامج التثبيت + ملف المتجر معاً (ضغطة واحدة)' : 'Download Installer + Store Config Together (1-Click)'}</span>
+            </button>
+          </div>
+
+          {/* Mac Download Section */}
+          <div className="pt-2 border-t border-[#E5EAF2]">
             <button
               onClick={() => offlineTargetMerchant && handleDownloadMerchantBundle(offlineTargetMerchant, 'mac')}
               disabled={downloadingBundle !== null}
-              className="p-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white border border-slate-700 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02] shadow-md group"
+              className="w-full p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 flex items-center justify-between px-4 cursor-pointer transition-all"
             >
-              <div className="w-10 h-10 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Laptop className="w-5 h-5" />
+              <div className="flex items-center gap-2">
+                <Laptop className="w-4 h-4 text-emerald-600" />
+                <span className="text-xs font-bold">{lang === 'ar' ? 'تحميل حزمة macOS (ماك)' : 'Download macOS Package'}</span>
               </div>
-              <div className="text-center">
-                <div className="text-xs text-emerald-300 font-semibold">{lang === 'ar' ? 'تحميل حزمة' : 'Download Bundle'}</div>
-                <div className="text-sm font-extrabold flex items-center justify-center gap-1.5 mt-0.5">
-                  <span>macOS (ماك)</span>
-                  <Download className={`w-3.5 h-3.5 text-emerald-400 ${downloadingBundle === 'mac' ? 'animate-bounce' : ''}`} />
-                </div>
-              </div>
+              <Download className={`w-4 h-4 text-slate-600 ${downloadingBundle === 'mac' ? 'animate-bounce' : ''}`} />
             </button>
           </div>
 

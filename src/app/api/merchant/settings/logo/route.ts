@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { updateTenantSettings } from '@/lib/db/supabase-queries';
+import { updateTenantSettings, isOfflineMode } from '@/lib/db/supabase-queries';
 
 const BUCKET_NAME = 'merchant-logos';
 
@@ -20,9 +20,21 @@ export async function POST(req: NextRequest) {
     }
 
     const fileExt = file.name.split('.').pop() || 'png';
-    const cleanFileName = `${tenantId}/${Date.now()}_logo.${fileExt}`;
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+
+    // If running in offline mode, save as self-contained base64 data URL
+    if (isOfflineMode()) {
+      const mimeType = file.type || 'image/png';
+      const dataUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;
+      await updateTenantSettings(tenantId, { logo_url: dataUrl });
+      return NextResponse.json({
+        success: true,
+        logo_url: dataUrl,
+      });
+    }
+
+    const cleanFileName = `${tenantId}/${Date.now()}_logo.${fileExt}`;
 
     // Upload to Supabase Storage bucket: merchant-logos
     const { data: uploadData, error: uploadError } = await supabase.storage

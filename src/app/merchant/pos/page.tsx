@@ -386,7 +386,7 @@ export default function PosPage() {
     const channel = supabase.channel(channelName);
 
     channel
-      .on('broadcast', { event: 'stock_change' }, (payload) => {
+      .on('broadcast', { event: 'stock_change' }, (payload: any) => {
         const { items } = payload.payload || {};
         if (Array.isArray(items) && items.length > 0) {
           setProducts(prev => prev.map(p => {
@@ -797,7 +797,7 @@ export default function PosPage() {
             branchId: currentBranch.id,
             items: soldItems,
           }
-        }).catch(err => console.error('Failed to broadcast stock update', err));
+        }).catch((err: any) => console.error('Failed to broadcast stock update', err));
       }
 
       posAudio.playSuccess();

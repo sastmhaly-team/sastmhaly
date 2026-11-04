@@ -56,13 +56,15 @@ export async function GET(request: NextRequest) {
 - رقم الهاتف (اسم المستخدم): ${phone}
 - كلمة المرور: ${password}
 
-طريقة التثبيت والتشغيل على ويندوز:
-1. قم بفك الضغط عن هذا المجلد.
-2. اضغط مرتين على ملف التثبيت:
-   "تثبيت_سستمهالي - ${safeMerchantName}.exe"
-3. اضغط "التالي" ثم "تثبيت" (يستغرق بضع ثوانٍ فقط).
-4. سيتم إنشاء أيقونة على سطح المكتب باسم "سستمهالي - نقاط البيع".
-5. سيفتح النظام فوراً كتطبيق مثبت مستقل بدون متصفح أو روابط، ومسجّل ببياناتك تلقائياً!
+طريقة التثبيت والتشغيل المحلي 100% بدون إنترنت:
+1. قم بتحميل برنامج التثبيت لويندوز Sastmhaly-POS-Setup.exe من خلال الرابط:
+   https://sastmhaly.vercel.app/downloads/Sastmhaly-POS-Setup.exe
+   أو بالضغط مرتين على ملف: "تحميل_برنامج_التثبيت_لويندوز.url"
+2. شغّل برنامج التثبيت Sastmhaly-POS-Setup.exe واختر مجلد التثبيت الذي تريده (مثلاً: C:\\SastmhalyPOS).
+   (ملاحظة: كافة ملفات النظام وقاعدة البيانات المحلية sastmhaly.db ستكون داخل هذا المجلد المختار).
+3. انقل ملف "sastmhaly_config.json" إلى مجلد التثبيت أو دعه في مجلد التنزيلات (Downloads).
+4. افتح أيقونة سطح المكتب "سستمهالي - نقاط البيع".
+5. سيفتح النظام فوراً كتطبيق مثبت مستقل بدون متصفح ويعمل محلياً بالكامل بدون إنترنت!
 
 ملاحظة: إذا ظهر تنبيه الحماية Windows SmartScreen:
 اضغط على "More info" (مزيد من المعلومات) ثم "Run anyway" (تشغيل على أي حال).
@@ -181,10 +183,15 @@ wait $SERVER_PID
       }
     } else {
       // Windows specific bundle
+      const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
       const setupExeSource = path.join(projectRoot, 'offline', 'windows', 'Sastmhaly-POS-Setup.exe');
-      if (fs.existsSync(setupExeSource)) {
+      if (!isServerless && fs.existsSync(setupExeSource)) {
         zip.file(`تثبيت_سستمهالي - ${safeMerchantName}.exe`, fs.readFileSync(setupExeSource));
       }
+
+      // Add internet shortcut for direct installer download from Vercel Edge CDN
+      const installerUrlContent = `[InternetShortcut]\r\nURL=https://sastmhaly.vercel.app/downloads/Sastmhaly-POS-Setup.exe\r\n`;
+      zip.file('تحميل_برنامج_التثبيت_لويندوز.url', installerUrlContent);
 
       const launcherSource = path.join(projectRoot, 'offline', 'windows', 'Sastmhaly_POS.exe');
       if (fs.existsSync(launcherSource)) {

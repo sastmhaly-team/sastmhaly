@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/context';
 import { useLanguage } from '@/lib/i18n/context';
 import { LanguageToggle } from '@/components/layout/LanguageToggle';
-import { Phone, Lock, Eye, EyeOff, ArrowRight, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Phone, Lock, Eye, EyeOff, ArrowRight, ShieldCheck, CheckCircle2, AlertCircle, UploadCloud, Store } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,9 +19,18 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Offline mode detection & config import state
+  const [isOfflineEnv, setIsOfflineEnv] = useState(false);
+  const [importingConfig, setImportingConfig] = useState(false);
+  const [importSuccessMsg, setImportSuccessMsg] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Auto-fill credentials if provided in URL (e.g. for offline merchant launch package)
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+      setIsOfflineEnv(isLocal || process.env.NEXT_PUBLIC_OFFLINE_MODE === 'true');
+
       const params = new URLSearchParams(window.location.search);
       const urlPhone = params.get('phone') || params.get('auto_phone');
       const urlPass = params.get('pass') || params.get('auto_pass');
@@ -33,6 +42,51 @@ export default function LoginPage() {
       }
     }
   }, []);
+
+  const handleConfigFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImportingConfig(true);
+    setError('');
+    setImportSuccessMsg('');
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+
+      const res = await fetch('/api/offline/import-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: parsed })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'فشل استيراد ملف المتجر');
+      }
+
+      if (data.phone) setPhone(data.phone);
+      if (data.password) setPassword(data.password);
+      setImportSuccessMsg(lang === 'ar' ? `تم تفعيل متجر "${data.merchant_name || ''}" بنجاح!` : `Store "${data.merchant_name || ''}" activated successfully!`);
+
+      // Auto login if credentials present
+      if (data.phone && data.password) {
+        setTimeout(async () => {
+          try {
+            await loginAs(data.phone);
+          } catch (err) {
+            console.error('Auto login after import failed:', err);
+          }
+        }, 600);
+      }
+    } catch (err: any) {
+      setError(err?.message || (lang === 'ar' ? 'حدث خطأ أثناء قراءة ملف الإعدادات' : 'Error reading config file'));
+    } finally {
+      setImportingConfig(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   // If already logged in, automatically redirect to appropriate workspace
   useEffect(() => {
@@ -188,6 +242,14 @@ export default function LoginPage() {
             </div>
           )}
 
+          {/* Success Message for Offline Config Import */}
+          {importSuccessMsg && (
+            <div className="mb-4 p-3 rounded-xl bg-[#F0FDF4] border border-[#BBF7D0] flex items-start gap-2.5 text-xs text-[#16A34A]">
+              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+              <span className="font-semibold">{importSuccessMsg}</span>
+            </div>
+          )}
+
           {/* Master Phone & Password Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Phone Number Field */}
@@ -275,6 +337,37 @@ export default function LoginPage() {
                 </>
               )}
             </button>
+
+            {/* Offline Environment: Import Store Config File */}
+            {isOfflineEnv && (
+              <div className="pt-3 border-t border-[#E5EAF2] mt-3">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleConfigFileChange}
+                  accept=".json"
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importingConfig}
+                  className="w-full py-2.5 px-3 rounded-xl border border-dashed border-[#246BFD]/50 bg-[#F0F5FF] hover:bg-[#E5EDFF] text-[#246BFD] text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {importingConfig ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="w-3.5 h-3.5 border-2 border-[#246BFD]/30 border-t-[#246BFD] rounded-full animate-spin"></span>
+                      <span>{lang === 'ar' ? 'جاري استيراد وتفعيل المتجر...' : 'Importing store config...'}</span>
+                    </span>
+                  ) : (
+                    <>
+                      <UploadCloud className="w-4 h-4 text-[#246BFD]" />
+                      <span>{lang === 'ar' ? '📁 تفعيل متجر أوفلاين (استيراد sastmhaly_config.json)' : '📁 Activate Offline Store (Import config.json)'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </form>
 
           {/* Security & Multi-Role Notice */}

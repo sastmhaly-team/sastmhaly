@@ -7,7 +7,20 @@ Set oShell = CreateObject("WScript.Shell")
 Set oFSO = CreateObject("Scripting.FileSystemObject")
 
 appDir = oFSO.GetParentFolderName(WScript.ScriptFullName)
-installedDir = oShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\SastmhalyPOS")
+installedDir = "C:\SastmhalyPOS"
+
+' Read custom install directory from registry if user installed to another folder
+On Error Resume Next
+Dim regDir
+regDir = oShell.RegRead("HKCU\Software\SastmhalyPOS\InstallDir")
+If regDir <> "" And oFSO.FolderExists(regDir) Then
+  installedDir = regDir
+End If
+On Error GoTo 0
+
+If Not oFSO.FileExists(installedDir & "\server.js") Then
+  installedDir = oShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\SastmhalyPOS")
+End If
 
 ' If server.js is not in the current folder, check if it was installed in AppData
 If Not oFSO.FileExists(appDir & "\server.js") Then

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { getTenant, createUser } from '@/lib/db/supabase-queries';
+import { getTenant, createUser, isOfflineMode } from '@/lib/db/supabase-queries';
+import { db } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,39 +17,52 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Merchant tenant not found' }, { status: 404 });
     }
 
-    // 1. Try to find the primary owner user of this tenant
-    let { data: ownerUser } = await supabase
-      .from('users')
-      .select('*')
-      .eq('tenant_id', tenant_id)
-      .eq('role', 'merchant_owner')
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
+    let ownerUser: any = null;
 
-    // 2. If no user with role 'merchant_owner', find any admin or owner user
-    if (!ownerUser) {
-      const { data: anyAdmin } = await supabase
+    if (isOfflineMode()) {
+      ownerUser = db.prepare('SELECT * FROM users WHERE tenant_id = ? AND role = "merchant_owner" ORDER BY created_at ASC LIMIT 1').get(tenant_id) as any;
+      if (!ownerUser) {
+        ownerUser = db.prepare('SELECT * FROM users WHERE tenant_id = ? AND role IN ("admin", "owner", "branch_manager") ORDER BY created_at ASC LIMIT 1').get(tenant_id) as any;
+      }
+      if (!ownerUser) {
+        ownerUser = db.prepare('SELECT * FROM users WHERE tenant_id = ? ORDER BY created_at ASC LIMIT 1').get(tenant_id) as any;
+      }
+    } else {
+      // 1. Try to find the primary owner user of this tenant
+      const { data: directOwner } = await supabase
         .from('users')
         .select('*')
         .eq('tenant_id', tenant_id)
-        .in('role', ['admin', 'owner', 'branch_manager'])
+        .eq('role', 'merchant_owner')
         .order('created_at', { ascending: true })
         .limit(1)
         .maybeSingle();
-      ownerUser = anyAdmin;
-    }
+      ownerUser = directOwner;
 
-    // 3. If no admin, find ANY user of this tenant
-    if (!ownerUser) {
-      const { data: anyUser } = await supabase
-        .from('users')
-        .select('*')
-        .eq('tenant_id', tenant_id)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      ownerUser = anyUser;
+      // 2. If no user with role 'merchant_owner', find any admin or owner user
+      if (!ownerUser) {
+        const { data: anyAdmin } = await supabase
+          .from('users')
+          .select('*')
+          .eq('tenant_id', tenant_id)
+          .in('role', ['admin', 'owner', 'branch_manager'])
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        ownerUser = anyAdmin;
+      }
+
+      // 3. If no admin, find ANY user of this tenant
+      if (!ownerUser) {
+        const { data: anyUser } = await supabase
+          .from('users')
+          .select('*')
+          .eq('tenant_id', tenant_id)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        ownerUser = anyUser;
+      }
     }
 
     // 4. If still no user exists at all for this tenant, auto-provision main owner

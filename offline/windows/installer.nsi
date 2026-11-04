@@ -13,7 +13,7 @@ SetCompressor /SOLID lzma
 
 Name "${APP_NAME}"
 OutFile "Sastmhaly-POS-Setup.exe"
-InstallDir "$LOCALAPPDATA\${APP_DIR}"
+InstallDir "C:\${APP_DIR}"
 InstallDirRegKey HKCU "Software\${APP_DIR}" ""
 Icon "app.ico"
 UninstallIcon "app.ico"
@@ -62,10 +62,13 @@ Section "MainSection" SEC01
   File "run_app.vbs"
   File "Sastmhaly_POS.exe"
   File "node.exe"
+  File "/oname=تشغيل_سستمهالي.bat" "run_app.bat"
 
-  ; Copy merchant config if present next to installer
+  ; Copy merchant config if present next to installer or in user Downloads
   IfFileExists "$EXEDIR\sastmhaly_config.json" 0 +2
     CopyFiles /SILENT "$EXEDIR\sastmhaly_config.json" "$INSTDIR\sastmhaly_config.json"
+  IfFileExists "$PROFILE\Downloads\sastmhaly_config.json" 0 +2
+    CopyFiles /SILENT "$PROFILE\Downloads\sastmhaly_config.json" "$INSTDIR\sastmhaly_config.json"
 
   ; Copy initial database if present next to installer
   IfFileExists "$EXEDIR\sastmhaly.db" 0 +3
@@ -85,13 +88,16 @@ Section "MainSection" SEC01
   File /r "/Users/rogerpeter/sastmhaly/.next/static\*"
 
   SetOutPath "$INSTDIR\public"
-  File /r "/Users/rogerpeter/sastmhaly/public\*"
+  File /r /x "downloads" "/Users/rogerpeter/sastmhaly/public\*"
 
   SetOutPath "$INSTDIR\node_modules"
   File /r "/Users/rogerpeter/sastmhaly/.next/standalone/node_modules\*"
 
-  SetOutPath "$INSTDIR\data"
-  File /nonfatal /r "/Users/rogerpeter/sastmhaly/data\*"
+  ; Extract default database only if none exists yet so user data is never overwritten
+  IfFileExists "$INSTDIR\data\sastmhaly.db" +4 0
+    CreateDirectory "$INSTDIR\data"
+    SetOutPath "$INSTDIR\data"
+    File /nonfatal "/Users/rogerpeter/sastmhaly/data\sastmhaly.db"
 
   SetOutPath "$INSTDIR"
 
@@ -106,7 +112,9 @@ Section "MainSection" SEC01
   ; Create Uninstaller
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
-  ; Add to Windows Add/Remove Programs
+  ; Add to Windows Add/Remove Programs and Registry
+  WriteRegStr HKCU "Software\${APP_DIR}" "InstallDir" "$INSTDIR"
+  WriteRegStr HKCU "Software\${APP_DIR}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_DIR}" "DisplayName" "${APP_NAME}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_DIR}" "DisplayIcon" "$INSTDIR\app.ico"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_DIR}" "DisplayVersion" "${APP_VERSION}"
@@ -116,6 +124,7 @@ Section "MainSection" SEC01
 SectionEnd
 
 Function CreateDesktopShortcut
+  SetOutPath "$INSTDIR"
   CreateShortCut "$DESKTOP\سستمهالي - نقاط البيع.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\app.ico" 0
 FunctionEnd
 
