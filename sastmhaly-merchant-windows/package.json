@@ -1,0 +1,13 @@
+{
+  "name": "sastmhaly-merchant-windows",
+  "version": "1.0.0",
+  "description": "سستمهالي لنقاط البيع وإدارة المتاجر - تطبيق سطح المكتب للويندوز",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3"
+  }
+}
+

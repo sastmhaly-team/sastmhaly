@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>سستمهالي - نظام إدارة المبيعات ونقاط البيع</title>
+  <link rel="icon" type="image/x-icon" href="/icon.ico">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+  <!-- Main App Layout -->
+  <div id="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <img id="sidebar-logo" src="/logo.png" alt="شعار المتجر">
+        <div class="store-info">
+          <span class="store-title" id="sidebar-store-name">سستمهالي</span>
+          <span class="store-badge">نقاط البيع والمخزون</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-item active" data-view="dashboard">
+          <span class="icon">📊</span>
+          <span>لوحة التحكم</span>
+        </div>
+        <div class="nav-item" data-view="pos">
+          <span class="icon">🛒</span>
+          <span>نقطة البيع (الكاشير)</span>
+        </div>
+        <div class="nav-item" data-view="sales">
+          <span class="icon">🧾</span>
+          <span>فواتير المبيعات</span>
+        </div>
+        <div class="nav-item" data-view="products">
+          <span class="icon">🏷️</span>
+          <span>المنتجات والأصناف</span>
+        </div>
+        <div class="nav-item" data-view="inventory">
+          <span class="icon">📦</span>
+          <span>المخزون والمستودع</span>
+        </div>
+        <div class="nav-item" data-view="customers">
+          <span class="icon">👥</span>
+          <span>العملاء والديون</span>
+        </div>
+        <div class="nav-item" data-view="suppliers">
+          <span class="icon">🚚</span>
+          <span>الموردين والمشتريات</span>
+        </div>
+        <div class="nav-item" data-view="shifts">
+          <span class="icon">💼</span>
+          <span>الخزينة والورديات</span>
+        </div>
+        <div class="nav-item" data-view="expenses">
+          <span class="icon">💸</span>
+          <span>المصروفات اليومية</span>
+        </div>
+        <div class="nav-item" data-view="employees">
+          <span class="icon">👔</span>
+          <span>شؤون الموظفين والرواتب</span>
+        </div>
+        <div class="nav-item" data-view="reports">
+          <span class="icon">📈</span>
+          <span>التقارير والأرباح</span>
+        </div>
+        <div class="nav-item" data-view="settings">
+          <span class="icon">⚙️</span>
+          <span>إعدادات المتجر والنسخ</span>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div>نسخة سطح المكتب المحلي v1.0</div>
+        <div style="margin-top: 4px; color: #38bdf8;">مدعوم من سستمهالي Sastmhaly</div>
+      </div>
+    </aside>
+
+    <!-- Main Wrapper -->
+    <div class="main-wrapper">
+      <!-- Top Header -->
+      <header class="top-header">
+        <div class="header-right">
+          <h2 class="page-title" id="current-page-title">لوحة التحكم</h2>
+        </div>
+        <div class="header-left">
+          <div id="header-shift-badge" class="shift-badge closed" onclick="app.showShiftModal()">
+            <span class="dot"></span>
+            <span id="shift-status-text">الوردية مغلقة</span>
+          </div>
+          <div class="datetime-display" id="clock-display">--:--:--</div>
+          <button class="btn btn-secondary btn-sm" onclick="app.backupDatabase()" title="نسخ احتياطي فوري">💾 نسخة احتياطية</button>
+        </div>
+      </header>
+
+      <!-- Dynamic Views Container -->
+      <div class="page-container">
+
+        <!-- 1. DASHBOARD VIEW -->
+        <section id="view-dashboard" class="page-view active">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <span class="label">مبيعات اليوم</span>
+              <span class="value" id="dash-today-sales">0.00 ج.م</span>
+              <span class="desc" id="dash-today-count">0 فاتورة مكتملة</span>
+            </div>
+            <div class="stat-card">
+              <span class="label">صافي أرباح اليوم</span>
+              <span class="value" style="color: var(--success);" id="dash-today-profit">0.00 ج.م</span>
+              <span class="desc">بعد خصم التكلفة والمصروفات</span>
+            </div>
+            <div class="stat-card">
+              <span class="label">مبيعات الشهر الحالي</span>
+              <span class="value" id="dash-month-sales">0.00 ج.م</span>
+              <span class="desc" id="dash-month-count">0 فاتورة</span>
+            </div>
+            <div class="stat-card">
+              <span class="label">تنبيهات نواقص المخزون</span>
+              <span class="value" style="color: var(--danger);" id="dash-low-stock">0 منتج</span>
+              <span class="desc">أوشكت كمياتها على النفاد</span>
+            </div>
+            <div class="stat-card">
+              <span class="label">ديون العملاء الآجلة</span>
+              <span class="value" style="color: var(--warning);" id="dash-cust-debts">0.00 ج.م</span>
+              <span class="desc">مستحقات للمتجر في السوق</span>
+            </div>
+          </div>
+
+          <div class="card-box">
+            <div class="card-header-row">
+              <h3>آخر الفواتير الصادرة اليوم</h3>
+              <button class="btn btn-primary btn-sm" onclick="app.navigate('pos')">فتح شاشة الكاشير 🛒</button>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>رقم الفاتورة</th>
+                    <th>الوقت والتاريخ</th>
+                    <th>العميل</th>
+                    <th>طريقة الدفع</th>
+                    <th>الإجمالي</th>
+                    <th>الحالة</th>
+                    <th>إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody id="dash-recent-sales-tbody">
+                  <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">جاري تحميل الفواتير...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. POS VIEW (الكاشير) -->
+        <section id="view-pos" class="page-view">
+          <div class="pos-layout">
+            <!-- Catalog & Products -->
+            <div class="pos-catalog">
+              <div class="pos-search-bar">
+                <input type="text" id="pos-barcode-search" class="form-control" placeholder="امسح الباركود أو ابحث باسم المنتج أو الكود (F2)..." autocomplete="off">
+              </div>
+              <div class="pos-categories-pills" id="pos-categories-pills">
+                <div class="cat-pill active" onclick="app.filterPosCategory('')">الكل</div>
+              </div>
+              <div class="pos-products-grid" id="pos-products-grid">
+                <!-- Products dynamically rendered -->
+              </div>
+            </div>
+
+            <!-- Cart Section -->
+            <div class="pos-cart">
+              <div class="pos-cart-header">
+                <h3 style="font-size: 15px;">سلة المبيعات</h3>
+                <button class="btn btn-danger btn-sm" onclick="app.clearCart()">تفريغ السلة</button>
+              </div>
+
+              <!-- Customer Selector -->
+              <div style="padding: 8px 14px; background: #fff; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: center;">
+                <label style="font-size: 12px; font-weight: 600; white-space: nowrap;">العميل:</label>
+                <select id="pos-customer-select" class="form-control" style="padding: 4px 8px; font-size: 12px;">
+                  <option value="">عميل نقدي</option>
+                </select>
+                <button class="btn btn-secondary btn-sm" onclick="app.showAddCustomerModal()" title="إضافة عميل جديد">+</button>
+              </div>
+
+              <!-- Cart Items List -->
+              <div class="pos-cart-items" id="pos-cart-items">
+                <div style="text-align: center; color: var(--text-muted); padding: 40px 10px;">
+                  السلة فارغة<br><small>قم بمسح الباركود أو النقر على المنتج لإضافته</small>
+                </div>
+              </div>
+
+              <!-- Cart Summary & Actions -->
+              <div class="pos-cart-summary">
+                <div class="summary-line">
+                  <span>المجموع الفرعي:</span>
+                  <span id="pos-subtotal">0.00 ج.م</span>
+                </div>
+                <div class="summary-line" style="display: flex; align-items: center;">
+                  <span>الخصم:</span>
+                  <input type="number" id="pos-discount-input" value="0" min="0" step="0.5" style="width: 75px; text-align: center; padding: 2px 4px; border: 1px solid var(--border); border-radius: 4px;" oninput="app.updateCartSummary()">
+                </div>
+                <div class="summary-line">
+                  <span>ضريبة القيمة المضافة:</span>
+                  <span id="pos-tax-total">0.00 ج.م</span>
+                </div>
+                <div class="summary-line total">
+                  <span>الإجمالي النهائي:</span>
+                  <span id="pos-grand-total">0.00 ج.م</span>
+                </div>
+                <button class="btn btn-success pos-pay-btn" onclick="app.showCheckoutModal()">
+                  إتمام الدفع وطباعة الفاتورة (F9) 💳
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. SALES INVOICES VIEW -->
+        <section id="view-sales" class="page-view">
+          <div class="card-box">
+            <div class="card-header-row">
+              <h3>سجل فواتير المبيعات</h3>
+              <div style="display: flex; gap: 10px;">
+                <input type="text" id="sales-search-input" class="form-control" style="width: 250px;" placeholder="بحث برقم الفاتورة أو العميل..." oninput="app.loadSalesList()">
+                <button class="btn btn-primary" onclick="app.loadSalesList()">تحديث</button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>رقم الفاتورة</th>
+                    <th>التاريخ والوقت</th>
+                    <th>الكاشير</th>
+                    <th>العميل</th>
+                    <th>المجموع</th>
+                    <th>المدفوع</th>
+                    <th>طريقة الدفع</th>
+                    <th>الحالة</th>
+                    <th>إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody id="sales-list-tbody">
+                  <!-- Sales rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. PRODUCTS & CATEGORIES VIEW -->
+        <section id="view-products" class="page-view">
+          <div class="card-box">
+            <div class="card-header-row">
+              <h3>دليل المنتجات والأصناف</h3>
+              <div style="display: flex; gap: 10px;">
+                <input type="text" id="products-search-input" class="form-control" style="width: 260px;" placeholder="بحث باسم المنتج أو الباركود..." oninput="app.loadProductsList()">
+                <select id="products-filter-category" class="form-control" style="width: 160px;" onchange="app.loadProductsList()">
+                  <option value="">جميع التصنيفات</option>
+                </select>
+                <button class="btn btn-secondary" onclick="app.showCategoryModal()">إدارة التصنيفات</button>
+                <button class="btn btn-primary" onclick="app.showProductModal()">+ إضافة منتج جديد</button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>الباركود</th>
+                    <th>اسم المنتج</th>
+                    <th>التصنيف</th>
+                    <th>الوحدة</th>
+                    <th>سعر التكلفة</th>
+                    <th>سعر البيع</th>
+                    <th>المخزون الحالي</th>
+                    <th>حالة المخزون</th>
+                    <th>إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody id="products-list-tbody">
+                  <!-- Products rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 5. INVENTORY VIEW -->
+        <section id="view-inventory" class="page-view">
+          <div class="card-box">
+            <div class="card-header-row">
+              <h3>أرصدة المخزون والتسويات</h3>
+              <div style="display: flex; gap: 10px;">
+                <button class="btn btn-primary" onclick="app.showInventoryAdjustmentModal()">+ تسوية مخزنية يدوية</button>
+                <button class="btn btn-secondary" onclick="app.loadInventoryLedgerModal()">سجل حركات المخزن</button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>الباركود</th>
+                    <th>المنتج</th>
+                    <th>التصنيف</th>
+                    <th>الكمية المتاحة</th>
+                    <th>تكلفة الوحدة</th>
+                    <th>إجمالي قيمة المخزون</th>
+                    <th>تنبيه النواقص</th>
+                    <th>إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody id="inventory-list-tbody">
+                  <!-- Inventory rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 6. CUSTOMERS VIEW -->
+        <section id="view-customers" class="page-view">
+          <div class="card-box">
+            <div class="card-header-row">
+              <h3>دليل العملاء وحسابات الديون</h3>
+              <div style="display: flex; gap: 10px;">
+                <input type="text" id="customers-search-input" class="form-control" style="width: 260px;" placeholder="بحث باسم العميل أو الهاتف..." oninput="app.loadCustomersList()">
+                <button class="btn btn-primary" onclick="app.showAddCustomerModal()">+ إضافة عميل جديد</button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>كود العميل</th>
+                    <th>اسم العميل</th>
+                    <th>رقم الهاتف</th>
+                    <th>العنوان</th>
+                    <th>الحد الائتماني</th>
+                    <th>المديونية الحالية</th>
+                    <th>إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody id="customers-list-tbody">
+                  <!-- Customers rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 7. SUPPLIERS & PURCHASES VIEW -->
+        <section id="view-suppliers" class="page-view">
+          <div class="card-box">
+            <div class="card-header-row">
+              <h3>دليل الموردين وفواتير الشراء</h3>
+              <div style="display: flex; gap: 10px;">
+                <button class="btn btn-secondary" onclick="app.showAddSupplierModal()">+ إضافة مورد</button>
+                <button class="btn btn-primary" onclick="app.showPurchaseInvoiceModal()">+ تسجيل فاتورة توريد / شراء</button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>كود المورد</th>
+                    <th>اسم المورد / الشركة</th>
+                    <th>المسؤول</th>
+                    <th>الهاتف</th>
+                    <th>مستحقات المورد</th>
+                    <th>إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody id="suppliers-list-tbody">
+                  <!-- Suppliers rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card-box">
+            <h3 style="margin-bottom: 12px;">سجل فواتير الشراء والتوريد الحديثة</h3>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>رقم الفاتورة</th>
+                    <th>التاريخ</th>
+                    <th>المورد</th>
+                    <th>إجمالي الفاتورة</th>
+                    <th>المبلغ المسدد</th>
+                    <th>المتبقي آجل</th>
+                    <th>طريقة الدفع</th>
+                  </tr>
+                </thead>
+                <tbody id="purchases-list-tbody">
+                  <!-- Purchases rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 8. SHIFTS & CASH VIEW -->
+        <section id="view-shifts" class="page-view">
+          <div class="card-box">
+            <div class="card-header-row">
+              <h3>إدارة الورديات وحركة الخزينة</h3>
+              <div style="display: flex; gap: 10px;">
+                <button class="btn btn-success" id="btn-open-shift" onclick="app.showOpenShiftModal()">فتح وردية جديدة</button>
+                <button class="btn btn-danger" id="btn-close-shift" onclick="app.showCloseShiftModal()">تقفيل الوردية الحالية (Z-Report)</button>
+                <button class="btn btn-secondary" onclick="app.showCashMovementModal()">إيداع / سحب نقدية</button>
+              </div>
+            </div>
+
+            <div id="active-shift-details" style="background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px;">
+              <!-- Current shift info -->
+            </div>
+
+            <h4 style="margin-bottom: 12px;">سجل الورديات السابقة</h4>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>رقم الوردية</th>
+                    <th>المسؤول</th>
+                    <th>وقت الفتح</th>
+                    <th>وقت الإغلاق</th>
+                    <th>رصيد البداية</th>
+                    <th>مبيعات نقدي</th>
+                    <th>المصروفات</th>
+                    <th>المبلغ الفعلي</th>
+                    <th>العجز / الزيادة</th>
+                    <th>الحالة</th>
+                  </tr>
+                </thead>
+                <tbody id="shifts-history-tbody">
+                  <!-- History rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 9. EXPENSES VIEW -->
+        <section id="view-expenses" class="page-view">
+          <div class="card-box">
+            <div class="card-header-row">
+              <h3>سجل المصروفات اليومية والنثريات</h3>
+              <button class="btn btn-primary" onclick="app.showAddExpenseModal()">+ تسجيل مصروف جديد</button>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>التاريخ والوقت</th>
+                    <th>بند المصروف</th>
+                    <th>المبلغ</th>
+                    <th>طريقة الدفع</th>
+                    <th>ملاحظات وبيان المصروف</th>
+                    <th>المسؤول</th>
+                  </tr>
+                </thead>
+                <tbody id="expenses-list-tbody">
+                  <!-- Expenses rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 10. EMPLOYEES & PAYROLL VIEW -->
+        <section id="view-employees" class="page-view">
+          <div class="card-box">
+            <div class="card-header-row">
+              <h3>شؤون الموظفين والرواتب</h3>
+              <div style="display: flex; gap: 10px;">
+                <button class="btn btn-secondary" onclick="app.showAttendanceSection()">سجل الحضور والانصراف</button>
+                <button class="btn btn-secondary" onclick="app.showAdjustmentModal()">سلف ومكافآت وخصومات</button>
+                <button class="btn btn-primary" onclick="app.showAddEmployeeModal()">+ إضافة موظف جديد</button>
+              </div>
+            </div>
+
+            <div class="table-responsive" style="margin-bottom: 24px;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>اسم الموظف</th>
+                    <th>المسمى الوظيفي</th>
+                    <th>رقم الهاتف</th>
+                    <th>الراتب الأساسي</th>
+                    <th>تاريخ التعيين</th>
+                    <th>إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody id="employees-list-tbody">
+                  <!-- Employees rows -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Monthly Payroll Section -->
+            <div class="card-header-row" style="border-top: 1px solid var(--border); padding-top: 16px;">
+              <h4>مسير الرواتب الشهري</h4>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <label style="font-size: 13px;">الشهر:</label>
+                <select id="payroll-month-select" class="form-control" style="width: 100px;">
+                  <option value="1">يناير</option>
+                  <option value="2">فبراير</option>
+                  <option value="3">مارس</option>
+                  <option value="4">أبريل</option>
+                  <option value="5">مايو</option>
+                  <option value="6">يونيو</option>
+                  <option value="7">يوليو</option>
+                  <option value="8">أغسطس</option>
+                  <option value="9">سبتمبر</option>
+                  <option value="10">أكتوبر</option>
+                  <option value="11">نوفمبر</option>
+                  <option value="12">ديسمبر</option>
+                </select>
+                <button class="btn btn-success" onclick="app.generatePayroll()">احتساب وتحديث مسير الرواتب</button>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>الموظف</th>
+                    <th>الراتب الأساسي</th>
+                    <th>المكافآت والإضافي</th>
+                    <th>الخصومات</th>
+                    <th>السلف المسحوبة</th>
+                    <th>صافي الراتب المستحق</th>
+                    <th>حالة الصرف</th>
+                    <th>إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody id="payroll-list-tbody">
+                  <!-- Payroll rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 11. REPORTS VIEW -->
+        <section id="view-reports" class="page-view">
+          <div class="card-box">
+            <h3 style="margin-bottom: 16px;">تقرير الأرباح والخسائر الشامل</h3>
+            <div class="stats-grid">
+              <div class="stat-card">
+                <span class="label">إجمالي إيرادات المبيعات</span>
+                <span class="value" id="rep-total-sales">0.00 ج.م</span>
+              </div>
+              <div class="stat-card">
+                <span class="label">تكلفة البضاعة المباعة (COGS)</span>
+                <span class="value" id="rep-cogs">0.00 ج.م</span>
+              </div>
+              <div class="stat-card">
+                <span class="label">مجمل الربح</span>
+                <span class="value" style="color: var(--primary);" id="rep-gross-profit">0.00 ج.م</span>
+              </div>
+              <div class="stat-card">
+                <span class="label">إجمالي المصروفات والنثريات</span>
+                <span class="value" style="color: var(--danger);" id="rep-total-expenses">0.00 ج.م</span>
+              </div>
+              <div class="stat-card" style="background: #f0fdf4; border-color: #86efac;">
+                <span class="label">صافي الربح الفعلي</span>
+                <span class="value" style="color: var(--success);" id="rep-net-profit">0.00 ج.م</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-box">
+            <h3 style="margin-bottom: 14px;">أكثر المنتجات مبيعاً وتحقيقاً للأرباح</h3>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>اسم المنتج</th>
+                    <th>إجمالي الكمية المباعة</th>
+                    <th>إجمالي الإيراد المحقق</th>
+                  </tr>
+                </thead>
+                <tbody id="rep-top-products-tbody">
+                  <!-- Top products -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 12. SETTINGS VIEW -->
+        <section id="view-settings" class="page-view">
+          <div class="card-box" style="max-width: 750px;">
+            <h3 style="margin-bottom: 16px;">إعدادات المتجر والفاتورة</h3>
+            <form id="settings-form" onsubmit="app.saveSettings(event)">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>اسم المتجر / المنشأة</label>
+                  <input type="text" id="set-store-name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                  <label>نوع النشاط التجاري</label>
+                  <select id="set-business-type" class="form-control">
+                    <option value="سوبرماركت">سوبرماركت وبقالة</option>
+                    <option value="مطعم وكافيه">مطعم وكافيه</option>
+                    <option value="ملابس وأحذية">ملابس وأحذية</option>
+                    <option value="صيدلية ومستحضرات">صيدلية ومستحضرات</option>
+                    <option value="إلكترونيات وموبايل">إلكترونيات وموبايل</option>
+                    <option value="قطع غيار وصيانة">قطع غيار وصيانة</option>
+                    <option value="تجارة عامة">تجارة عامة وتجزئة</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label>رقم الهاتف / الواتساب</label>
+                  <input type="text" id="set-phone" class="form-control">
+                </div>
+                <div class="form-group">
+                  <label>المدينة</label>
+                  <input type="text" id="set-city" class="form-control" value="القاهرة">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>العنوان التفصيلي</label>
+                <input type="text" id="set-address" class="form-control">
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label>الرقم الضريبي</label>
+                  <input type="text" id="set-tax-number" class="form-control">
+                </div>
+                <div class="form-group">
+                  <label>السجل التجاري</label>
+                  <input type="text" id="set-commercial-register" class="form-control">
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label>العملة</label>
+                  <input type="text" id="set-currency" class="form-control" value="ج.م">
+                </div>
+                <div class="form-group">
+                  <label>نسبة ضريبة القيمة المضافة %</label>
+                  <input type="number" id="set-tax-rate" class="form-control" value="14" step="0.5">
+                </div>
+              </div>
+
+              <!-- Logo Upload -->
+              <div class="form-group" style="margin-top: 10px;">
+                <label>شعار المتجر (يظهر في رأس الفاتورة الحرارية)</label>
+                <div style="display: flex; gap: 14px; align-items: center;">
+                  <img id="set-logo-preview" src="/logo.png" style="width: 70px; height: 70px; object-fit: contain; border: 1px solid var(--border); border-radius: 8px; background: #fff; padding: 4px;">
+                  <div>
+                    <input type="file" id="set-logo-file" accept="image/*" class="form-control" onchange="app.handleLogoFileChange(event, 'set-logo-preview')">
+                    <small style="color: var(--text-muted);">يفضل صورة مربعة PNG أو JPG بخلفية بيضاء أو شفافة</small>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-top: 10px;">
+                <label>الترويسة أعلى الفاتورة (رسالة ترحيبية)</label>
+                <input type="text" id="set-receipt-header" class="form-control" value="أهلاً بكم ونتشرف بزيارتكم">
+              </div>
+
+              <div class="form-group">
+                <label>التذييل أسفل الفاتورة (سياسة الاسترجاع)</label>
+                <input type="text" id="set-receipt-footer" class="form-control" value="البضاعة المباعة ترد وتستبدل خلال 14 يوماً بموجب الفاتورة">
+              </div>
+
+              <div style="margin-top: 20px;">
+                <button type="submit" class="btn btn-primary btn-lg">حفظ التعديلات والإعدادات</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Backup & Database card -->
+          <div class="card-box" style="max-width: 750px;">
+            <h3 style="margin-bottom: 10px;">النسخ الاحتياطي لقاعدة البيانات المحلية</h3>
+            <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 14px;">
+              يتم تخزين كافة بياناتك وفواتيرك ومخزونك محلياً 100% داخل جهاز الكمبيوتر الخاص بك بصيغة SQLite. يمكنك تنزيل نسخة احتياطية فورية في أي وقت لحفظها على فلاشة أو قرص خارجي.
+            </p>
+            <button class="btn btn-success" onclick="app.backupDatabase()">تحميل نسخة احتياطية من قاعدة البيانات (.db)</button>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ONBOARDING SETUP MODAL (FIRST RUN WIZARD) -->
+  <div id="modal-onboarding" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header" style="background: #0f172a; color: #fff;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <img src="/logo.png" style="height: 32px; background: white; border-radius: 6px; padding: 2px;">
+          <h3 style="color: #fff;">إعداد متجرك لأول مرة - سستمهالي POS</h3>
+        </div>
+      </div>
+      <form id="onboarding-form" onsubmit="app.submitOnboarding(event)">
+        <div class="modal-body">
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+            مرحباً بك! يعمل هذا النظام محلياً بالكامل على جهازك دون الحاجة لأي إنترنت. يرجى إدخال بيانات متجرك لبدء الاستخدام:
+          </p>
+
+          <!-- Store Logo -->
+          <div class="form-group" style="text-align: center; margin-bottom: 16px;">
+            <label style="display: block; margin-bottom: 6px;">شعار المتجر (اختياري)</label>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+              <img id="onboard-logo-preview" src="/logo.png" style="width: 80px; height: 80px; object-fit: contain; border: 2px dashed var(--border); border-radius: 12px; padding: 6px; background: #fff;">
+              <input type="file" id="onboard-logo-file" accept="image/*" class="form-control" style="max-width: 280px;" onchange="app.handleLogoFileChange(event, 'onboard-logo-preview')">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>اسم المتجر / النشاط التجاري *</label>
+            <input type="text" id="onboard-store-name" class="form-control" placeholder="مثال: أسواق البركة المركزية" required>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>نوع النشاط</label>
+              <select id="onboard-business-type" class="form-control">
+                <option value="سوبرماركت">سوبرماركت وبقالة</option>
+                <option value="مطعم وكافيه">مطعم وكافيه</option>
+                <option value="ملابس وأحذية">ملابس وأحذية</option>
+                <option value="صيدلية ومستحضرات">صيدلية ومستحضرات</option>
+                <option value="إلكترونيات وموبايل">إلكترونيات وموبايل</option>
+                <option value="قطع غيار وصيانة">قطع غيار وصيانة</option>
+                <option value="تجارة عامة">تجارة عامة وتجزئة</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>رقم الهاتف للتواصل *</label>
+              <input type="text" id="onboard-phone" class="form-control" placeholder="01xxxxxxxxx" required>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>المدينة</label>
+              <input type="text" id="onboard-city" class="form-control" value="القاهرة">
+            </div>
+            <div class="form-group">
+              <label>العملة</label>
+              <input type="text" id="onboard-currency" class="form-control" value="ج.م">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>العنوان</label>
+            <input type="text" id="onboard-address" class="form-control" placeholder="شارع ... الحي ...">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>الرقم الضريبي (اختياري)</label>
+              <input type="text" id="onboard-tax-number" class="form-control">
+            </div>
+            <div class="form-group">
+              <label>نسبة الضريبة %</label>
+              <input type="number" id="onboard-tax-rate" class="form-control" value="14" step="0.5">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>رمز PIN السري للمدير (اختياري)</label>
+            <input type="password" id="onboard-pin" class="form-control" value="1234" maxlength="6">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">
+            حفظ وبدء استخدام النظام الآن ✨
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CHECKOUT MODAL (POS PAYMENT) -->
+  <div id="modal-checkout" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>إتمام عملية البيع ودفع الفاتورة</h3>
+        <button class="modal-close" onclick="app.closeModal('modal-checkout')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="text-align: center; margin-bottom: 16px;">
+          <span style="font-size: 14px; color: var(--text-muted);">المبلغ المطلوب سداده:</span>
+          <div style="font-size: 28px; font-weight: 800; color: var(--primary);" id="checkout-amount-due">0.00 ج.م</div>
+        </div>
+
+        <div class="form-group">
+          <label>طريقة الدفع:</label>
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+            <button type="button" class="btn btn-primary pay-method-btn active" id="pay-method-cash" onclick="app.setPaymentMethod('cash')">💵 نقدي (كاش)</button>
+            <button type="button" class="btn btn-secondary pay-method-btn" id="pay-method-card" onclick="app.setPaymentMethod('card')">💳 بطاقة بنكية</button>
+            <button type="button" class="btn btn-secondary pay-method-btn" id="pay-method-credit" onclick="app.setPaymentMethod('credit')">📋 آجل (على الحساب)</button>
+          </div>
+        </div>
+
+        <div id="cash-payment-fields">
+          <div class="form-group">
+            <label>المبلغ المستلم من العميل:</label>
+            <input type="number" id="checkout-paid-input" class="form-control" style="font-size: 18px; font-weight: 700; text-align: center;" oninput="app.calculateChange()">
+          </div>
+
+          <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-weight: 600;">المتبقي للعميل (الفكة):</span>
+            <span id="checkout-change-amount" style="font-size: 18px; font-weight: 800; color: var(--success);">0.00 ج.م</span>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 12px;">
+          <label>ملاحظات إضافية على الفاتورة (اختياري):</label>
+          <input type="text" id="checkout-notes" class="form-control">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-checkout')">إلغاء</button>
+        <button class="btn btn-success btn-lg" onclick="app.commitSale()">تأكيد العملية وطباعة الفاتورة 🖨️</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD / EDIT PRODUCT MODAL -->
+  <div id="modal-product" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="product-modal-title">إضافة منتج جديد</h3>
+        <button class="modal-close" onclick="app.closeModal('modal-product')">&times;</button>
+      </div>
+      <form id="product-form" onsubmit="app.saveProduct(event)">
+        <div class="modal-body">
+          <input type="hidden" id="prod-id">
+          <div class="form-group">
+            <label>اسم المنتج *</label>
+            <input type="text" id="prod-name" class="form-control" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>الباركود</label>
+              <div style="display: flex; gap: 6px;">
+                <input type="text" id="prod-barcode" class="form-control" placeholder="امسح الباركود">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="app.generateRandomBarcode()">توليد</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>رمز الصنف (SKU)</label>
+              <input type="text" id="prod-sku" class="form-control">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>التصنيف</label>
+              <select id="prod-category" class="form-control"></select>
+            </div>
+            <div class="form-group">
+              <label>وحدة القياس</label>
+              <select id="prod-unit" class="form-control"></select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>سعر التكلفة (الشراء)</label>
+              <input type="number" id="prod-cost" class="form-control" value="0" step="0.5" required>
+            </div>
+            <div class="form-group">
+              <label>سعر البيع للجمهور *</label>
+              <input type="number" id="prod-selling" class="form-control" value="0" step="0.5" required>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>سعر الجملة (اختياري)</label>
+              <input type="number" id="prod-wholesale" class="form-control" value="0" step="0.5">
+            </div>
+            <div class="form-group">
+              <label>تنبيه النواقص عند كمية</label>
+              <input type="number" id="prod-min-stock" class="form-control" value="5">
+            </div>
+          </div>
+
+          <div class="form-group" id="prod-initial-stock-group">
+            <label>الرصيد الافتتاحي في المخزن</label>
+            <input type="number" id="prod-initial-stock" class="form-control" value="0" step="1">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="app.closeModal('modal-product')">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ المنتج</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- INVENTORY ADJUSTMENT MODAL -->
+  <div id="modal-inventory-adj" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>تسوية رصيد مخزني</h3>
+        <button class="modal-close" onclick="app.closeModal('modal-inventory-adj')">&times;</button>
+      </div>
+      <form id="inventory-adj-form" onsubmit="app.saveInventoryAdjustment(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>اختر المنتج *</label>
+            <select id="adj-product-id" class="form-control" required></select>
+          </div>
+          <div class="form-group">
+            <label>نوع التسوية:</label>
+            <select id="adj-type" class="form-control">
+              <option value="add">إضافة كمية للمخزن (زيادة / هدايا)</option>
+              <option value="subtract">خصم كمية من المخزن (تالف / عجز / مفقود)</option>
+              <option value="set">تعديل مباشر لإجمالي الكمية (جرد فعلي)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>الكمية *</label>
+            <input type="number" id="adj-qty" class="form-control" min="0" step="0.1" required>
+          </div>
+          <div class="form-group">
+            <label>بيان وسبب التسوية</label>
+            <input type="text" id="adj-notes" class="form-control" placeholder="مثال: جرد نهاية الشهر، بضاعة تالفة...">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="app.closeModal('modal-inventory-adj')">إلغاء</button>
+          <button type="submit" class="btn btn-primary">تطبيق التسوية</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADD CUSTOMER MODAL -->
+  <div id="modal-customer" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>إضافة عميل جديد</h3>
+        <button class="modal-close" onclick="app.closeModal('modal-customer')">&times;</button>
+      </div>
+      <form id="customer-form" onsubmit="app.saveCustomer(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>اسم العميل *</label>
+            <input type="text" id="cust-name" class="form-control" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>رقم الهاتف</label>
+              <input type="text" id="cust-phone" class="form-control">
+            </div>
+            <div class="form-group">
+              <label>الحد الائتماني للديون</label>
+              <input type="number" id="cust-credit-limit" class="form-control" value="1000">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>العنوان</label>
+            <input type="text" id="cust-address" class="form-control">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="app.closeModal('modal-customer')">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ العميل</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CUSTOMER DEBT PAYMENT MODAL -->
+  <div id="modal-customer-payment" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>سداد مديونية عميل</h3>
+        <button class="modal-close" onclick="app.closeModal('modal-customer-payment')">&times;</button>
+      </div>
+      <form id="customer-payment-form" onsubmit="app.saveCustomerPayment(event)">
+        <div class="modal-body">
+          <input type="hidden" id="cpay-customer-id">
+          <div class="form-group">
+            <label>اسم العميل:</label>
+            <div id="cpay-customer-name" style="font-weight: 700; font-size: 15px;">--</div>
+          </div>
+          <div class="form-group">
+            <label>إجمالي المديونية المستحقة:</label>
+            <div id="cpay-current-debt" style="font-size: 18px; font-weight: 800; color: var(--danger);">0.00 ج.م</div>
+          </div>
+          <div class="form-group">
+            <label>المبلغ المسدد الآن *</label>
+            <input type="number" id="cpay-amount" class="form-control" min="1" step="0.5" required>
+          </div>
+          <div class="form-group">
+            <label>ملاحظات وسند القبض</label>
+            <input type="text" id="cpay-notes" class="form-control" placeholder="سداد نقدي في الخزينة">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="app.closeModal('modal-customer-payment')">إلغاء</button>
+          <button type="submit" class="btn btn-success">تأكيد سداد المبلغ</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADD SUPPLIER MODAL -->
+  <div id="modal-supplier" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>إضافة مورد جديد</h3>
+        <button class="modal-close" onclick="app.closeModal('modal-supplier')">&times;</button>
+      </div>
+      <form id="supplier-form" onsubmit="app.saveSupplier(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>اسم المورد / الشركة *</label>
+            <input type="text" id="sup-name" class="form-control" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>اسم المندوب المسؤول</label>
+              <input type="text" id="sup-contact" class="form-control">
+            </div>
+            <div class="form-group">
+              <label>رقم الهاتف</label>
+              <input type="text" id="sup-phone" class="form-control">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>العنوان</label>
+            <input type="text" id="sup-address" class="form-control">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="app.closeModal('modal-supplier')">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ المورد</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- PURCHASE INVOICE MODAL -->
+  <div id="modal-purchase" class="modal-overlay">
+    <div class="modal-dialog lg">
+      <div class="modal-header">
+        <h3>تسجيل فاتورة شراء وتوريد بضاعة</h3>
+        <button class="modal-close" onclick="app.closeModal('modal-purchase')">&times;</button>
+      </div>
+      <form id="purchase-form" onsubmit="app.savePurchaseInvoice(event)">
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label>المورد *</label>
+              <select id="po-supplier-select" class="form-control" required></select>
+            </div>
+            <div class="form-group">
+              <label>طريقة السداد</label>
+              <select id="po-payment-method" class="form-control">
+                <option value="cash">نقدي (كاش من الخزينة)</option>
+                <option value="credit">آجل (على حساب المورد)</option>
+              </select>
+            </div>
+          </div>
+
+          <h4 style="margin: 12px 0 8px 0;">أصناف الفاتورة:</h4>
+          <div id="po-items-container" style="display: flex; flex-direction: column; gap: 8px;">
+            <!-- Purchase items rows -->
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" style="margin-top: 8px;" onclick="app.addPurchaseItemRow()">+ إضافة صنف آخر للفاتورة</button>
+
+          <div class="form-row" style="margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px;">
+            <div class="form-group">
+              <label>إجمالي الفاتورة:</label>
+              <div id="po-total-display" style="font-size: 18px; font-weight: 700;">0.00 ج.م</div>
+            </div>
+            <div class="form-group">
+              <label>المبلغ المدفوع للمورد الآن:</label>
+              <input type="number" id="po-paid-input" class="form-control" value="0" min="0" step="0.5">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="app.closeModal('modal-purchase')">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ وتحديث المخزون</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- OPEN SHIFT MODAL -->
+  <div id="modal-open-shift" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>فتح وردية عمل جديدة</h3>
+        <button class="modal-close" onclick="app.closeModal('modal-open-shift')">&times;</button>
+      </div>
+      <form id="open-shift-form" onsubmit="app.submitOpenShift(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>اسم الكاشير / المسؤول *</label>
+            <input type="text" id="open-shift-cashier" class="form-control" value="المدير" required>
+          </div>
+          <div class="form-group">
+            <label>رصيد بداية اليوم (العهدة النقدية في الدرج) *</label>
+            <input type="number" id="open-shift-float" class="form-control" value="0" min="0" step="10" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="app.closeModal('modal-open-shift')">إلغاء</button>
+          <button type="submit" class="btn btn-success">فتح الوردية وبدء العمل</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CLOSE SHIFT MODAL (Z-REPORT) -->
+  <div id="modal-close-shift" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>إغلاق الوردية الحالية وطباعة تقرير Z</h3>
+        <button class="modal-close" onclick="app.closeModal('modal-close-shift')">&times;</button>
+      </div>
+      <form id="close-shift-form" onsubmit="app.submitCloseShift(event)">
+        <div class="modal-body">
+          <div id="close-shift-summary" style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 14px;">
+            <!-- Summary breakdown -->
+          </div>
+          <div class="form-group">
+            <label>المبلغ الفعلي الموجود بالدرج بعد الجرد *</label>
+            <input type="number" id="close-shift-counted" class="form-control" style="font-size: 18px; font-weight: 700; text-align: center;" required oninput="app.calculateShiftVariance()">
+          </div>
+          <div style="margin-bottom: 14px; font-weight: 600;">
+            <span>العجز / الزيادة: </span>
+            <span id="close-shift-variance" style="font-size: 16px;">0.00 ج.م</span>
+          </div>
+          <div class="form-group">
+            <label>ملاحظات الإغلاق والتسليم:</label>
+            <input type="text" id="close-shift-notes" class="form-control">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="app.closeModal('modal-close-shift')">إلغاء</button>
+          <button type="submit" class="btn btn-danger">تأكيد الإغلاق وتقفيل الوردية</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CASH MOVEMENT MODAL -->
+  <div id="modal-cash-movement" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>حركة نقدية بالدرج (إيداع / سحب)</h3>
+        <button class="modal-close" onclick="app.closeModal('modal-cash-movement')">&times;</button>
+      </div>
+      <form id="cash-movement-form" onsubmit="app.saveCashMovement(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>نوع الحركة:</label>
+            <select id="cmov-type" class="form-control">
+              <option value="in">إيداع نقدية في الدرج (+)</option>
+              <option value="out">سحب نقدية من الدرج (-)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>المبلغ *</label>
+            <input type="number" id="cmov-amount" class="form-control" min="1" step="0.5" required>
+          </div>
+          <div class="form-group">
+            <label>السبب والبيان *</label>
+            <input type="text" id="cmov-reason" class="form-control" placeholder="مثال: فكة إضافية، سحب للمالك..." required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="app.closeModal('modal-cash-movement')">إلغاء</button>
+          <button type="submit" class="btn btn-primary">تأكيد الحركة</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADD EXPENSE MODAL -->
+  <div id="modal-expense" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>تسجيل مصروف جديد</h3>
+        <button class="modal-close" onclick="app.closeModal('modal-expense')">&times;</button>
+      </div>
+      <form id="expense-form" onsubmit="app.saveExpense(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>بند المصروف *</label>
+            <select id="exp-category" class="form-control">
+              <option value="إيجار">إيجار المحل</option>
+              <option value="كهرباء ومياه">فاتورة كهرباء ومياه وغاز</option>
+              <option value="صيانة">صيانة وأدوات</option>
+              <option value="بوفيه وضيافة">بوفيه وضيافة ومشروبات</option>
+              <option value="نقل ومواصلات">نقل وشحن ومواصلات</option>
+              <option value="أخرى">مصروفات أخرى متنوعة</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>المبلغ *</label>
+            <input type="number" id="exp-amount" class="form-control" min="0.5" step="0.5" required>
+          </div>
+          <div class="form-group">
+            <label>طريقة الدفع</label>
+            <select id="exp-payment" class="form-control">
+              <option value="cash">نقداً من درج الكاشير</option>
+              <option value="bank">تحويل بنكي / محفظة</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>البيان والتفاصيل</label>
+            <input type="text" id="exp-notes" class="form-control" placeholder="اكتب تفاصيل المصروف...">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="app.closeModal('modal-expense')">إلغاء</button>
+          <button type="submit" class="btn btn-primary">تسجيل المصروف</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADD EMPLOYEE MODAL -->
+  <div id="modal-employee" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>إضافة موظف جديد</h3>
+        <button class="modal-close" onclick="app.closeModal('modal-employee')">&times;</button>
+      </div>
+      <form id="employee-form" onsubmit="app.saveEmployee(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>اسم الموظف بالكامل *</label>
+            <input type="text" id="emp-name" class="form-control" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>المسمى الوظيفي</label>
+              <input type="text" id="emp-title" class="form-control" value="كاشير">
+            </div>
+            <div class="form-group">
+              <label>رقم الهاتف</label>
+              <input type="text" id="emp-phone" class="form-control">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>الراتب الأساسي الشهري *</label>
+              <input type="number" id="emp-salary" class="form-control" value="3000" min="0" step="100" required>
+            </div>
+            <div class="form-group">
+              <label>تاريخ التعيين</label>
+              <input type="date" id="emp-hire-date" class="form-control">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="app.closeModal('modal-employee')">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ الموظف</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- EMPLOYEE ADJUSTMENT MODAL (سلفة / مكافأة / خصم) -->
+  <div id="modal-adjustment" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>تسجيل سلفة / مكافأة / خصم لموظف</h3>
+        <button class="modal-close" onclick="app.closeModal('modal-adjustment')">&times;</button>
+      </div>
+      <form id="adjustment-form" onsubmit="app.saveAdjustment(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>اختر الموظف *</label>
+            <select id="adj-emp-id" class="form-control" required></select>
+          </div>
+          <div class="form-group">
+            <label>نوع البند:</label>
+            <select id="adj-emp-type" class="form-control">
+              <option value="advance">سلفة نقدية (تُخصم من راتب نهاية الشهر وتُسحب من الدرج)</option>
+              <option value="bonus">مكافأة / حافز إضافي (+)</option>
+              <option value="overtime">ساعات عمل إضافية (+)</option>
+              <option value="deduction">خصم / جزاء (-)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>المبلغ *</label>
+            <input type="number" id="adj-emp-amount" class="form-control" min="1" step="5" required>
+          </div>
+          <div class="form-group">
+            <label>السبب والبيان</label>
+            <input type="text" id="adj-emp-reason" class="form-control" placeholder="اكتب سبب المكافأة أو السلفة...">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="app.closeModal('modal-adjustment')">إلغاء</button>
+          <button type="submit" class="btn btn-primary">تأكيد التسجيل</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- INVOICE DETAILS & REPRINT MODAL -->
+  <div id="modal-invoice-view" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="inv-modal-title">تفاصيل الفاتورة</h3>
+        <button class="modal-close" onclick="app.closeModal('modal-invoice-view')">&times;</button>
+      </div>
+      <div class="modal-body" id="inv-modal-body">
+        <!-- Details injected dynamically -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-invoice-view')">إغلاق</button>
+        <button class="btn btn-primary" onclick="app.printCurrentModalInvoice()">طباعة الفاتورة 🖨️</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- THERMAL RECEIPT PRINT AREA (Hidden on screen, active on print) -->
+  <div id="receipt-print-area">
+    <div class="receipt-center">
+      <img id="print-receipt-logo" class="receipt-logo-top" src="/logo.png" alt="Logo">
+      <h2 id="print-store-name" style="font-size: 15px; margin: 2px 0;">اسم المتجر</h2>
+      <div id="print-store-phone" style="font-size: 11px;">هاتف: 01xxxxxxxxx</div>
+      <div id="print-store-address" style="font-size: 10px;">العنوان</div>
+      <div id="print-store-tax" style="font-size: 10px;">الرقم الضريبي: </div>
+      <div id="print-receipt-header" style="font-size: 11px; margin-top: 4px; font-weight: bold;">أهلاً بكم ونتشرف بزيارتكم</div>
+    </div>
+
+    <div class="receipt-divider"></div>
+
+    <div style="font-size: 11px;">
+      <div>رقم الفاتورة: <b id="print-sale-num">INV-000000</b></div>
+      <div>التاريخ: <span id="print-sale-date">--</span></div>
+      <div>الكاشير: <span id="print-sale-cashier">المدير</span></div>
+      <div>العميل: <span id="print-sale-customer">عميل نقدي</span></div>
+    </div>
+
+    <div class="receipt-divider"></div>
+
+    <table class="receipt-table">
+      <thead>
+        <tr>
+          <th>الصنف</th>
+          <th style="text-align: center;">الكمية</th>
+          <th style="text-align: left;">الإجمالي</th>
+        </tr>
+      </thead>
+      <tbody id="print-items-tbody">
+        <!-- Lines -->
+      </tbody>
+    </table>
+
+    <div class="receipt-divider"></div>
+
+    <div style="font-size: 11px; line-height: 1.5;">
+      <div style="display: flex; justify-content: space-between;">
+        <span>المجموع:</span>
+        <span id="print-subtotal">0.00 ج.م</span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span>الخصم:</span>
+        <span id="print-discount">0.00 ج.م</span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span>ضريبة القيمة المضافة:</span>
+        <span id="print-tax">0.00 ج.م</span>
+      </div>
+      <div class="receipt-total-row" style="display: flex; justify-content: space-between; margin-top: 4px; border-top: 1px solid #000; padding-top: 4px;">
+        <span>الإجمالي النهائي:</span>
+        <span id="print-total">0.00 ج.م</span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span>المدفوع:</span>
+        <span id="print-paid">0.00 ج.م</span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span>المتبقي:</span>
+        <span id="print-change">0.00 ج.م</span>
+      </div>
+    </div>
+
+    <div class="receipt-divider"></div>
+
+    <div class="receipt-center" style="font-size: 10px;">
+      <div id="print-receipt-footer">البضاعة المباعة ترد وتستبدل خلال 14 يوماً بموجب الفاتورة</div>
+    </div>
+
+    <!-- Sastmhaly Official Branding in Invoice Footer -->
+    <div class="receipt-footer-branding">
+      <img src="/logo.png" class="receipt-sastmhaly-logo" alt="Sastmhaly">
+      <div>مدعوم بواسطة نظام سستمهالي لنقاط البيع</div>
+      <div style="font-size: 9px; color: #444;">Sastmhaly POS Systems • sastmhaly.com</div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
+

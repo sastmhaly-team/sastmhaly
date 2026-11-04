@@ -51,3 +51,8 @@ next-env.d.ts
 /offline/windows/Sastmhaly-POS-Setup.exe
 *.log
 offline/windows/node.exe
+sastmhaly-merchant-windows/node.exe
+sastmhaly-merchant-windows/node_modules/
+sastmhaly-merchant-windows/data/
+sastmhaly-merchant-windows/*.db*
+sastmhaly-merchant-windows/Sastmhaly-Store-Setup.exe
