@@ -1311,10 +1311,98 @@ export async function commitSaleTransaction(input: CreateSaleInput): Promise<Sal
   }
   const saleNumber = input.sale_number || `INV-${branchCode}-${Date.now().toString().slice(-6)}`;
 
-  const cashierId = input.cashier_id || 'admin';
-  const registerId = input.register_id || `reg_${branchId}_01`;
-  const sessionId = input.session_id || `sess_${branchId}_open`;
-  const customerId = input.customer_id || null;
+  // 2. Resolve and validate cashierId
+  let cashierId = input.cashier_id;
+  if (cashierId) {
+    const { data: cashierRow } = await supabase.from('users').select('id').eq('id', cashierId).maybeSingle();
+    if (!cashierRow) cashierId = '';
+  }
+  if (!cashierId) {
+    const { data: tenantUser } = await supabase.from('users').select('id').eq('tenant_id', input.tenant_id).limit(1).maybeSingle();
+    cashierId = tenantUser?.id;
+  }
+  if (!cashierId) {
+    const { data: anyUser } = await supabase.from('users').select('id').limit(1).maybeSingle();
+    cashierId = anyUser?.id || 'admin';
+  }
+
+  // 3. Resolve and validate registerId (must exist in cash_registers)
+  let registerId = input.register_id;
+  if (registerId) {
+    const { data: regRow } = await supabase.from('cash_registers').select('id').eq('id', registerId).maybeSingle();
+    if (!regRow) registerId = '';
+  }
+  if (!registerId) {
+    const { data: foundReg } = await supabase.from('cash_registers')
+      .select('id')
+      .eq('tenant_id', input.tenant_id)
+      .eq('branch_id', branchId)
+      .limit(1)
+      .maybeSingle();
+
+    if (foundReg) {
+      registerId = foundReg.id;
+    } else {
+      registerId = `reg_${branchId}_01`;
+      try {
+        await supabase.from('cash_registers').upsert({
+          id: registerId,
+          tenant_id: input.tenant_id,
+          branch_id: branchId,
+          code: 'POS-01',
+          name: 'نقطة البيع الرئيسية',
+          is_active: 1
+        }, { onConflict: 'id' });
+      } catch (e) {
+        console.warn('Auto-create cash register non-fatal error:', e);
+      }
+    }
+  }
+
+  // 4. Resolve and validate sessionId (must exist in cash_sessions)
+  let sessionId = input.session_id;
+  if (sessionId) {
+    const { data: sessRow } = await supabase.from('cash_sessions').select('id').eq('id', sessionId).maybeSingle();
+    if (!sessRow) sessionId = '';
+  }
+  if (!sessionId) {
+    const { data: foundSess } = await supabase.from('cash_sessions')
+      .select('id')
+      .eq('tenant_id', input.tenant_id)
+      .eq('branch_id', branchId)
+      .eq('status', 'open')
+      .order('opened_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (foundSess) {
+      sessionId = foundSess.id;
+    } else {
+      sessionId = `sess_${branchId}_${Date.now()}`;
+      try {
+        await supabase.from('cash_sessions').upsert({
+          id: sessionId,
+          tenant_id: input.tenant_id,
+          branch_id: branchId,
+          register_id: registerId,
+          cashier_id: cashierId,
+          session_number: `SES-${Date.now().toString().slice(-6)}`,
+          opened_at: new Date().toISOString(),
+          opening_float: 0,
+          status: 'open'
+        }, { onConflict: 'id' });
+      } catch (e) {
+        console.warn('Auto-create cash session non-fatal error:', e);
+      }
+    }
+  }
+
+  // 5. Resolve and validate customerId (must exist in customers)
+  let customerId = input.customer_id || null;
+  if (customerId) {
+    const { data: custRow } = await supabase.from('customers').select('id').eq('id', customerId).maybeSingle();
+    if (!custRow) customerId = null;
+  }
 
   const isVatEnabled = settingsRes.data ? settingsRes.data.vat_enabled === 1 : true;
   const finalTaxAmount = isVatEnabled ? input.tax_amount : 0;
