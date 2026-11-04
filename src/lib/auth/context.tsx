@@ -73,10 +73,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch(`/api/auth/session?username=${encodeURIComponent(identifier)}`);
       if (!res.ok) {
-        // If server actively rejected the user, clear
-        localStorage.removeItem('sastmhaly_user');
-        localStorage.removeItem('sastmhaly_cached_session');
-        setUser(null);
+        if (res.status === 404 || res.status === 401) {
+          // If server actively rejected the user, clear
+          localStorage.removeItem('sastmhaly_user');
+          localStorage.removeItem('sastmhaly_cached_session');
+          setUser(null);
+          return false;
+        }
+
+        // Temporary server error (500, 502, 503) - restore cached session instead of logging out!
+        const cached = localStorage.getItem('sastmhaly_cached_session');
+        if (cached) {
+          try {
+            const data = JSON.parse(cached);
+            if (data.user) {
+              console.warn('[Offline Mode] Restored user session during server error');
+              setUser(data.user);
+              setTenant(data.tenant || null);
+              setBranches(data.branches || []);
+              const isMainAccount = data.user.role === 'merchant_owner' || data.user.role === 'owner' || data.user.role === 'admin' || data.user.role === 'super_admin';
+              const branchId = !isMainAccount && data.user.branch_id 
+                ? data.user.branch_id 
+                : (localStorage.getItem('sastmhaly_branch') || 'all');
+              setActiveBranchIdState(branchId);
+              return true;
+            }
+          } catch {}
+        }
         return false;
       }
       const data = await res.json();

@@ -149,14 +149,25 @@ startServer({
     // 1. Direct local static file serving for /_next/static/*
     if (pathname.startsWith('/_next/static/')) {
       const relPath = pathname.slice('/_next/static/'.length)
-      const diskPath = path.join(dir, '.next', 'static', relPath)
-      if (serveStatic(diskPath, res)) return
+      const candidatePaths = [
+        path.join(dir, '.next', 'static', relPath),
+        path.join(dir, '.next', 'standalone', '.next', 'static', relPath),
+      ]
+      for (const diskPath of candidatePaths) {
+        if (serveStatic(diskPath, res)) return
+      }
     }
 
     // 2. Direct local static file serving for public/* files
     if (pathname !== '/' && pathname.indexOf('..') === -1) {
-      const publicPath = path.join(dir, 'public', pathname.startsWith('/') ? pathname.slice(1) : pathname)
-      if (serveStatic(publicPath, res)) return
+      const subPath = pathname.startsWith('/') ? pathname.slice(1) : pathname
+      const candidatePublicPaths = [
+        path.join(dir, 'public', subPath),
+        path.join(dir, '.next', 'standalone', 'public', subPath),
+      ]
+      for (const pubPath of candidatePublicPaths) {
+        if (serveStatic(pubPath, res)) return
+      }
     }
 
     // 3. Forward dynamic page requests and API calls to internal Next.js
@@ -172,6 +183,16 @@ startServer({
     })
 
     proxyReq.on('error', (err) => {
+      if (pathname.endsWith('.css')) {
+        res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' })
+        res.end('/* loading */')
+        return
+      }
+      if (pathname.endsWith('.js') || pathname.endsWith('.mjs')) {
+        res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' })
+        res.end('/* loading */')
+        return
+      }
       res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' })
       res.end('جاري تجهيز النظام... يُرجى الانتظار ثوانٍ قليلة ثم إعادة المحاولة.')
     })

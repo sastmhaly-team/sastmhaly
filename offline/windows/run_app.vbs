@@ -71,8 +71,10 @@ If Err.Number <> 0 Or http.Status >= 500 Then
   End If
   
   ' Set environment and start node server silently (0 = hide window)
+  Dim logFile
+  logFile = oShell.ExpandEnvironmentStrings("%TEMP%\sastmhaly_server.log")
   oShell.CurrentDirectory = appDir
-  oShell.Run "cmd /c cd /d """ & appDir & """ && set ""OFFLINE_MODE=true"" && set ""DATABASE_MODE=sqlite"" && set ""IS_OFFLINE_BUNDLE=true"" && set ""NEXT_PUBLIC_OFFLINE_MODE=true"" && set ""PORT=3456"" && set ""APP_DIR=" & appDir & """ && """ & nodeExe & """ server.js > """ & oShell.ExpandEnvironmentStrings("%TEMP%\sastmhaly_server.log") & """ 2>&1", 0, False
+  oShell.Run "cmd.exe /c """"" & nodeExe & """ server.js > """ & logFile & """ 2>&1""", 0, False
   
   ' Wait for server to start (up to 30 seconds)
   ready = False

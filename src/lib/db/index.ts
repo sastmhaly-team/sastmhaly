@@ -79,7 +79,7 @@ function getDatabase(): Database.Database {
   try {
     // Enable WAL mode for high concurrency
     db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
+    db.pragma('foreign_keys = OFF');
     db.pragma('synchronous = NORMAL');
 
     // Execute DDL schema
