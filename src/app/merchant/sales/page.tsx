@@ -88,8 +88,21 @@ export default function SalesManagementPage() {
       mount.id = 'print-mount';
       document.body.appendChild(mount);
     }
+    mount.setAttribute('dir', 'rtl');
+    mount.className = '';
     mount.innerHTML = receipt.innerHTML;
-    window.print();
+
+    // Compact scaling for thermal receipt printers so long invoices fit on one page
+    const itemCount = receipt.querySelectorAll('tbody tr, .flex.justify-between.items-start').length;
+    if (itemCount > 10) {
+      mount.classList.add('compact-receipt-extra');
+    } else if (itemCount > 5) {
+      mount.classList.add('compact-receipt');
+    }
+
+    setTimeout(() => {
+      window.print();
+    }, 50);
   };
 
   const mergeWithOfflineSales = (serverSales: Sale[]): Sale[] => {
@@ -172,6 +185,29 @@ export default function SalesManagementPage() {
   const handleViewDetail = async (saleId: string) => {
     setLoadingDetail(true);
     try {
+      // 1. Check if it's an offline sale locally first
+      const offline = getPendingOfflineSales();
+      const offlineMatch = offline.find(s => s.id === saleId || s.sale_number === saleId);
+      if (offlineMatch) {
+        setSelectedSale({
+          ...offlineMatch,
+          created_at: offlineMatch.offline_at,
+          status: 'completed',
+          branch_name: 'الفرع الحالي (أوفلاين)',
+          cashier_name: user?.full_name || user?.username || 'كاشير (أوفلاين)',
+          customer_name: offlineMatch.customer_name || 'عميل نقدي عام',
+          items: (offlineMatch.items || []).map((it: any) => ({
+            ...it,
+            product_name_ar: it.product_name_ar || it.product_name || it.name_ar || it.name || 'صنف',
+            product_name_en: it.product_name_en || it.product_name || it.name_en || it.name || 'Item',
+            product_name: it.product_name || it.product_name_ar || it.product_name_en || it.name || 'صنف',
+            line_total: it.line_total ?? (it.quantity * it.unit_price),
+          })),
+        } as any);
+        setLoadingDetail(false);
+        return;
+      }
+
       const res = await fetch(`/api/merchant/sales?tenantId=${tenantId}&saleId=${saleId}`);
       const data = await res.json();
       if (data.sale) {
@@ -525,15 +561,15 @@ export default function SalesManagementPage() {
                       <img
                         src={liveTenant?.logo_url || tenant?.logo_url}
                         alt={liveTenant?.name || tenant?.name || 'Merchant Logo'}
-                        className="max-h-16 max-w-[150px] object-contain"
+                        className="max-h-12 max-w-[130px] object-contain"
                       />
                     ) : (
                       <Image
                         src="/logo.png"
                         alt="Merchant Logo"
-                        width={54}
-                        height={54}
-                        className="object-contain max-h-14"
+                        width={48}
+                        height={48}
+                        className="object-contain max-h-12"
                       />
                     )}
                   </div>
@@ -569,22 +605,33 @@ export default function SalesManagementPage() {
                 </div>
 
                 {/* Items */}
-                <div className="pt-2 border-t border-dashed border-gray-300 space-y-2">
-                  <div className="flex justify-between font-bold text-[10px] text-gray-500 border-b pb-1">
-                    <span>الصنف</span>
-                    <span>الإجمالي</span>
-                  </div>
-                  {selectedSale.items?.map((item, idx) => (
-                    <div key={idx} className="flex justify-between items-start text-[11px]">
-                      <div>
-                        <div className="font-semibold">{item.product_name_ar || item.product_name_en}</div>
-                        <div className="text-[9px] text-gray-500">
-                          {item.quantity} × {item.unit_price.toFixed(2)} ج.م
-                        </div>
-                      </div>
-                      <span className="font-bold">{item.line_total.toFixed(2)}</span>
-                    </div>
-                  ))}
+                <div className="pt-2 border-t border-dashed border-gray-300">
+                  <table className="w-full text-[10px] text-right border-collapse">
+                    <thead>
+                      <tr className="border-b border-black font-bold text-gray-600">
+                        <th className="py-1 text-right">الصنف</th>
+                        <th className="py-1 text-center">الكمية</th>
+                        <th className="py-1 text-left">الإجمالي</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-dotted divide-gray-300">
+                      {selectedSale.items?.map((item: any, idx) => {
+                        const productName = item.product_name_ar || item.product_name_en || item.product_name || item.name_ar || item.name_en || item.name || item.product?.name_ar || item.product?.name_en || 'صنف';
+                        return (
+                          <tr key={idx}>
+                            <td className="py-1 font-semibold">
+                              <div>{productName}</div>
+                              <div className="text-[9px] text-gray-500 font-normal">
+                                {item.quantity} × {Number(item.unit_price).toFixed(2)} ج.م
+                              </div>
+                            </td>
+                            <td className="py-1 text-center align-top">{item.quantity}</td>
+                            <td className="py-1 text-left font-bold align-top">{Number(item.line_total).toFixed(2)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
 
                 {/* Totals */}

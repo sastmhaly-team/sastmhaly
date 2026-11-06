@@ -57,14 +57,10 @@ export async function GET(request: NextRequest) {
 - كلمة المرور: ${password}
 
 طريقة التثبيت والتشغيل المحلي 100% بدون إنترنت:
-1. قم بتحميل برنامج التثبيت لويندوز Sastmhaly-POS-Setup.exe من خلال الرابط:
-   https://sastmhaly.vercel.app/downloads/Sastmhaly-POS-Setup.exe
-   أو بالضغط مرتين على ملف: "تحميل_برنامج_التثبيت_لويندوز.url"
-2. شغّل برنامج التثبيت Sastmhaly-POS-Setup.exe واختر مجلد التثبيت الذي تريده (مثلاً: C:\\SastmhalyPOS).
-   (ملاحظة: كافة ملفات النظام وقاعدة البيانات المحلية sastmhaly.db ستكون داخل هذا المجلد المختار).
-3. انقل ملف "sastmhaly_config.json" إلى مجلد التثبيت أو دعه في مجلد التنزيلات (Downloads).
-4. افتح أيقونة سطح المكتب "سستمهالي - نقاط البيع".
-5. سيفتح النظام فوراً كتطبيق مثبت مستقل بدون متصفح ويعمل محلياً بالكامل بدون إنترنت!
+1. شغّل برنامج التثبيت: "تثبيت_سستمهالي - ${merchantName}.exe"
+2. سيتم تثبيت تطبيق سستمهالي الأصلي لسطح المكتب وإنشاء اختصار باسم "سستمهالي - نقاط البيع" على سطح المكتب.
+3. افتح البرنامج مباشرة؛ سيعمل 100% أوفلاين محلياً داخل نافذة تطبيق مستقلة بدون متصفح وبدون الحاجة لأي إنترنت نهائياً!
+4. عند فتح البرنامج لأول مرة يمكنك رفع شعار متجرك وضبط بيانات المتجر بالكامل.
 
 ملاحظة: إذا ظهر تنبيه الحماية Windows SmartScreen:
 اضغط على "More info" (مزيد من المعلومات) ثم "Run anyway" (تشغيل على أي حال).
@@ -184,52 +180,48 @@ wait $SERVER_PID
     } else {
       // Windows specific bundle
       const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-      const setupExeSource = path.join(projectRoot, 'public', 'downloads', 'Sastmhaly-POS-Setup.exe');
-      if (!isServerless && fs.existsSync(setupExeSource)) {
-        zip.file(`تثبيت_سستمهالي - ${safeMerchantName}.exe`, fs.readFileSync(setupExeSource));
+      const setupExeSource = path.join(projectRoot, 'sastmhaly-merchant-windows', 'Sastmhaly-Store-Setup.exe');
+      const fallbackSetup = path.join(projectRoot, 'public', 'downloads', 'Sastmhaly-POS-Setup.exe');
+
+      const finalSetupPath = fs.existsSync(setupExeSource) ? setupExeSource : fallbackSetup;
+
+      if (fs.existsSync(finalSetupPath)) {
+        zip.file(`تثبيت_سستمهالي - ${safeMerchantName}.exe`, fs.readFileSync(finalSetupPath));
       }
 
       // Add internet shortcut for direct installer download from Vercel Edge CDN
       const installerUrlContent = `[InternetShortcut]\r\nURL=https://sastmhaly.vercel.app/downloads/Sastmhaly-POS-Setup.exe\r\n`;
       zip.file('تحميل_برنامج_التثبيت_لويندوز.url', installerUrlContent);
 
-      const launcherSource = path.join(projectRoot, 'offline', 'windows', 'Sastmhaly_POS.exe');
-      if (fs.existsSync(launcherSource)) {
-        zip.file(`تشغيل_مباشر - ${safeMerchantName}.exe`, fs.readFileSync(launcherSource));
-      }
-
-      const icoSource = path.join(projectRoot, 'offline', 'windows', 'app.ico');
+      const icoSource = path.join(projectRoot, 'sastmhaly-merchant-windows', 'app.ico');
       if (fs.existsSync(icoSource)) {
         zip.file('app.ico', fs.readFileSync(icoSource));
       }
 
-      const vbsSource = path.join(projectRoot, 'offline', 'windows', 'run_app.vbs');
-      if (fs.existsSync(vbsSource)) {
-        zip.file('run_app.vbs', fs.readFileSync(vbsSource));
-      }
-
-      // Include a pre-configured .bat launcher
+      // Include a pre-configured .bat launcher that launches the native offline desktop app
       const batContent = `@echo off
 chcp 65001 >nul
-title سستمهالي - نقاط البيع (خادم محلي)
+title سستمهالي - نقاط البيع (تطبيق محلي أوفلاين)
 cd /d "%~dp0"
-if exist "%~dp0run_app.vbs" (
-  start "" wscript.exe "%~dp0run_app.vbs"
+
+set "APP_EXE=%LOCALAPPDATA%\\SastmhalyPOS\\Sastmhaly_POS.exe"
+
+if exist "%APP_EXE%" (
+  start "" "%APP_EXE%"
   exit /b
 )
-set "LOCAL_SERVER=%LOCALAPPDATA%\\SastmhalyPOS"
-if exist "%LOCAL_SERVER%\\run_app.vbs" (
-  cd /d "%LOCAL_SERVER%"
-  start "" wscript.exe "%LOCAL_SERVER%\\run_app.vbs"
-  exit /b
+
+:: If not installed yet, find installer in current directory and run it
+for %%f in ("*تثبيت*.exe" "Sastmhaly*.exe" "*Setup*.exe") do (
+  if exist "%%~ff" (
+    echo جاري تثبيت برنامج سستمهالي للمتجر...
+    start "" "%%~ff"
+    exit /b
+  )
 )
-echo جاري بدء خادم سستمهالي المحلي...
-set OFFLINE_MODE=true
-set DATABASE_MODE=sqlite
-set IS_OFFLINE_BUNDLE=true
-set NEXT_PUBLIC_OFFLINE_MODE=true
-set PORT=3456
-start "" "http://127.0.0.1:3456/login?phone=${phone}&pass=${password}"
+
+echo يرجى تشغيل ملف التثبيت أولاً: تثبيت_سستمهالي.exe
+pause
 `;
       zip.file(`تشغيل_سستمهالي - ${safeMerchantName}.bat`, batContent);
 

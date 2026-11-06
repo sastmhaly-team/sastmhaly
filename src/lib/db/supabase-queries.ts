@@ -1261,6 +1261,9 @@ export interface CreateSaleInput {
     product_id: string; batch_id?: string; quantity: number;
     unit_price: number; cost_price: number; discount_amount: number;
     tax_amount: number; line_total: number;
+    product_name?: string; product_name_ar?: string; product_name_en?: string;
+    name_ar?: string; name_en?: string; name?: string;
+    sku?: string; barcode?: string;
   }[];
   subtotal: number; discount_amount: number; tax_amount: number;
   total_amount: number; paid_amount: number; change_amount: number;
@@ -1540,12 +1543,21 @@ export async function commitSaleTransaction(input: CreateSaleInput): Promise<Sal
     status: 'completed',
     notes: input.notes || undefined,
     created_at: new Date().toISOString(),
-    items: saleItems.map((si, idx) => ({
-      ...si,
-      product_name_en: (input.items[idx] as any)?.name_en || (input.items[idx] as any)?.product_name_en || '',
-      product_name_ar: (input.items[idx] as any)?.name_ar || (input.items[idx] as any)?.product_name_ar || '',
-      sku: (input.items[idx] as any)?.sku || '',
-    }))
+    items: saleItems.map((si, idx) => {
+      const it = (input.items[idx] as any) || {};
+      const nameAr = it.name_ar || it.product_name_ar || it.product_name || it.name || '';
+      const nameEn = it.name_en || it.product_name_en || it.product_name || it.name || nameAr || '';
+      return {
+        ...si,
+        product_name_en: nameEn,
+        product_name_ar: nameAr || nameEn,
+        product_name: nameAr || nameEn,
+        name_ar: nameAr || nameEn,
+        name_en: nameEn,
+        sku: it.sku || '',
+        barcode: it.barcode || '',
+      };
+    })
   };
 
   return completedSale;
@@ -1580,7 +1592,7 @@ export async function getSale(tenantId: string, saleId: string): Promise<(Sale &
 
   if (!sale) return undefined;
 
-  const { data: items } = await supabase.from('sale_items').select('*, products(name_en, name_ar, sku)').eq('sale_id', saleId);
+  const { data: items } = await supabase.from('sale_items').select('*, products(name_en, name_ar, sku, barcode)').eq('sale_id', saleId);
 
   return {
     ...sale,
@@ -1591,10 +1603,20 @@ export async function getSale(tenantId: string, saleId: string): Promise<(Sale &
     branch_name_ar: (sale as any).branches?.name_ar,
     branch_address: (sale as any).branches?.address,
     branch_phone: (sale as any).branches?.phone,
-    items: (items || []).map((si: any) => ({
-      ...si, product_name_en: si.products?.name_en,
-      product_name_ar: si.products?.name_ar, sku: si.products?.sku
-    })) as SaleItem[]
+    items: (items || []).map((si: any) => {
+      const nameAr = si.products?.name_ar || si.product_name_ar || si.product_name || si.name_ar || si.name || '';
+      const nameEn = si.products?.name_en || si.product_name_en || si.product_name || si.name_en || si.name || nameAr || '';
+      return {
+        ...si,
+        product_name_en: nameEn,
+        product_name_ar: nameAr || nameEn,
+        product_name: nameAr || nameEn,
+        name_ar: nameAr || nameEn,
+        name_en: nameEn,
+        sku: si.products?.sku || si.sku || '',
+        barcode: si.products?.barcode || si.barcode || ''
+      };
+    }) as SaleItem[]
   } as Sale & { items: SaleItem[] };
 }
 

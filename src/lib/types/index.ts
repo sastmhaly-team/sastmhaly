@@ -486,9 +486,13 @@ export interface SaleItem {
   discount_amount: number;
   tax_amount: number;
   line_total: number;
+  product_name?: string;
   product_name_en?: string;
   product_name_ar?: string;
+  name_ar?: string;
+  name_en?: string;
   sku?: string;
+  barcode?: string;
 }
 
 export interface SalePayment {

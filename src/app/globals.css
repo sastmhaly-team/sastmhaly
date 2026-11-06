@@ -236,6 +236,12 @@ body {
 
 /* Print styles for POS Thermal Receipt (58mm / 80mm) & HR Documents/Payslips */
 @media print {
+  @page {
+    /* Continuous roll for thermal receipt printers, zero margins to eliminate browser headers/footers */
+    size: auto;
+    margin: 0 !important;
+  }
+
   html, body {
     background: white !important;
     color: black !important;
@@ -243,6 +249,7 @@ body {
     padding: 0 !important;
     width: 100% !important;
     height: auto !important;
+    min-height: 0 !important;
     overflow: visible !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
@@ -259,15 +266,24 @@ body {
     min-height: 0 !important;
     box-sizing: border-box !important;
     margin: 0 auto !important;
+    direction: rtl !important;
+    text-align: right !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
   }
   /* Default POS Thermal Receipt mode */
   #print-mount:not(.document-mode) {
-    width: 80mm !important;
-    max-width: 80mm !important;
-    padding: 3mm !important;
-    font-size: 11px !important;
+    width: 76mm !important;
+    max-width: 76mm !important;
+    padding: 2mm 1.5mm !important;
+    font-size: 10px !important;
+    line-height: 1.25 !important;
   }
   /* Full Document / Payslip mode (Standard A4 / Portrait) */
   #print-mount.document-mode {
@@ -282,13 +298,66 @@ body {
     visibility: visible !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
   #print-mount img {
-    display: inline-block !important;
-    max-width: 100% !important;
+    display: block !important;
+    margin: 0 auto 3px auto !important;
+    max-height: 38px !important;
+    max-width: 120px !important;
+    object-fit: contain !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
+  #print-mount table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  #print-mount tr,
+  #print-mount td,
+  #print-mount th {
+    padding: 1.5px 0 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Compact scaling for longer receipts to guarantee fitting in 1 page on mini thermal printers */
+  #print-mount.compact-receipt {
+    font-size: 9px !important;
+    line-height: 1.15 !important;
+    padding: 1.5mm 1mm !important;
+  }
+  #print-mount.compact-receipt img {
+    max-height: 28px !important;
+  }
+  #print-mount.compact-receipt tr,
+  #print-mount.compact-receipt td,
+  #print-mount.compact-receipt th {
+    padding: 1px 0 !important;
+  }
+
+  #print-mount.compact-receipt-extra {
+    font-size: 8px !important;
+    line-height: 1.1 !important;
+    padding: 1mm 0.5mm !important;
+  }
+  #print-mount.compact-receipt-extra img {
+    max-height: 22px !important;
+  }
+  #print-mount.compact-receipt-extra tr,
+  #print-mount.compact-receipt-extra td,
+  #print-mount.compact-receipt-extra th {
+    padding: 0.5px 0 !important;
+  }
+  #print-mount.compact-receipt-extra .space-y-3 > * + *,
+  #print-mount.compact-receipt-extra .space-y-2 > * + *,
+  #print-mount.compact-receipt-extra .space-y-1 > * + * {
+    margin-top: 2px !important;
+  }
+
   button,
   .no-print,
   [data-no-print],

@@ -1,14 +1,20 @@
 @echo off
 chcp 65001 >nul
-title سستمهالي - نقاط البيع
+title سستمهالي - نقاط البيع (تطبيق سطح المكتب المحلي)
 cd /d "%~dp0"
-taskkill /F /IM node.exe 2>nul
-set "OFFLINE_MODE=true"
-set "DATABASE_MODE=sqlite"
-set "IS_OFFLINE_BUNDLE=true"
-set "NEXT_PUBLIC_OFFLINE_MODE=true"
-set "PORT=3456"
-set "APP_DIR=%~dp0"
-set "SASTMHALY_DIR=%~dp0"
-start "" wscript.exe "%~dp0run_app.vbs"
 
+set "APP_EXE=%LOCALAPPDATA%\SastmhalyPOS\Sastmhaly_POS.exe"
+if exist "%APP_EXE%" (
+  start "" "%APP_EXE%"
+  exit /b
+)
+
+if exist "%~dp0Sastmhaly-POS-Setup.exe" (
+  start "" "%~dp0Sastmhaly-POS-Setup.exe"
+  exit /b
+)
+
+if exist "%~dp0Sastmhaly-Store-Setup.exe" (
+  start "" "%~dp0Sastmhaly-Store-Setup.exe"
+  exit /b
+)

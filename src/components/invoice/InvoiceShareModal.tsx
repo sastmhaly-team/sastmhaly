@@ -58,7 +58,7 @@ export function InvoiceShareModal({
     let itemsText = '';
     if (sale.items && sale.items.length > 0) {
       itemsText = sale.items.map(item => {
-        const name = (isRtl ? item.product_name_ar : item.product_name_en) || item.product_name_ar || item.product_name_en || (item as any).product_name || 'صنف';
+        const name = (isRtl ? item.product_name_ar : item.product_name_en) || item.product_name_ar || item.product_name_en || (item as any).product_name || (item as any).name_ar || (item as any).name_en || (item as any).name || (item as any).product?.name_ar || (item as any).product?.name_en || 'صنف';
         return `• *${name}* × ${item.quantity} = ${item.line_total.toFixed(2)} ${isRtl ? 'ج.م' : 'EGP'}`;
       }).join('\n');
     }
@@ -408,7 +408,7 @@ export function InvoiceShareModal({
           <tbody>
             {(sale.items && sale.items.length > 0) ? (
               sale.items.map((it, idx) => {
-                const name = it.product_name_ar || it.product_name_en || (it as any).product_name || 'صنف';
+                const name = it.product_name_ar || it.product_name_en || (it as any).product_name || (it as any).name_ar || (it as any).name_en || (it as any).name || (it as any).product?.name_ar || (it as any).product?.name_en || 'صنف';
                 return (
                   <tr key={idx} style={{ borderBottom: '1px dotted #ccc' }}>
                     <td style={{ padding: '4px 0', fontWeight: 'bold' }}>{name}</td>

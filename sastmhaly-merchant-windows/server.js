@@ -561,7 +561,13 @@ const server = http.createServer(async (req, res) => {
         const saleId = pathname.split('/')[3];
         const sale = db.prepare('SELECT * FROM sales WHERE id = ?').get(saleId);
         if (!sale) return sendError(res, 'الفاتورة غير موجودة', 404);
-        const items = db.prepare('SELECT * FROM sale_items WHERE sale_id = ?').all(saleId);
+        const items = db.prepare(`
+          SELECT si.*, 
+                 COALESCE(NULLIF(si.product_name, ''), p.name, 'صنف') as product_name
+          FROM sale_items si
+          LEFT JOIN products p ON si.product_id = p.id
+          WHERE si.sale_id = ?
+        `).all(saleId);
         const store = db.prepare("SELECT * FROM store_settings WHERE id = 'current_store'").get();
         return sendJson(res, { success: true, sale, items, store });
       }
@@ -661,13 +667,14 @@ const server = http.createServer(async (req, res) => {
             const lineTotal = (qty * price);
             const itemId = genId('si');
 
-            const prd = db.prepare('SELECT cost_price, barcode FROM products WHERE id = ?').get(it.product_id) || { cost_price: 0, barcode: '' };
+            const prd = db.prepare('SELECT name, cost_price, barcode FROM products WHERE id = ?').get(it.product_id) || { name: '', cost_price: 0, barcode: '' };
+            const prodName = it.product_name || prd.name || 'صنف';
 
             insertItem.run(
               itemId,
               saleId,
               it.product_id,
-              it.product_name,
+              prodName,
               prd.barcode || it.barcode || '',
               qty,
               price,

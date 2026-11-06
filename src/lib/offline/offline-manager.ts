@@ -19,6 +19,13 @@ export interface OfflineSale {
   items: Array<{
     product_id: string;
     product_name?: string;
+    product_name_ar?: string;
+    product_name_en?: string;
+    name_ar?: string;
+    name_en?: string;
+    name?: string;
+    sku?: string;
+    barcode?: string;
     batch_id: string | null;
     quantity: number;
     unit_price: number;

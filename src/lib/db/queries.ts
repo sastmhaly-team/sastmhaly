@@ -1128,6 +1128,14 @@ export interface CreateSaleInput {
     discount_amount: number;
     tax_amount: number;
     line_total: number;
+    product_name?: string;
+    product_name_ar?: string;
+    product_name_en?: string;
+    name_ar?: string;
+    name_en?: string;
+    name?: string;
+    sku?: string;
+    barcode?: string;
   }[];
   subtotal: number;
   discount_amount: number;
@@ -1408,9 +1416,14 @@ export function getSale(tenantId: string, saleId: string): (Sale & { items: Sale
   if (!sale) return undefined;
 
   const items = db.prepare(`
-    SELECT si.*, p.name_en as product_name_en, p.name_ar as product_name_ar, p.sku
+    SELECT si.*, 
+           COALESCE(p.name_en, '') as product_name_en, 
+           COALESCE(p.name_ar, '') as product_name_ar, 
+           COALESCE(p.name_ar, p.name_en, 'صنف') as product_name,
+           COALESCE(p.sku, '') as sku,
+           COALESCE(p.barcode, '') as barcode
     FROM sale_items si
-    JOIN products p ON si.product_id = p.id
+    LEFT JOIN products p ON si.product_id = p.id
     WHERE si.sale_id = ?
   `).all(saleId) as SaleItem[];
 

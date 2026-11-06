@@ -334,7 +334,13 @@ class StorageManager {
   getSale(id) {
     const sale = this.data.sales.find(s => s.id === id);
     if (!sale) return { success: false, error: 'الفاتورة غير موجودة' };
-    const items = this.data.sale_items.filter(it => it.sale_id === id);
+    const items = this.data.sale_items.filter(it => it.sale_id === id).map(it => {
+      const p = this.data.products.find(prod => prod.id === it.product_id);
+      return {
+        ...it,
+        product_name: it.product_name || (p ? p.name : 'صنف')
+      };
+    });
     return { success: true, sale, items, store: this.data.store_settings };
   }
 
@@ -395,6 +401,7 @@ class StorageManager {
     const createdItems = [];
     items.forEach(it => {
       const p = this.data.products.find(prod => prod.id === it.product_id);
+      const prodName = it.product_name || (p ? p.name : 'صنف');
       const qty = Number(it.quantity) || 1;
       const unitPrice = Number(it.unit_price) || 0;
       const lineTotal = qty * unitPrice;
@@ -404,7 +411,7 @@ class StorageManager {
         id: this.genId('si'),
         sale_id: saleId,
         product_id: it.product_id,
-        product_name: it.product_name,
+        product_name: prodName,
         barcode: p ? p.barcode : (it.barcode || ''),
         quantity: qty,
         unit_price: unitPrice,

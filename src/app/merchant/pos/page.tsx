@@ -96,8 +96,21 @@ export default function PosPage() {
       mount.id = 'print-mount';
       document.body.appendChild(mount);
     }
+    mount.setAttribute('dir', 'rtl');
+    mount.className = '';
     mount.innerHTML = receipt.innerHTML;
-    window.print();
+
+    // Compact scaling for thermal receipt printers so long invoices fit on one page
+    const itemCount = receipt.querySelectorAll('tbody tr, .flex.justify-between.items-start').length;
+    if (itemCount > 10) {
+      mount.classList.add('compact-receipt-extra');
+    } else if (itemCount > 5) {
+      mount.classList.add('compact-receipt');
+    }
+
+    setTimeout(() => {
+      window.print();
+    }, 50);
   };
 
   const handleSaveQuickCustomer = async (e: React.FormEvent) => {
@@ -695,6 +708,14 @@ export default function PosPage() {
           const itemLineTotal = (item.unit_price * item.quantity - item.discount) + itemTax;
           return {
             product_id: item.product.id,
+            product_name: item.product.name_ar || item.product.name_en,
+            product_name_ar: item.product.name_ar,
+            product_name_en: item.product.name_en,
+            name_ar: item.product.name_ar,
+            name_en: item.product.name_en,
+            name: item.product.name_ar || item.product.name_en,
+            sku: item.product.sku,
+            barcode: item.product.barcode,
             batch_id: item.batch_id || null,
             quantity: item.quantity,
             unit_price: item.unit_price,
@@ -726,7 +747,15 @@ export default function PosPage() {
           cashier_name: user?.full_name || user?.username,
           customer_name: selectedCustomer?.name,
           items: cart.map(it => ({
+            product_id: it.product.id,
             product_name: it.product.name_ar || it.product.name_en,
+            product_name_ar: it.product.name_ar,
+            product_name_en: it.product.name_en,
+            name_ar: it.product.name_ar,
+            name_en: it.product.name_en,
+            name: it.product.name_ar || it.product.name_en,
+            sku: it.product.sku,
+            barcode: it.product.barcode,
             quantity: it.quantity,
             unit_price: it.unit_price,
             line_total: it.unit_price * it.quantity,
@@ -749,6 +778,21 @@ export default function PosPage() {
 
           const json = await res.json();
           finalSaleData = json.sale;
+
+          // Ensure items preserve product names from cart if API response was sparse
+          if (finalSaleData && Array.isArray(finalSaleData.items)) {
+            finalSaleData.items = finalSaleData.items.map((it: any, idx: number) => {
+              const cartItem = cart[idx]?.product;
+              const pName = it.product_name_ar || it.product_name_en || it.product_name || cartItem?.name_ar || cartItem?.name_en || 'صنف';
+              return {
+                ...it,
+                product_name_ar: it.product_name_ar || cartItem?.name_ar || pName,
+                product_name_en: it.product_name_en || cartItem?.name_en || pName,
+                product_name: pName,
+                name: pName,
+              };
+            });
+          }
         } catch (networkErr) {
           // If network failed midway, seamlessly fallback to offline transaction
           console.warn('[Offline Fallback] Network failed during checkout, preserving sale offline', networkErr);
@@ -760,7 +804,15 @@ export default function PosPage() {
             cashier_name: user?.full_name || user?.username,
             customer_name: selectedCustomer?.name,
             items: cart.map(it => ({
+              product_id: it.product.id,
               product_name: it.product.name_ar || it.product.name_en,
+              product_name_ar: it.product.name_ar,
+              product_name_en: it.product.name_en,
+              name_ar: it.product.name_ar,
+              name_en: it.product.name_en,
+              name: it.product.name_ar || it.product.name_en,
+              sku: it.product.sku,
+              barcode: it.product.barcode,
               quantity: it.quantity,
               unit_price: it.unit_price,
               line_total: it.unit_price * it.quantity,
@@ -1450,15 +1502,15 @@ export default function PosPage() {
                   <img 
                     src={liveTenant?.logo_url || tenant?.logo_url} 
                     alt={liveTenant?.name || tenant?.name || 'Merchant Logo'} 
-                    className="max-h-16 max-w-[150px] object-contain" 
+                    className="max-h-12 max-w-[130px] object-contain" 
                   />
                 ) : (
                   <Image 
                     src="/logo.png" 
                     alt="Logo" 
-                    width={56} 
-                    height={56} 
-                    className="object-contain max-h-14" 
+                    width={48} 
+                    height={48} 
+                    className="object-contain max-h-12" 
                   />
                 )}
               </div>
@@ -1508,13 +1560,16 @@ export default function PosPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-dotted divide-gray-300">
-                {completedSale?.items?.map((it: SaleItem, idx: number) => (
-                  <tr key={idx}>
-                    <td className="py-1 font-semibold">{it.product_name_ar || it.product_name_en}</td>
-                    <td className="py-1 text-center">{it.quantity}</td>
-                    <td className="py-1 text-left font-bold">{it.line_total}</td>
-                  </tr>
-                ))}
+                {completedSale?.items?.map((it: any, idx: number) => {
+                  const productName = it.product_name_ar || it.product_name_en || it.product_name || it.name_ar || it.name_en || it.name || it.product?.name_ar || it.product?.name_en || 'صنف';
+                  return (
+                    <tr key={idx}>
+                      <td className="py-1 font-semibold">{productName}</td>
+                      <td className="py-1 text-center">{it.quantity}</td>
+                      <td className="py-1 text-left font-bold">{Number(it.line_total).toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
 

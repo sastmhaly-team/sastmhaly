@@ -779,70 +779,139 @@ table.data-table tr:hover td {
 }
 
 @media print {
-  body * {
-    visibility: hidden;
+  @page {
+    /* Continuous roll for mini thermal printers, zero margins to eliminate browser headers/footers */
+    size: auto;
+    margin: 0 !important;
   }
-  #receipt-print-area, #receipt-print-area * {
-    visibility: visible;
+
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
+
+  body > *:not(#receipt-print-area) {
+    display: none !important;
+  }
+
   #receipt-print-area {
     display: block !important;
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 80mm;
-    margin: 0 auto;
-    padding: 6mm 4mm;
-    font-size: 12px;
-    line-height: 1.35;
-    color: #000;
-    direction: rtl;
-    text-align: right;
-    background: #fff;
+    position: relative !important;
+    width: 76mm !important;
+    max-width: 76mm !important;
+    margin: 0 auto !important;
+    padding: 2mm 2mm !important;
+    font-size: 10px !important;
+    line-height: 1.25 !important;
+    color: #000 !important;
+    direction: rtl !important;
+    text-align: right !important;
+    background: #fff !important;
+    box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
   }
+
+  #receipt-print-area * {
+    visibility: visible !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
   .receipt-center {
     text-align: center;
   }
+
   .receipt-logo-top {
-    max-width: 55mm;
-    max-height: 40mm;
-    margin: 0 auto 6px auto;
+    max-width: 45mm;
+    max-height: 36px !important;
+    margin: 0 auto 3px auto;
     display: block;
     object-fit: contain;
   }
+
   .receipt-divider {
     border-top: 1px dashed #000;
-    margin: 6px 0;
+    margin: 3px 0 !important;
   }
+
   .receipt-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 11px;
-    margin: 6px 0;
+    font-size: 10px !important;
+    margin: 3px 0 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
+
   .receipt-table th {
     border-bottom: 1px solid #000;
-    padding: 3px 0;
+    padding: 1.5px 0 !important;
     text-align: right;
   }
+
   .receipt-table td {
-    padding: 3px 0;
+    padding: 1.5px 0 !important;
   }
+
   .receipt-total-row {
     font-weight: bold;
-    font-size: 13px;
+    font-size: 12px !important;
   }
+
   .receipt-footer-branding {
-    margin-top: 10px;
-    padding-top: 6px;
+    margin-top: 6px !important;
+    padding-top: 4px !important;
     border-top: 1px solid #000;
     text-align: center;
-    font-size: 10px;
+    font-size: 9px !important;
   }
+
   .receipt-sastmhaly-logo {
-    max-width: 30mm;
-    margin: 4px auto;
+    max-width: 25mm;
+    margin: 2px auto;
     display: block;
+  }
+
+  /* Compact scaling for longer receipts to guarantee fitting in 1 page on mini thermal printers */
+  #receipt-print-area.compact-receipt {
+    font-size: 9px !important;
+    line-height: 1.15 !important;
+    padding: 1.5mm 1.5mm !important;
+  }
+  #receipt-print-area.compact-receipt .receipt-logo-top {
+    max-height: 28px !important;
+  }
+  #receipt-print-area.compact-receipt .receipt-table td,
+  #receipt-print-area.compact-receipt .receipt-table th {
+    padding: 1px 0 !important;
+  }
+
+  #receipt-print-area.compact-receipt-extra {
+    font-size: 8px !important;
+    line-height: 1.1 !important;
+    padding: 1mm 1mm !important;
+  }
+  #receipt-print-area.compact-receipt-extra .receipt-logo-top {
+    max-height: 22px !important;
+  }
+  #receipt-print-area.compact-receipt-extra .receipt-table td,
+  #receipt-print-area.compact-receipt-extra .receipt-table th {
+    padding: 0.5px 0 !important;
+  }
+  #receipt-print-area.compact-receipt-extra .receipt-divider {
+    margin: 2px 0 !important;
   }
 }
 

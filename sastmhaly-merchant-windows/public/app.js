@@ -541,6 +541,7 @@ const app = {
       this.state.cart.push({
         product_id: p.id,
         product_name: p.name,
+        name: p.name,
         barcode: p.barcode,
         unit_price: p.selling_price,
         cost_price: p.cost_price,
@@ -706,7 +707,8 @@ const app = {
     const payload = {
       items: this.state.cart.map(it => ({
         product_id: it.product_id,
-        product_name: it.product_name,
+        product_name: it.product_name || it.name,
+        barcode: it.barcode,
         quantity: it.quantity,
         unit_price: it.unit_price,
         discount_amount: it.discount_amount || 0,
@@ -759,13 +761,28 @@ const app = {
     document.getElementById('print-change').textContent = `${sale.change_amount.toFixed(2)} ${curr}`;
 
     const tbody = document.getElementById('print-items-tbody');
-    tbody.innerHTML = items.map(it => `
-      <tr>
-        <td>${it.product_name}</td>
-        <td style="text-align: center;">${it.quantity}</td>
-        <td style="text-align: left;">${it.line_total.toFixed(2)}</td>
-      </tr>
-    `).join('');
+    tbody.innerHTML = items.map(it => {
+      const pName = it.product_name || it.name || it.name_ar || it.name_en || 'صنف';
+      const qty = it.quantity || 1;
+      const total = Number(it.line_total || (qty * (it.unit_price || 0))).toFixed(2);
+      return `
+        <tr>
+          <td>${pName}</td>
+          <td style="text-align: center;">${qty}</td>
+          <td style="text-align: left;">${total}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const printArea = document.getElementById('receipt-print-area');
+    if (printArea) {
+      printArea.classList.remove('compact-receipt', 'compact-receipt-extra');
+      if (items.length > 10) {
+        printArea.classList.add('compact-receipt-extra');
+      } else if (items.length > 5) {
+        printArea.classList.add('compact-receipt');
+      }
+    }
 
     // Trigger Print
     setTimeout(() => {
@@ -843,14 +860,20 @@ const app = {
             </tr>
           </thead>
           <tbody>
-            ${items.map(it => `
-              <tr>
-                <td>${it.product_name}</td>
-                <td>${it.quantity}</td>
-                <td>${it.unit_price.toFixed(2)}</td>
-                <td>${it.line_total.toFixed(2)}</td>
-              </tr>
-            `).join('')}
+            ${items.map(it => {
+              const pName = it.product_name || it.name || it.name_ar || it.name_en || 'صنف';
+              const qty = it.quantity || 1;
+              const price = Number(it.unit_price || 0).toFixed(2);
+              const total = Number(it.line_total || (qty * (it.unit_price || 0))).toFixed(2);
+              return `
+                <tr>
+                  <td>${pName}</td>
+                  <td>${qty}</td>
+                  <td>${price}</td>
+                  <td>${total}</td>
+                </tr>
+              `;
+            }).join('')}
           </tbody>
         </table>
         <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
