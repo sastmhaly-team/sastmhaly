@@ -528,7 +528,7 @@ export async function getUsers(tenantId?: string, branchId?: string): Promise<Us
     return (sqlite as any).getUsers(...arguments);
   }
   const supabase = getSupabase();
-  let query = supabase.from('users').select('*');
+  let query = supabase.from('users').select('*').eq('is_active', 1);
   if (tenantId) query = query.eq('tenant_id', tenantId);
   if (branchId) query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
   const { data } = await query;
@@ -547,6 +547,26 @@ export async function getUserByUsernameOrEmail(identifier: string): Promise<(Use
     .limit(1)
     .single();
   return data as (User & { password_hash: string }) | undefined;
+}
+
+export async function findUserByPhoneOrEmail(phone: string, email?: string): Promise<User | undefined> {
+  if (isOfflineMode()) {
+    return (sqlite as any).findUserByPhoneOrEmail(...arguments);
+  }
+  const supabase = getSupabase();
+  const cleanPhone = phone.replace(/\D/g, '').trim();
+  const cleanEmail = email ? email.trim().toLowerCase() : '';
+  
+  let conditions = `phone.eq.${cleanPhone},username.eq.${cleanPhone}`;
+  if (cleanEmail) {
+    conditions += `,email.eq.${cleanEmail}`;
+  }
+  
+  const { data } = await supabase.from('users').select('*')
+    .or(conditions)
+    .limit(1)
+    .maybeSingle();
+  return data as User | undefined;
 }
 
 export async function createUser(data: {
@@ -590,12 +610,34 @@ export async function createUser(data: {
         full_name: data.full_name, phone: data.phone || null, role: data.role, is_active: 1
       };
       const { data: fallbackUser, error: fbError } = await supabase.from('users').insert(fallbackPayload).select('*').single();
-      if (fbError) throw new Error(fbError.message);
+      if (fbError) {
+        if (fbError.message.includes('users_email_key') || fbError.message.includes('users.email')) {
+          throw new Error('رقم الهاتف أو البريد الإلكتروني مسجل بالفعل لموظف آخر. يرجى استخدام رقم مختلف.');
+        }
+        if (fbError.message.includes('users_username_key') || fbError.message.includes('users.username')) {
+          throw new Error('رقم الهاتف أو اسم المستخدم مسجل بالفعل في المنظومة. يرجى استخدام رقم مختلف.');
+        }
+        throw new Error(fbError.message);
+      }
       return { ...fallbackUser, ...payload } as User;
     }
-    if (error) throw new Error(error.message);
+    if (error) {
+      if (error.message.includes('users_email_key') || error.message.includes('users.email')) {
+        throw new Error('رقم الهاتف أو البريد الإلكتروني مسجل بالفعل لموظف آخر. يرجى استخدام رقم مختلف.');
+      }
+      if (error.message.includes('users_username_key') || error.message.includes('users.username')) {
+        throw new Error('رقم الهاتف أو اسم المستخدم مسجل بالفعل في المنظومة. يرجى استخدام رقم مختلف.');
+      }
+      throw new Error(error.message);
+    }
     return user as User;
   } catch (err: any) {
+    if (err.message && (err.message.includes('users_email_key') || err.message.includes('users.email'))) {
+      throw new Error('رقم الهاتف أو البريد الإلكتروني مسجل بالفعل لموظف آخر. يرجى استخدام رقم مختلف.');
+    }
+    if (err.message && (err.message.includes('users_username_key') || err.message.includes('users.username'))) {
+      throw new Error('رقم الهاتف أو اسم المستخدم مسجل بالفعل في المنظومة. يرجى استخدام رقم مختلف.');
+    }
     throw new Error(err.message || 'User creation failed');
   }
 }
@@ -649,12 +691,34 @@ export async function updateUser(id: string, tenantId: string, data: {
       const { data: fbUser, error: fbError } = await supabase.from('users').update(coreUpdates)
         .eq('id', id).eq('tenant_id', tenantId)
         .select('*').single();
-      if (fbError) throw new Error(fbError.message);
+      if (fbError) {
+        if (fbError.message.includes('users_email_key') || fbError.message.includes('users.email')) {
+          throw new Error('رقم الهاتف أو البريد الإلكتروني مسجل بالفعل لموظف آخر. يرجى استخدام رقم مختلف.');
+        }
+        if (fbError.message.includes('users_username_key') || fbError.message.includes('users.username')) {
+          throw new Error('رقم الهاتف أو اسم المستخدم مسجل بالفعل في المنظومة. يرجى استخدام رقم مختلف.');
+        }
+        throw new Error(fbError.message);
+      }
       return { ...fbUser, ...updates } as User;
     }
-    if (error) throw new Error(error.message);
+    if (error) {
+      if (error.message.includes('users_email_key') || error.message.includes('users.email')) {
+        throw new Error('رقم الهاتف أو البريد الإلكتروني مسجل بالفعل لموظف آخر. يرجى استخدام رقم مختلف.');
+      }
+      if (error.message.includes('users_username_key') || error.message.includes('users.username')) {
+        throw new Error('رقم الهاتف أو اسم المستخدم مسجل بالفعل في المنظومة. يرجى استخدام رقم مختلف.');
+      }
+      throw new Error(error.message);
+    }
     return user as User;
   } catch (err: any) {
+    if (err.message && (err.message.includes('users_email_key') || err.message.includes('users.email'))) {
+      throw new Error('رقم الهاتف أو البريد الإلكتروني مسجل بالفعل لموظف آخر. يرجى استخدام رقم مختلف.');
+    }
+    if (err.message && (err.message.includes('users_username_key') || err.message.includes('users.username'))) {
+      throw new Error('رقم الهاتف أو اسم المستخدم مسجل بالفعل في المنظومة. يرجى استخدام رقم مختلف.');
+    }
     throw new Error(err.message || 'User update failed');
   }
 }
@@ -665,7 +729,12 @@ export async function deleteUser(id: string, tenantId: string): Promise<boolean>
   }
   const supabase = getSupabase();
   const { error } = await supabase.from('users').delete().eq('id', id).eq('tenant_id', tenantId);
-  return !error;
+  if (error) {
+    // If foreign key constraint blocks physical deletion (sales, cash sessions), soft delete
+    const { error: updErr } = await supabase.from('users').update({ is_active: 0 }).eq('id', id).eq('tenant_id', tenantId);
+    return !updErr;
+  }
+  return true;
 }
 
 // ============================================================================

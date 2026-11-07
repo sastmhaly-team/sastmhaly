@@ -440,12 +440,12 @@ export function deleteBranch(tenantId: string, branchId: string): { success: boo
 
 export function getUsers(tenantId?: string, branchId?: string): User[] {
   if (!tenantId) {
-    return db.prepare('SELECT * FROM users').all() as User[];
+    return db.prepare('SELECT * FROM users WHERE is_active = 1').all() as User[];
   }
   if (branchId) {
-    return db.prepare('SELECT * FROM users WHERE tenant_id = ? AND (branch_id = ? OR branch_id IS NULL)').all(tenantId, branchId) as User[];
+    return db.prepare('SELECT * FROM users WHERE tenant_id = ? AND (branch_id = ? OR branch_id IS NULL) AND is_active = 1').all(tenantId, branchId) as User[];
   }
-  return db.prepare('SELECT * FROM users WHERE tenant_id = ?').all(tenantId) as User[];
+  return db.prepare('SELECT * FROM users WHERE tenant_id = ? AND is_active = 1').all(tenantId) as User[];
 }
 
 export function getUserByUsernameOrEmail(identifier: string): (User & { password_hash: string }) | undefined {
@@ -453,6 +453,19 @@ export function getUserByUsernameOrEmail(identifier: string): (User & { password
   return db.prepare(`
     SELECT * FROM users WHERE (phone = ? OR username = ? OR email = ?) AND is_active = 1
   `).get(cleanId, cleanId, cleanId) as (User & { password_hash: string }) | undefined;
+}
+
+export function findUserByPhoneOrEmail(phone: string, email?: string): (User & { password_hash: string }) | undefined {
+  const cleanPhone = phone.replace(/\D/g, '').trim();
+  const cleanEmail = email ? email.trim().toLowerCase() : '';
+  if (cleanEmail) {
+    return db.prepare(`
+      SELECT * FROM users WHERE phone = ? OR username = ? OR email = ? LIMIT 1
+    `).get(cleanPhone, cleanPhone, cleanEmail) as (User & { password_hash: string }) | undefined;
+  }
+  return db.prepare(`
+    SELECT * FROM users WHERE phone = ? OR username = ? LIMIT 1
+  `).get(cleanPhone, cleanPhone) as (User & { password_hash: string }) | undefined;
 }
 
 export function createUser(data: {
@@ -483,12 +496,33 @@ export function createUser(data: {
       INSERT INTO users (id, tenant_id, branch_id, email, username, password_hash, full_name, phone, role, allowed_pages, is_active)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     `).run(id, data.tenant_id, data.branch_id || null, data.email, data.username, data.password_hash, data.full_name, data.phone || null, data.role, allowedPagesStr);
-  } catch {
-    // Fallback if column missing
-    db.prepare(`
-      INSERT INTO users (id, tenant_id, branch_id, email, username, password_hash, full_name, phone, role, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-    `).run(id, data.tenant_id, data.branch_id || null, data.email, data.username, data.password_hash, data.full_name, data.phone || null, data.role);
+  } catch (err: any) {
+    if (err.message && (err.message.includes('UNIQUE constraint failed') || err.message.includes('unique constraint'))) {
+      if (err.message.includes('users.email')) {
+        throw new Error('رقم الهاتف أو البريد الإلكتروني مسجل بالفعل لموظف آخر. يرجى استخدام رقم مختلف.');
+      }
+      if (err.message.includes('users.username') || err.message.includes('users.phone')) {
+        throw new Error('رقم الهاتف أو اسم المستخدم مسجل بالفعل في المنظومة. يرجى استخدام رقم مختلف.');
+      }
+      throw err;
+    }
+    // Fallback if allowed_pages column missing
+    try {
+      db.prepare(`
+        INSERT INTO users (id, tenant_id, branch_id, email, username, password_hash, full_name, phone, role, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+      `).run(id, data.tenant_id, data.branch_id || null, data.email, data.username, data.password_hash, data.full_name, data.phone || null, data.role);
+    } catch (fbErr: any) {
+      if (fbErr.message && (fbErr.message.includes('UNIQUE constraint failed') || fbErr.message.includes('unique constraint'))) {
+        if (fbErr.message.includes('users.email')) {
+          throw new Error('رقم الهاتف أو البريد الإلكتروني مسجل بالفعل لموظف آخر. يرجى استخدام رقم مختلف.');
+        }
+        if (fbErr.message.includes('users.username') || fbErr.message.includes('users.phone')) {
+          throw new Error('رقم الهاتف أو اسم المستخدم مسجل بالفعل في المنظومة. يرجى استخدام رقم مختلف.');
+        }
+      }
+      throw fbErr;
+    }
   }
 
   return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as User;
@@ -536,7 +570,16 @@ export function updateUser(id: string, tenantId: string, data: {
         WHERE id = ? AND tenant_id = ?
       `).run(fullName, phone, role, branchId, isActive, allowedPagesStr, id, tenantId);
     }
-  } catch {
+  } catch (err: any) {
+    if (err.message && (err.message.includes('UNIQUE constraint failed') || err.message.includes('unique constraint'))) {
+      if (err.message.includes('users.email')) {
+        throw new Error('رقم الهاتف أو البريد الإلكتروني مسجل بالفعل لموظف آخر. يرجى استخدام رقم مختلف.');
+      }
+      if (err.message.includes('users.username') || err.message.includes('users.phone')) {
+        throw new Error('رقم الهاتف أو اسم المستخدم مسجل بالفعل في المنظومة. يرجى استخدام رقم مختلف.');
+      }
+      throw err;
+    }
     // Fallback if column missing
     if (data.password_hash) {
       db.prepare(`
@@ -557,8 +600,15 @@ export function updateUser(id: string, tenantId: string, data: {
 }
 
 export function deleteUser(id: string, tenantId: string): boolean {
-  const info = db.prepare('DELETE FROM users WHERE id = ? AND tenant_id = ?').run(id, tenantId);
-  return info.changes > 0;
+  try {
+    const info = db.prepare('DELETE FROM users WHERE id = ? AND tenant_id = ?').run(id, tenantId);
+    if (info.changes > 0) return true;
+    return false;
+  } catch {
+    // Foreign key constraint (sales or cash_sessions), soft delete
+    const info = db.prepare('UPDATE users SET is_active = 0 WHERE id = ? AND tenant_id = ?').run(id, tenantId);
+    return info.changes > 0;
+  }
 }
 
 

@@ -275,3 +275,4 @@ export function getFirstAllowedPage(user: { role: string; allowed_pages?: unknow
   }
   return '/merchant/pos';
 }
+

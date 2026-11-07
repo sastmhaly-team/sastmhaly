@@ -388,10 +388,21 @@ export default function EmployeesManagementPage() {
         });
         fetchData();
       } else {
-        setErrorMsg(data.error || 'Failed to create employee');
+        const rawErr = String(data.error || '');
+        let cleanErr = rawErr;
+        if (rawErr.includes('users_email_key') || rawErr.includes('users.email') || rawErr.includes('duplicate key')) {
+          cleanErr = lang === 'ar' 
+            ? 'رقم الهاتف أو البريد الإلكتروني مسجل بالفعل لموظف آخر. يرجى استخدام رقم هاتف مختلف.'
+            : 'This phone number or email is already registered for another employee. Please use a different phone number.';
+        } else if (rawErr.includes('users_username_key') || rawErr.includes('users.username') || rawErr.includes('users.phone')) {
+          cleanErr = lang === 'ar'
+            ? 'رقم الهاتف مسجل بالفعل في المنظومة. يرجى استخدام رقم هاتف آخر.'
+            : 'This phone number is already registered in the system. Please use a different phone number.';
+        }
+        setErrorMsg(cleanErr || (lang === 'ar' ? 'فشل إنشاء حساب الموظف' : 'Failed to create employee'));
       }
     } catch {
-      setErrorMsg('Failed to create employee');
+      setErrorMsg(lang === 'ar' ? 'حدث خطأ أثناء إنشاء حساب الموظف' : 'Failed to create employee');
     } finally {
       setSubmittingUser(false);
     }
@@ -455,10 +466,21 @@ export default function EmployeesManagementPage() {
         setEditingEmployee(null);
         fetchData();
       } else {
-        setErrorMsg(data.error || 'Failed to update employee');
+        const rawErr = String(data.error || '');
+        let cleanErr = rawErr;
+        if (rawErr.includes('users_email_key') || rawErr.includes('users.email') || rawErr.includes('duplicate key')) {
+          cleanErr = lang === 'ar' 
+            ? 'رقم الهاتف أو البريد الإلكتروني مسجل بالفعل لموظف آخر. يرجى استخدام رقم هاتف مختلف.'
+            : 'This phone number or email is already registered for another employee. Please use a different phone number.';
+        } else if (rawErr.includes('users_username_key') || rawErr.includes('users.username') || rawErr.includes('users.phone')) {
+          cleanErr = lang === 'ar'
+            ? 'رقم الهاتف مسجل بالفعل في المنظومة. يرجى استخدام رقم هاتف آخر.'
+            : 'This phone number is already registered in the system. Please use a different phone number.';
+        }
+        setErrorMsg(cleanErr || (lang === 'ar' ? 'فشل تحديث بيانات الموظف' : 'Failed to update employee'));
       }
     } catch {
-      setErrorMsg('Failed to update employee');
+      setErrorMsg(lang === 'ar' ? 'حدث خطأ أثناء تحديث بيانات الموظف' : 'Failed to update employee');
     } finally {
       setUpdatingUser(false);
     }
