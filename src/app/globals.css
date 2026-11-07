@@ -271,7 +271,7 @@ body {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
-  body > *:not(#print-mount):not(#receipt-print-iframe) {
+  body > *:not(#print-mount):not(#receipt-print-iframe):not(#printable-receipt) {
     display: none !important;
   }
   #print-mount {

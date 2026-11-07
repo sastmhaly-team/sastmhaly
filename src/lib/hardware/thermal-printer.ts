@@ -315,16 +315,6 @@ export function printViaIsolatedIframe(elementId: string, options?: { isCompact?
 
   const compactClass = options?.extraCompact ? 'compact-receipt-extra' : options?.isCompact ? 'compact-receipt' : '';
 
-  // Extract all stylesheets and style blocks from parent document so Tailwind is 100% applied
-  let headStyles = '';
-  try {
-    headStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-      .map((el) => el.outerHTML)
-      .join('\n');
-  } catch {
-    // fallback
-  }
-
   doc.open();
   doc.write(`
     <!DOCTYPE html>
@@ -332,7 +322,6 @@ export function printViaIsolatedIframe(elementId: string, options?: { isCompact?
     <head>
       <meta charset="utf-8" />
       <title>فاتورة البيع</title>
-      ${headStyles}
       <style>
         @page {
           size: auto;
@@ -353,6 +342,16 @@ export function printViaIsolatedIframe(elementId: string, options?: { isCompact?
           margin: 0 !important;
           padding: 0 !important;
           overflow: visible !important;
+          display: block !important;
+          visibility: visible !important;
+        }
+
+        body > *,
+        #print-mount,
+        #printable-receipt {
+          display: block !important;
+          visibility: visible !important;
+          opacity: 1 !important;
         }
 
         /* Core Flexbox Layout */
@@ -410,7 +409,16 @@ export function printViaIsolatedIframe(elementId: string, options?: { isCompact?
         .space-y-1\\.5 > * + * { margin-top: 4px !important; }
         .space-y-2 > * + * { margin-top: 6px !important; }
         .space-y-3 > * + * { margin-top: 8px !important; }
-        .my-1\\.5 { margin-top: 6px !important; margin-bottom: 6px !important; border-top: 1px dashed #000000 !important; height: 0 !important; }
+        .my-1\\.5 { 
+          margin-top: 6px !important; 
+          margin-bottom: 6px !important; 
+          border-top: 1px dashed #000000 !important; 
+          height: 0 !important; 
+          border-bottom: none !important;
+          border-left: none !important;
+          border-right: none !important;
+          display: block !important;
+        }
         .pt-1 { padding-top: 3px !important; }
         .pt-1\\.5 { padding-top: 4px !important; }
         .pt-2 { padding-top: 6px !important; }
@@ -501,8 +509,10 @@ export function printViaIsolatedIframe(elementId: string, options?: { isCompact?
       </style>
     </head>
     <body class="${compactClass}">
-      <div id="printable-receipt" dir="rtl" class="p-4 bg-white text-black font-mono text-[11px] space-y-3 text-right" style="width: 76mm; margin: 0 auto;">
-        ${receipt.innerHTML}
+      <div id="print-mount" style="width: 76mm; margin: 0 auto; display: block !important; visibility: visible !important;">
+        <div id="printable-receipt" dir="rtl" class="p-4 bg-white text-black font-mono text-[11px] space-y-3 text-right" style="width: 76mm; margin: 0 auto; display: block !important; visibility: visible !important;">
+          ${receipt.innerHTML}
+        </div>
       </div>
     </body>
     </html>
