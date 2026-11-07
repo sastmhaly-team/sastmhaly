@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { useAuth } from '@/lib/auth/context';
 import { useLanguage } from '@/lib/i18n/context';
 import { Sale, SaleItem } from '@/lib/types';
@@ -91,6 +90,13 @@ export default function SalesManagementPage() {
     mount.setAttribute('dir', 'rtl');
     mount.className = '';
     mount.innerHTML = receipt.innerHTML;
+
+    // Ensure all images in mount are set to eager loading and sync decoding so Chrome print preview never hangs
+    mount.querySelectorAll('img').forEach((img) => {
+      img.removeAttribute('loading');
+      img.setAttribute('loading', 'eager');
+      img.setAttribute('decoding', 'sync');
+    });
 
     // Compact scaling for thermal receipt printers so long invoices fit on one page
     const itemCount = receipt.querySelectorAll('tbody tr, .flex.justify-between.items-start').length;
@@ -652,12 +658,12 @@ export default function SalesManagementPage() {
                         className="max-h-12 max-w-[130px] object-contain"
                       />
                     ) : (
-                      <Image
+                      <img
                         src="/logo.png"
                         alt="Merchant Logo"
                         width={48}
                         height={48}
-                        className="object-contain max-h-12"
+                        className="object-contain max-h-12 mx-auto"
                       />
                     )}
                   </div>
@@ -758,7 +764,7 @@ export default function SalesManagementPage() {
                 <div className="receipt-footer text-center pt-1.5 mt-2 text-[10px] text-gray-700 border-t border-dashed border-black space-y-1">
                   <p>{receiptFooter || 'شكراً لتعاملكم معنا'}</p>
                   <div className="flex flex-col items-center justify-center pt-1 border-t border-dotted border-gray-300 space-y-0.5">
-                    <Image src="/logo.png" alt="Sastmhaly Logo" width={26} height={26} className="object-contain max-h-6" />
+                    <img src="/logo.png" alt="Sastmhaly Logo" width={26} height={26} className="object-contain max-h-6 mx-auto" />
                     <p className="font-bold text-[9px] tracking-wider text-gray-600">Powered by Sastmhaly</p>
                   </div>
                 </div>

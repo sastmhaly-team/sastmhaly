@@ -234,9 +234,21 @@ body {
   background: #94A3B8;
 }
 
-/* Screen mode: #print-mount is strictly hidden */
-#print-mount {
-  display: none;
+/* Screen mode: #print-mount is positioned offscreen and invisible to user,
+   but remains part of the DOM render tree so Chrome's print compositor computes
+   geometry and decodes images instantly without hanging or timing out with "Print failed". */
+@media screen {
+  #print-mount {
+    position: fixed !important;
+    top: -9999px !important;
+    left: -9999px !important;
+    width: 76mm !important;
+    height: auto !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    z-index: -9999 !important;
+  }
 }
 
 /* Print styles for POS Thermal Receipt (58mm / 80mm) & HR Documents/Payslips */
@@ -264,6 +276,13 @@ body {
   }
   #print-mount {
     display: block !important;
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    visibility: visible !important;
+    z-index: auto !important;
     background: white !important;
     color: black !important;
     overflow: visible !important;
