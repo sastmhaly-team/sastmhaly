@@ -16,9 +16,11 @@ import {
   CreditCard, Banknote, Smartphone, User, Pause, Play, 
   Printer, CheckCircle2, Scale, ArrowRight, X, AlertCircle,
   UserCheck, Users, ChevronRight, PanelLeftClose, PanelLeftOpen, Radio,
-  PackagePlus, Sparkles, Tag, MessageCircle
+  PackagePlus, Sparkles, Tag, MessageCircle, Usb, Cable, RefreshCw
 } from 'lucide-react';
 import { InvoiceShareModal } from '@/components/invoice/InvoiceShareModal';
+import { ThermalPrinterSelector } from '@/components/printer/ThermalPrinterSelector';
+import { printReceiptUnified, getSavedPrinterConfig, PrinterConfig } from '@/lib/hardware/thermal-printer';
 
 export default function PosPage() {
   const { tenant, user, activeBranchId, branches } = useAuth();
@@ -83,40 +85,28 @@ export default function PosPage() {
   const [receiptFooter, setReceiptFooter] = useState<string>('شكراً لتعاملكم معنا');
   const [liveTenant, setLiveTenant] = useState<{ id: string; name: string; logo_url?: string } | null>(null);
 
-  const handlePrintReceipt = () => {
-    const receipt = document.getElementById('printable-receipt');
-    if (!receipt) {
-      window.print();
-      return;
-    }
-    let mount = document.getElementById('print-mount');
-    if (!mount) {
-      mount = document.createElement('div');
-      mount.id = 'print-mount';
-      document.body.appendChild(mount);
-    }
-    mount.setAttribute('dir', 'rtl');
-    mount.className = '';
-    mount.innerHTML = receipt.innerHTML;
+  // Printer configuration and state
+  const [printerConfig, setPrinterConfig] = useState<PrinterConfig>({ mode: 'system', name: 'طابعة النظام' });
+  const [isPrinting, setIsPrinting] = useState<boolean>(false);
 
-    // Ensure all images in mount are set to eager loading and sync decoding so Chrome print preview never hangs
-    mount.querySelectorAll('img').forEach((img) => {
-      img.removeAttribute('loading');
-      img.setAttribute('loading', 'eager');
-      img.setAttribute('decoding', 'sync');
-    });
+  useEffect(() => {
+    setPrinterConfig(getSavedPrinterConfig());
+  }, []);
 
-    // Compact scaling for thermal receipt printers so long invoices fit on one page
-    const itemCount = receipt.querySelectorAll('tbody tr, .flex.justify-between.items-start').length;
-    if (itemCount > 10) {
-      mount.classList.add('compact-receipt-extra');
-    } else if (itemCount > 5) {
-      mount.classList.add('compact-receipt');
+  const handlePrintReceipt = async () => {
+    setIsPrinting(true);
+    try {
+      const receipt = document.getElementById('printable-receipt');
+      const itemCount = receipt?.querySelectorAll('tbody tr, .flex.justify-between.items-start').length || 0;
+      const isCompact = itemCount > 5;
+      const extraCompact = itemCount > 10;
+
+      await printReceiptUnified('printable-receipt', { isCompact, extraCompact });
+    } catch (err) {
+      console.error('Print receipt failed:', err);
+    } finally {
+      setIsPrinting(false);
     }
-
-    setTimeout(() => {
-      window.print();
-    }, 100);
   };
 
   const handleSaveQuickCustomer = async (e: React.FormEvent) => {
@@ -1643,11 +1633,13 @@ export default function PosPage() {
                 <span>{lang === 'ar' ? 'تسجيل هذا العميل' : 'Save as Customer'}</span>
               </button>
             )}
-            <div className="flex items-center gap-2 ms-auto">
+            <div className="flex items-center gap-2 ms-auto flex-wrap justify-end">
+              <ThermalPrinterSelector onPrinterChange={setPrinterConfig} />
+
               <button
                 type="button"
                 onClick={() => setIsShareModalOpen(true)}
-                className="px-3.5 py-2 rounded-lg bg-[#25D366] hover:bg-[#20bd5a] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                className="px-3 py-2 rounded-lg bg-[#25D366] hover:bg-[#20bd5a] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
                 title={lang === 'ar' ? 'مشاركة الفاتورة عبر واتساب (صورة أو نص)' : 'Share Receipt on WhatsApp (Photo or Text)'}
               >
                 <MessageCircle className="w-4 h-4" />
@@ -1655,16 +1647,46 @@ export default function PosPage() {
               </button>
               <button
                 onClick={() => setIsReceiptOpen(false)}
-                className="px-4 py-2 rounded-lg border border-[#E5EAF2] text-xs font-bold text-[#687386] cursor-pointer"
+                className="px-3.5 py-2 rounded-lg border border-[#E5EAF2] text-xs font-bold text-[#687386] hover:bg-gray-50 cursor-pointer"
               >
-                {lang === 'ar' ? 'إغلاق ومتابعة البيع' : 'Close & Next Sale'}
+                {lang === 'ar' ? 'إغلاق' : 'Close'}
               </button>
               <button
+                disabled={isPrinting}
                 onClick={handlePrintReceipt}
-                className="px-4 py-2 rounded-lg bg-[#246BFD] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                className={`px-4 py-2 rounded-lg text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors disabled:opacity-50 ${
+                  printerConfig.mode === 'usb'
+                    ? 'bg-emerald-600 hover:bg-emerald-700'
+                    : printerConfig.mode === 'serial'
+                    ? 'bg-purple-600 hover:bg-purple-700'
+                    : 'bg-[#246BFD] hover:bg-[#1b56d3]'
+                }`}
+                title={
+                  printerConfig.mode === 'usb'
+                    ? 'طباعة فورية مباشرة عبر USB بدون فتح إعدادات المتصفح'
+                    : printerConfig.mode === 'serial'
+                    ? 'طباعة فورية مباشرة عبر Serial / COM'
+                    : 'طباعة سريعة معزولة عبر طابعة النظام'
+                }
               >
-                <Printer className="w-4 h-4" />
-                <span>{t('print')}</span>
+                {isPrinting ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : printerConfig.mode === 'usb' ? (
+                  <Usb className="w-4 h-4" />
+                ) : printerConfig.mode === 'serial' ? (
+                  <Cable className="w-4 h-4" />
+                ) : (
+                  <Printer className="w-4 h-4" />
+                )}
+                <span>
+                  {isPrinting
+                    ? lang === 'ar' ? 'جاري الطباعة...' : 'Printing...'
+                    : printerConfig.mode === 'usb'
+                    ? lang === 'ar' ? 'طباعة USB فورية' : 'Direct USB Print'
+                    : printerConfig.mode === 'serial'
+                    ? lang === 'ar' ? 'طباعة Serial فورية' : 'Direct Serial Print'
+                    : t('print')}
+                </span>
               </button>
             </div>
           </div>

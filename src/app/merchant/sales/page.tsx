@@ -12,9 +12,12 @@ import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { getPendingOfflineSales } from '@/lib/offline/offline-manager';
 import { 
   Receipt, Search, Filter, Printer, RotateCcw, 
-  Eye, CheckCircle2, AlertTriangle, Download, Calendar, DollarSign, MessageCircle
+  Eye, CheckCircle2, AlertTriangle, Download, Calendar, DollarSign, MessageCircle,
+  Usb, Cable, RefreshCw
 } from 'lucide-react';
 import { InvoiceShareModal } from '@/components/invoice/InvoiceShareModal';
+import { ThermalPrinterSelector } from '@/components/printer/ThermalPrinterSelector';
+import { printReceiptUnified, getSavedPrinterConfig, PrinterConfig } from '@/lib/hardware/thermal-printer';
 
 export default function SalesManagementPage() {
   const { user, tenant, activeBranchId } = useAuth();
@@ -48,6 +51,14 @@ export default function SalesManagementPage() {
   const [shareModalSale, setShareModalSale] = useState<(Sale & { items?: SaleItem[] }) | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
+  // Printer configuration and state
+  const [printerConfig, setPrinterConfig] = useState<PrinterConfig>({ mode: 'system', name: 'طابعة النظام' });
+  const [isPrinting, setIsPrinting] = useState<boolean>(false);
+
+  useEffect(() => {
+    setPrinterConfig(getSavedPrinterConfig());
+  }, []);
+
   const handleShareWhatsApp = async (sale: Sale | (Sale & { items?: SaleItem[] })) => {
     setSharingSaleId(sale.id);
     try {
@@ -75,40 +86,20 @@ export default function SalesManagementPage() {
     }
   };
 
-  const handlePrintReceipt = () => {
-    const receipt = document.getElementById('printable-receipt');
-    if (!receipt) {
-      window.print();
-      return;
-    }
-    let mount = document.getElementById('print-mount');
-    if (!mount) {
-      mount = document.createElement('div');
-      mount.id = 'print-mount';
-      document.body.appendChild(mount);
-    }
-    mount.setAttribute('dir', 'rtl');
-    mount.className = '';
-    mount.innerHTML = receipt.innerHTML;
+  const handlePrintReceipt = async () => {
+    setIsPrinting(true);
+    try {
+      const receipt = document.getElementById('printable-receipt');
+      const itemCount = receipt?.querySelectorAll('tbody tr, .flex.justify-between.items-start').length || 0;
+      const isCompact = itemCount > 5;
+      const extraCompact = itemCount > 10;
 
-    // Ensure all images in mount are set to eager loading and sync decoding so Chrome print preview never hangs
-    mount.querySelectorAll('img').forEach((img) => {
-      img.removeAttribute('loading');
-      img.setAttribute('loading', 'eager');
-      img.setAttribute('decoding', 'sync');
-    });
-
-    // Compact scaling for thermal receipt printers so long invoices fit on one page
-    const itemCount = receipt.querySelectorAll('tbody tr, .flex.justify-between.items-start').length;
-    if (itemCount > 10) {
-      mount.classList.add('compact-receipt-extra');
-    } else if (itemCount > 5) {
-      mount.classList.add('compact-receipt');
+      await printReceiptUnified('printable-receipt', { isCompact, extraCompact });
+    } catch (err) {
+      console.error('Print sales receipt failed:', err);
+    } finally {
+      setIsPrinting(false);
     }
-
-    setTimeout(() => {
-      window.print();
-    }, 100);
   };
 
   const mergeWithOfflineSales = (serverSales: Sale[]): Sale[] => {
@@ -631,12 +622,44 @@ export default function SalesManagementPage() {
                   <span>{isRtl ? 'مشاركة واتساب' : 'WhatsApp'}</span>
                 </button>
 
+                <ThermalPrinterSelector onPrinterChange={setPrinterConfig} />
+
                 <button
+                  disabled={isPrinting}
                   onClick={handlePrintReceipt}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0B1730] text-white rounded-lg text-xs font-semibold hover:bg-[#172033] cursor-pointer"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-white rounded-lg text-xs font-semibold cursor-pointer transition-colors disabled:opacity-50 ${
+                    printerConfig.mode === 'usb'
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : printerConfig.mode === 'serial'
+                      ? 'bg-purple-600 hover:bg-purple-700'
+                      : 'bg-[#0B1730] hover:bg-[#172033]'
+                  }`}
+                  title={
+                    printerConfig.mode === 'usb'
+                      ? 'طباعة فورية مباشرة عبر USB'
+                      : printerConfig.mode === 'serial'
+                      ? 'طباعة فورية مباشرة عبر Serial / COM'
+                      : 'طباعة معزولة عبر طابعة النظام'
+                  }
                 >
-                  <Printer className="w-3.5 h-3.5 text-[#246BFD]" />
-                  <span>طباعة الإيصال (80mm)</span>
+                  {isPrinting ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : printerConfig.mode === 'usb' ? (
+                    <Usb className="w-3.5 h-3.5 text-emerald-200" />
+                  ) : printerConfig.mode === 'serial' ? (
+                    <Cable className="w-3.5 h-3.5 text-purple-200" />
+                  ) : (
+                    <Printer className="w-3.5 h-3.5 text-[#246BFD]" />
+                  )}
+                  <span>
+                    {isPrinting
+                      ? (isRtl ? 'جاري الطباعة...' : 'Printing...')
+                      : printerConfig.mode === 'usb'
+                      ? (isRtl ? 'طباعة USB فورية' : 'Direct USB')
+                      : printerConfig.mode === 'serial'
+                      ? (isRtl ? 'طباعة Serial فورية' : 'Direct Serial')
+                      : (isRtl ? 'طباعة الإيصال (80mm)' : 'Print Receipt')}
+                  </span>
                 </button>
               </div>
             </div>
