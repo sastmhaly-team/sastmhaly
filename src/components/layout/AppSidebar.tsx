@@ -12,6 +12,7 @@ import {
   BookOpen, BarChart3, Building2, UserCog, Settings, Sparkles,
   ShieldAlert, CreditCard, X, PanelLeftClose, ChevronLeft, ChevronRight
 } from 'lucide-react';
+import { isPageAllowed } from '@/lib/auth/permissions';
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -83,97 +84,17 @@ export function AppSidebar() {
   ];
 
   const getVisibleNavGroups = () => {
-    if (user.role === 'cashier') {
-      return [
-        {
-          titleEn: 'Point of Sale',
-          titleAr: 'نقطة البيع (POS)',
-          items: [
-            { href: '/merchant/pos', icon: ShoppingCart, label: t('nav_pos'), highlight: true },
-          ]
-        }
-      ];
+    if (isSuperAdmin || user.role === 'merchant_owner') {
+      return merchantNavGroups;
     }
 
-    if (user.role === 'inventory_manager') {
-      return [
-        {
-          titleEn: 'Catalog & Inventory',
-          titleAr: 'الكتالوج والمخزون',
-          items: [
-            { href: '/merchant/products', icon: Package, label: t('nav_products') },
-            { href: '/merchant/inventory', icon: Layers, label: t('nav_inventory') },
-            { href: '/merchant/batches', icon: CalendarDays, label: t('nav_batches') },
-            { href: '/merchant/transfers', icon: ArrowLeftRight, label: t('nav_transfers') },
-          ]
-        },
-        {
-          titleEn: 'Procurement',
-          titleAr: 'المشتريات والموردين',
-          items: [
-            { href: '/merchant/purchasing', icon: Truck, label: t('nav_purchases') },
-            { href: '/merchant/suppliers', icon: Building2, label: t('nav_suppliers') },
-          ]
-        }
-      ];
-    }
-
-    if (user.role === 'accountant') {
-      return [
-        {
-          titleEn: 'Sales & Customers',
-          titleAr: 'المبيعات والعملاء',
-          items: [
-            { href: '/merchant/sales', icon: Receipt, label: t('nav_sales') },
-            { href: '/merchant/customers', icon: Users, label: t('nav_customers') },
-          ]
-        },
-        {
-          titleEn: 'Finance & Reports',
-          titleAr: 'المالية والتقارير',
-          items: [
-            { href: '/merchant/expenses', icon: Banknote, label: t('nav_expenses') },
-            { href: '/merchant/accounting', icon: BookOpen, label: t('nav_accounting') },
-            { href: '/merchant/reports', icon: BarChart3, label: t('nav_reports') },
-          ]
-        }
-      ];
-    }
-
-    if (user.role === 'branch_manager') {
-      return [
-        {
-          titleEn: 'Main & POS',
-          titleAr: 'الرئيسية ونقاط البيع',
-          items: [
-            { href: '/merchant/dashboard', icon: LayoutDashboard, label: t('nav_dashboard') },
-            { href: '/merchant/pos', icon: ShoppingCart, label: t('nav_pos'), highlight: true },
-            { href: '/merchant/registers', icon: Landmark, label: t('nav_registers') },
-          ]
-        },
-        {
-          titleEn: 'Catalog & Sales',
-          titleAr: 'الكتالوج والمبيعات',
-          items: [
-            { href: '/merchant/products', icon: Package, label: t('nav_products') },
-            { href: '/merchant/inventory', icon: Layers, label: t('nav_inventory') },
-            { href: '/merchant/sales', icon: Receipt, label: t('nav_sales') },
-            { href: '/merchant/customers', icon: Users, label: t('nav_customers') },
-          ]
-        },
-        {
-          titleEn: 'Expenses & Reports',
-          titleAr: 'المصروفات والتقارير',
-          items: [
-            { href: '/merchant/expenses', icon: Banknote, label: t('nav_expenses') },
-            { href: '/merchant/reports', icon: BarChart3, label: t('nav_reports') },
-          ]
-        }
-      ];
-    }
-
-    // Default for merchant_owner / super admin or unassigned: full merchant navigation
-    return merchantNavGroups;
+    // Dynamic filtering: only display groups and pages specifically permitted for this employee
+    return merchantNavGroups
+      .map(group => ({
+        ...group,
+        items: group.items.filter(item => isPageAllowed(item.href, user))
+      }))
+      .filter(group => group.items.length > 0);
   };
 
   const visibleGroups = getVisibleNavGroups();

@@ -25,7 +25,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { 
       tenant_id, full_name, phone, password, role, branch_id, email, username,
-      job_title, base_salary, salary_type, daily_hours, national_id, hire_date, shift_name
+      job_title, base_salary, salary_type, daily_hours, national_id, hire_date, shift_name,
+      allowed_pages
     } = body;
 
     if (body.bulk && Array.isArray(body.items)) {
@@ -105,6 +106,7 @@ export async function POST(request: NextRequest) {
       full_name,
       phone: cleanedPhone,
       role: role || 'cashier',
+      allowed_pages: allowed_pages || undefined,
       job_title,
       base_salary: base_salary !== undefined ? Number(base_salary) : 0,
       salary_type: salary_type || 'monthly',
@@ -130,7 +132,8 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { 
       id, tenant_id, full_name, phone, password, role, branch_id, is_active,
-      job_title, base_salary, salary_type, daily_hours, national_id, hire_date, shift_name
+      job_title, base_salary, salary_type, daily_hours, national_id, hire_date, shift_name,
+      allowed_pages
     } = body;
 
     if (!id || !tenant_id) {
@@ -152,6 +155,7 @@ export async function PUT(request: NextRequest) {
       phone: cleanedPhone,
       role,
       branch_id,
+      allowed_pages: allowed_pages !== undefined ? allowed_pages : undefined,
       password_hash: password || undefined,
       is_active,
       job_title,

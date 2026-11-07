@@ -110,6 +110,7 @@ export interface User {
   national_id?: string;
   hire_date?: string;
   shift_name?: string;
+  allowed_pages?: string[] | string;
 }
 
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused' | 'half_day';

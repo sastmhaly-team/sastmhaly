@@ -20,8 +20,10 @@ import {
   FileText, CheckCircle2, AlertCircle, Printer, TrendingUp, Plus, 
   Search, Shield, Building2, Phone, Lock, Pencil, Trash2, Monitor, 
   Check, ChevronLeft, ChevronRight, RefreshCw, CreditCard, 
-  ArrowDownRight, ArrowUpRight, Award, AlertTriangle, Briefcase
+  ArrowDownRight, ArrowUpRight, Award, AlertTriangle, Briefcase, ShieldCheck
 } from 'lucide-react';
+import { PagePermissionSelector } from '@/components/employees/PagePermissionSelector';
+import { ALL_MERCHANT_PAGES, ROLE_DEFAULT_PAGES, parseAllowedPages } from '@/lib/auth/permissions';
 
 export default function EmployeesManagementPage() {
   const { tenant, user, activeBranchId } = useAuth();
@@ -62,7 +64,8 @@ export default function EmployeesManagementPage() {
     daily_hours: 8,
     shift_name: 'الوردية الصباحية',
     hire_date: new Date().toISOString().split('T')[0],
-    national_id: ''
+    national_id: '',
+    allowed_pages: ROLE_DEFAULT_PAGES['cashier'] || ['/merchant/pos'],
   });
   const [submittingUser, setSubmittingUser] = useState(false);
 
@@ -81,7 +84,8 @@ export default function EmployeesManagementPage() {
     daily_hours: 8,
     shift_name: '',
     hire_date: '',
-    national_id: ''
+    national_id: '',
+    allowed_pages: [] as string[],
   });
   const [updatingUser, setUpdatingUser] = useState(false);
 
@@ -347,6 +351,11 @@ export default function EmployeesManagementPage() {
       return;
     }
 
+    if (!newEmployee.allowed_pages || newEmployee.allowed_pages.length === 0) {
+      setErrorMsg(lang === 'ar' ? 'يجب تحديد شاشة واحدة على الأقل لهذا الموظف ليتمكن من العمل' : 'Please select at least one allowed screen for this employee');
+      return;
+    }
+
     setSubmittingUser(true);
     try {
       const res = await fetch('/api/merchant/employees', {
@@ -374,7 +383,8 @@ export default function EmployeesManagementPage() {
           daily_hours: 8,
           shift_name: 'الوردية الصباحية',
           hire_date: new Date().toISOString().split('T')[0],
-          national_id: ''
+          national_id: '',
+          allowed_pages: ROLE_DEFAULT_PAGES['cashier'] || ['/merchant/pos'],
         });
         fetchData();
       } else {
@@ -389,6 +399,7 @@ export default function EmployeesManagementPage() {
 
   const handleOpenEdit = (emp: User) => {
     setEditingEmployee(emp);
+    const initialPages = parseAllowedPages(emp.allowed_pages, emp.role);
     setEditForm({
       full_name: emp.full_name,
       phone: emp.phone || emp.username,
@@ -401,7 +412,8 @@ export default function EmployeesManagementPage() {
       daily_hours: emp.daily_hours || 8,
       shift_name: emp.shift_name || 'الوردية الصباحية',
       hire_date: emp.hire_date || '',
-      national_id: emp.national_id || ''
+      national_id: emp.national_id || '',
+      allowed_pages: initialPages,
     });
     setErrorMsg('');
     setEditModalOpen(true);
@@ -418,6 +430,11 @@ export default function EmployeesManagementPage() {
           ? 'رقم الهاتف يجب أن يتكون من 11 رقماً بالضبط (مثال: 01012345678)'
           : 'Phone number must be exactly 11 digits'
       );
+      return;
+    }
+
+    if (!editForm.allowed_pages || editForm.allowed_pages.length === 0) {
+      setErrorMsg(lang === 'ar' ? 'يجب تحديد شاشة واحدة على الأقل لهذا الموظف ليتمكن من العمل' : 'Please select at least one allowed screen for this employee');
       return;
     }
 
@@ -1185,9 +1202,28 @@ export default function EmployeesManagementPage() {
                             {emp.phone || emp.username}
                           </td>
                           <td className="py-3 px-4">
-                            <div className="space-y-0.5">
-                              {getRoleBadge(emp.role)}
-                              <p className="text-[10px] text-[#687386] flex items-center gap-1 mt-0.5">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {getRoleBadge(emp.role)}
+                                {(() => {
+                                  const allowed = parseAllowedPages(emp.allowed_pages, emp.role);
+                                  const count = allowed.length;
+                                  return (
+                                    <span 
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#EEF4FF] text-[#246BFD] border border-[#BFDBFE]"
+                                      title={allowed.join('\n')}
+                                    >
+                                      <ShieldCheck className="w-3 h-3 text-[#246BFD]" />
+                                      <span>
+                                        {count === ALL_MERCHANT_PAGES.length 
+                                          ? (isRtl ? 'كافة الشاشات (17)' : 'All Screens (17)')
+                                          : `${count} ${isRtl ? 'شاشات مسموحة' : 'screens allowed'}`}
+                                      </span>
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                              <p className="text-[10px] text-[#687386] flex items-center gap-1">
                                 <Monitor className="w-3 h-3 text-[#246BFD] shrink-0" />
                                 <span>{isRtl ? permInfo.screenAr : permInfo.screenEn}</span>
                               </p>
@@ -1881,10 +1917,18 @@ export default function EmployeesManagementPage() {
               </label>
               <select
                 value={newEmployee.role}
-                onChange={(e) => setNewEmployee({ ...newEmployee, role: e.target.value as UserRole })}
+                onChange={(e) => {
+                  const newRole = e.target.value as UserRole;
+                  const defaultPages = ROLE_DEFAULT_PAGES[newRole] || ['/merchant/pos'];
+                  setNewEmployee({ 
+                    ...newEmployee, 
+                    role: newRole,
+                    allowed_pages: defaultPages
+                  });
+                }}
                 className="w-full p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD]"
               >
-                <option value="cashier">{isRtl ? 'كاشير (POS فقط - شاشة الكاشير حصراً)' : 'Cashier (POS Only)'}</option>
+                <option value="cashier">{isRtl ? 'كاشير (نقاط البيع والكاشير)' : 'Cashier'}</option>
                 <option value="branch_manager">{isRtl ? 'مدير فرع (مبيعات ومخزون الفرع)' : 'Branch Manager'}</option>
                 <option value="inventory_manager">{isRtl ? 'أمين مخزن ومشتريات' : 'Inventory & Purchasing'}</option>
                 <option value="accountant">{isRtl ? 'محاسب مالي' : 'Accountant'}</option>
@@ -1947,32 +1991,15 @@ export default function EmployeesManagementPage() {
               </div>
             </div>
 
-            {/* Permission Scope Preview Card */}
-            {(() => {
-              const info = getRolePermissionInfo(newEmployee.role);
-              return (
-                <div className="col-span-1 sm:col-span-2 p-3 rounded-xl bg-blue-50/60 border border-blue-200/80 space-y-1.5 mt-1">
-                  <div className="flex items-center gap-2 text-xs font-bold text-[#0B1730]">
-                    <Monitor className="w-3.5 h-3.5 text-[#246BFD]" />
-                    <span>{isRtl ? 'الشاشة التي تفتح له فور الدخول:' : 'Opening Screen Upon Login:'}</span>
-                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${info.badgeBg}`}>
-                      {isRtl ? info.screenAr : info.screenEn}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-gray-600 leading-relaxed">
-                    {isRtl ? info.descAr : info.descEn}
-                  </p>
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {info.allowedScreens.map((s, idx) => (
-                      <span key={idx} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-white border border-gray-200 rounded text-[10px] text-gray-700 font-medium shadow-2xs">
-                        <Check className="w-2.5 h-2.5 text-emerald-600" />
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
+            {/* Granular Screen Permissions Selector */}
+            <div className="col-span-1 sm:col-span-2 mt-1">
+              <PagePermissionSelector
+                selectedPages={newEmployee.allowed_pages}
+                onChange={(pages) => setNewEmployee({ ...newEmployee, allowed_pages: pages })}
+                role={newEmployee.role}
+                isRtl={isRtl}
+              />
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-[#E5EAF2]">
@@ -2102,14 +2129,22 @@ export default function EmployeesManagementPage() {
 
             <div>
               <label className="block text-gray-700 font-semibold mb-1">
-                {isRtl ? 'الدور والصلاحيات *' : 'Role & Permissions *'}
+                {isRtl ? 'الدور الوظيفي وصلاحيات الشاشات *' : 'Role & Permissions *'}
               </label>
               <select
                 value={editForm.role}
-                onChange={(e) => setEditForm({ ...editForm, role: e.target.value as UserRole })}
+                onChange={(e) => {
+                  const newRole = e.target.value as UserRole;
+                  const defaultPages = ROLE_DEFAULT_PAGES[newRole] || ['/merchant/pos'];
+                  setEditForm({ 
+                    ...editForm, 
+                    role: newRole,
+                    allowed_pages: defaultPages
+                  });
+                }}
                 className="w-full p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD]"
               >
-                <option value="cashier">{isRtl ? 'كاشير (POS فقط - شاشة الكاشير حصراً)' : 'Cashier (POS Only)'}</option>
+                <option value="cashier">{isRtl ? 'كاشير (نقاط البيع والكاشير)' : 'Cashier'}</option>
                 <option value="branch_manager">{isRtl ? 'مدير فرع (مبيعات ومخزون الفرع)' : 'Branch Manager'}</option>
                 <option value="inventory_manager">{isRtl ? 'أمين مخزن ومشتريات' : 'Inventory & Purchasing'}</option>
                 <option value="accountant">{isRtl ? 'محاسب مالي' : 'Accountant'}</option>
@@ -2129,6 +2164,16 @@ export default function EmployeesManagementPage() {
                   <option key={b.id} value={b.id}>{isRtl ? b.name_ar : b.name_en} ({b.code})</option>
                 ))}
               </select>
+            </div>
+
+            {/* Granular Screen Permissions Selector */}
+            <div className="col-span-1 sm:col-span-2 mt-1">
+              <PagePermissionSelector
+                selectedPages={editForm.allowed_pages}
+                onChange={(pages) => setEditForm({ ...editForm, allowed_pages: pages })}
+                role={editForm.role}
+                isRtl={isRtl}
+              />
             </div>
           </div>
 

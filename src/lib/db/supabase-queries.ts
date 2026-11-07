@@ -552,6 +552,7 @@ export async function getUserByUsernameOrEmail(identifier: string): Promise<(Use
 export async function createUser(data: {
   tenant_id: string; branch_id?: string; email: string; username: string;
   password_hash: string; full_name: string; phone?: string; role: string;
+  allowed_pages?: string[] | string;
   job_title?: string; base_salary?: number; salary_type?: string;
   daily_hours?: number; national_id?: string; hire_date?: string; shift_name?: string;
 }): Promise<User> {
@@ -560,11 +561,16 @@ export async function createUser(data: {
   }
   const supabase = getSupabase();
   const id = uid('usr');
+  const allowedPagesVal = data.allowed_pages
+    ? (typeof data.allowed_pages === 'string' ? data.allowed_pages : JSON.stringify(data.allowed_pages))
+    : null;
+
   const payload: any = {
     id, tenant_id: data.tenant_id, branch_id: data.branch_id || null,
     email: data.email, username: data.username, password_hash: data.password_hash,
     full_name: data.full_name, phone: data.phone || null, role: data.role, is_active: 1
   };
+  if (allowedPagesVal !== null) payload.allowed_pages = allowedPagesVal;
   if (data.job_title !== undefined) payload.job_title = data.job_title;
   if (data.base_salary !== undefined) payload.base_salary = data.base_salary;
   if (data.salary_type !== undefined) payload.salary_type = data.salary_type;
@@ -597,6 +603,7 @@ export async function createUser(data: {
 export async function updateUser(id: string, tenantId: string, data: {
   full_name?: string; phone?: string; role?: string; branch_id?: string;
   password_hash?: string; is_active?: number;
+  allowed_pages?: string[] | string;
   job_title?: string; base_salary?: number; salary_type?: string;
   daily_hours?: number; national_id?: string; hire_date?: string; shift_name?: string;
 }): Promise<User> {
@@ -611,6 +618,11 @@ export async function updateUser(id: string, tenantId: string, data: {
   if (data.branch_id !== undefined) updates.branch_id = data.branch_id || null;
   if (data.password_hash) updates.password_hash = data.password_hash;
   if (data.is_active !== undefined) updates.is_active = data.is_active;
+  if (data.allowed_pages !== undefined) {
+    updates.allowed_pages = typeof data.allowed_pages === 'string'
+      ? data.allowed_pages
+      : JSON.stringify(data.allowed_pages);
+  }
   if (data.job_title !== undefined) updates.job_title = data.job_title;
   if (data.base_salary !== undefined) updates.base_salary = data.base_salary;
   if (data.salary_type !== undefined) updates.salary_type = data.salary_type;

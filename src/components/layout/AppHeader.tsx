@@ -10,6 +10,7 @@ import { BranchSelector } from './BranchSelector';
 import { NotificationBell } from './NotificationBell';
 import { useNav } from '@/lib/nav-context';
 import { LogOut, ShieldCheck, ShoppingCart, User as UserIcon, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { isPageAllowed, getFirstAllowedPage } from '@/lib/auth/permissions';
 
 import { OfflineIndicator } from '@/components/offline/OfflineIndicator';
 
@@ -61,13 +62,9 @@ export function AppHeader() {
             href={
               user?.role === 'super_admin' 
                 ? '/super-admin' 
-                : user?.role === 'cashier'
-                  ? '/merchant/pos'
-                  : user?.role === 'inventory_manager'
-                    ? '/merchant/inventory'
-                    : user?.role === 'accountant'
-                      ? '/merchant/accounting'
-                      : '/merchant/dashboard'
+                : user?.role === 'merchant_owner'
+                  ? '/merchant/dashboard'
+                  : getFirstAllowedPage(user)
             } 
             className="flex items-center gap-2.5"
           >
@@ -93,8 +90,8 @@ export function AppHeader() {
             </div>
           </Link>
 
-          {/* Quick link to POS for non-cashier merchant staff */}
-          {user && user.role !== 'super_admin' && user.role !== 'cashier' && (
+          {/* Quick link to POS for merchant staff who have POS access */}
+          {user && user.role !== 'super_admin' && isPageAllowed('/merchant/pos', user) && (
             <Link
               href="/merchant/pos"
               className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-[#246BFD] hover:bg-[#1A54D4] transition-all shadow-xs ml-2 rtl:mr-2 rtl:ml-0"

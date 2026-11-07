@@ -7,8 +7,9 @@ import { useAuth } from '@/lib/auth/context';
 import { useLanguage } from '@/lib/i18n/context';
 import { useNav } from '@/lib/nav-context';
 import { 
-  LayoutDashboard, ShoppingCart, Package, Receipt, Menu
+  LayoutDashboard, ShoppingCart, Package, Receipt, Menu, Layers, BookOpen
 } from 'lucide-react';
+import { isPageAllowed } from '@/lib/auth/permissions';
 
 export function MobileBottomNav() {
   const pathname = usePathname();
@@ -18,18 +19,19 @@ export function MobileBottomNav() {
 
   if (!user || user.role === 'super_admin') return null;
 
-  const isCashier = user.role === 'cashier';
+  const candidateItems = [
+    { href: '/merchant/dashboard', icon: LayoutDashboard, labelAr: 'الرئيسية', labelEn: 'Dashboard' },
+    { href: '/merchant/pos', icon: ShoppingCart, labelAr: 'الكاشير', labelEn: 'POS', highlight: true },
+    { href: '/merchant/products', icon: Package, labelAr: 'المنتجات', labelEn: 'Products' },
+    { href: '/merchant/inventory', icon: Layers, labelAr: 'المخزون', labelEn: 'Stock' },
+    { href: '/merchant/sales', icon: Receipt, labelAr: 'المبيعات', labelEn: 'Sales' },
+    { href: '/merchant/accounting', icon: BookOpen, labelAr: 'المالية', labelEn: 'Finance' },
+  ];
 
-  const navItems = isCashier
-    ? [
-        { href: '/merchant/pos', icon: ShoppingCart, labelAr: 'نقطة البيع', labelEn: 'POS', highlight: true },
-      ]
-    : [
-        { href: '/merchant/dashboard', icon: LayoutDashboard, labelAr: 'الرئيسية', labelEn: 'Dashboard' },
-        { href: '/merchant/pos', icon: ShoppingCart, labelAr: 'الكاشير', labelEn: 'POS', highlight: true },
-        { href: '/merchant/products', icon: Package, labelAr: 'المنتجات', labelEn: 'Products' },
-        { href: '/merchant/sales', icon: Receipt, labelAr: 'المبيعات', labelEn: 'Sales' },
-      ];
+  const navItems = (user.role === 'merchant_owner'
+    ? candidateItems.filter(i => ['/merchant/dashboard', '/merchant/pos', '/merchant/products', '/merchant/sales'].includes(i.href))
+    : candidateItems.filter(item => isPageAllowed(item.href, user))
+  ).slice(0, 4);
 
   return (
     <nav 
@@ -98,3 +100,4 @@ export function MobileBottomNav() {
     </nav>
   );
 }
+

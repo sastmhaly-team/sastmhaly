@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS users (
   full_name TEXT NOT NULL,
   phone TEXT,
   role TEXT NOT NULL, -- super_admin, merchant_owner, branch_manager, cashier, inventory_manager, accountant, auditor
+  allowed_pages TEXT, -- JSON array of permitted merchant routes
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,

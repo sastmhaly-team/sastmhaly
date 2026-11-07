@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserByUsernameOrEmail, getTenant, getBranches, isOfflineMode } from '@/lib/db/supabase-queries';
 import { Branch } from '@/lib/types';
+import { getFirstAllowedPage } from '@/lib/auth/permissions';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -98,8 +99,10 @@ export async function POST(request: NextRequest) {
     let redirectUrl = '/merchant/dashboard';
     if (safeUser.role === 'super_admin') {
       redirectUrl = '/super-admin';
-    } else if (safeUser.role === 'cashier') {
-      redirectUrl = '/merchant/pos';
+    } else if (safeUser.role === 'merchant_owner') {
+      redirectUrl = '/merchant/dashboard';
+    } else {
+      redirectUrl = getFirstAllowedPage(safeUser);
     }
 
     return NextResponse.json({

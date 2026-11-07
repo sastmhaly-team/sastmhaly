@@ -440,12 +440,12 @@ export function deleteBranch(tenantId: string, branchId: string): { success: boo
 
 export function getUsers(tenantId?: string, branchId?: string): User[] {
   if (!tenantId) {
-    return db.prepare('SELECT id, tenant_id, branch_id, email, username, full_name, phone, role, is_active, created_at FROM users').all() as User[];
+    return db.prepare('SELECT * FROM users').all() as User[];
   }
   if (branchId) {
-    return db.prepare('SELECT id, tenant_id, branch_id, email, username, full_name, phone, role, is_active, created_at FROM users WHERE tenant_id = ? AND (branch_id = ? OR branch_id IS NULL)').all(tenantId, branchId) as User[];
+    return db.prepare('SELECT * FROM users WHERE tenant_id = ? AND (branch_id = ? OR branch_id IS NULL)').all(tenantId, branchId) as User[];
   }
-  return db.prepare('SELECT id, tenant_id, branch_id, email, username, full_name, phone, role, is_active, created_at FROM users WHERE tenant_id = ?').all(tenantId) as User[];
+  return db.prepare('SELECT * FROM users WHERE tenant_id = ?').all(tenantId) as User[];
 }
 
 export function getUserByUsernameOrEmail(identifier: string): (User & { password_hash: string }) | undefined {
@@ -464,14 +464,34 @@ export function createUser(data: {
   full_name: string;
   phone?: string;
   role: string;
+  allowed_pages?: string[] | string;
+  job_title?: string;
+  base_salary?: number;
+  salary_type?: string;
+  daily_hours?: number;
+  national_id?: string;
+  hire_date?: string;
+  shift_name?: string;
 }): User {
   const id = `usr_${Date.now()}`;
-  db.prepare(`
-    INSERT INTO users (id, tenant_id, branch_id, email, username, password_hash, full_name, phone, role, is_active)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-  `).run(id, data.tenant_id, data.branch_id || null, data.email, data.username, data.password_hash, data.full_name, data.phone || null, data.role);
+  const allowedPagesStr = data.allowed_pages 
+    ? (typeof data.allowed_pages === 'string' ? data.allowed_pages : JSON.stringify(data.allowed_pages))
+    : null;
 
-  return db.prepare('SELECT id, tenant_id, branch_id, email, username, full_name, phone, role, is_active, created_at FROM users WHERE id = ?').get(id) as User;
+  try {
+    db.prepare(`
+      INSERT INTO users (id, tenant_id, branch_id, email, username, password_hash, full_name, phone, role, allowed_pages, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `).run(id, data.tenant_id, data.branch_id || null, data.email, data.username, data.password_hash, data.full_name, data.phone || null, data.role, allowedPagesStr);
+  } catch {
+    // Fallback if column missing
+    db.prepare(`
+      INSERT INTO users (id, tenant_id, branch_id, email, username, password_hash, full_name, phone, role, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `).run(id, data.tenant_id, data.branch_id || null, data.email, data.username, data.password_hash, data.full_name, data.phone || null, data.role);
+  }
+
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as User;
 }
 
 export function updateUser(id: string, tenantId: string, data: {
@@ -481,6 +501,14 @@ export function updateUser(id: string, tenantId: string, data: {
   branch_id?: string;
   password_hash?: string;
   is_active?: number;
+  allowed_pages?: string[] | string;
+  job_title?: string;
+  base_salary?: number;
+  salary_type?: string;
+  daily_hours?: number;
+  national_id?: string;
+  hire_date?: string;
+  shift_name?: string;
 }): User {
   const existing = db.prepare('SELECT * FROM users WHERE id = ? AND tenant_id = ?').get(id, tenantId) as (User & { password_hash: string }) | undefined;
   if (!existing) throw new Error('User not found');
@@ -490,22 +518,42 @@ export function updateUser(id: string, tenantId: string, data: {
   const role = data.role !== undefined ? data.role : existing.role;
   const branchId = data.branch_id !== undefined ? (data.branch_id || null) : existing.branch_id;
   const isActive = data.is_active !== undefined ? data.is_active : existing.is_active;
+  const allowedPagesStr = data.allowed_pages !== undefined
+    ? (typeof data.allowed_pages === 'string' ? data.allowed_pages : JSON.stringify(data.allowed_pages))
+    : (existing.allowed_pages ?? null);
 
-  if (data.password_hash) {
-    db.prepare(`
-      UPDATE users 
-      SET full_name = ?, phone = ?, role = ?, branch_id = ?, password_hash = ?, is_active = ?
-      WHERE id = ? AND tenant_id = ?
-    `).run(fullName, phone, role, branchId, data.password_hash, isActive, id, tenantId);
-  } else {
-    db.prepare(`
-      UPDATE users 
-      SET full_name = ?, phone = ?, role = ?, branch_id = ?, is_active = ?
-      WHERE id = ? AND tenant_id = ?
-    `).run(fullName, phone, role, branchId, isActive, id, tenantId);
+  try {
+    if (data.password_hash) {
+      db.prepare(`
+        UPDATE users 
+        SET full_name = ?, phone = ?, role = ?, branch_id = ?, password_hash = ?, is_active = ?, allowed_pages = ?
+        WHERE id = ? AND tenant_id = ?
+      `).run(fullName, phone, role, branchId, data.password_hash, isActive, allowedPagesStr, id, tenantId);
+    } else {
+      db.prepare(`
+        UPDATE users 
+        SET full_name = ?, phone = ?, role = ?, branch_id = ?, is_active = ?, allowed_pages = ?
+        WHERE id = ? AND tenant_id = ?
+      `).run(fullName, phone, role, branchId, isActive, allowedPagesStr, id, tenantId);
+    }
+  } catch {
+    // Fallback if column missing
+    if (data.password_hash) {
+      db.prepare(`
+        UPDATE users 
+        SET full_name = ?, phone = ?, role = ?, branch_id = ?, password_hash = ?, is_active = ?
+        WHERE id = ? AND tenant_id = ?
+      `).run(fullName, phone, role, branchId, data.password_hash, isActive, id, tenantId);
+    } else {
+      db.prepare(`
+        UPDATE users 
+        SET full_name = ?, phone = ?, role = ?, branch_id = ?, is_active = ?
+        WHERE id = ? AND tenant_id = ?
+      `).run(fullName, phone, role, branchId, isActive, id, tenantId);
+    }
   }
 
-  return db.prepare('SELECT id, tenant_id, branch_id, email, username, full_name, phone, role, is_active, created_at FROM users WHERE id = ?').get(id) as User;
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as User;
 }
 
 export function deleteUser(id: string, tenantId: string): boolean {

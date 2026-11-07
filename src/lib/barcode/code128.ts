@@ -81,3 +81,4 @@ export function generateRandomBarcode(prefix: string = '622'): string {
   const checkDigit = (10 - (sum % 10)) % 10;
   return code + checkDigit.toString();
 }
+

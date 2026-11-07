@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth/context';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ShieldAlert, AlertTriangle, RefreshCw, LogOut, Clock, Phone, Sparkles, Eye, ShieldCheck } from 'lucide-react';
+import { isPageAllowed, getFirstAllowedPage } from '@/lib/auth/permissions';
 
 export default function MerchantLayout({ children }: { children: React.ReactNode }) {
   const { user, tenant, isLoading, logout } = useAuth();
@@ -35,44 +36,16 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
 
   const isPos = pathname === '/merchant/pos';
 
-  // Role-based route permissions check
+  // Granular page permissions check
   const isAuthorized = React.useMemo(() => {
     if (!user) return true;
-    if (user.role === 'super_admin' || user.role === 'merchant_owner') return true;
-
-    if (user.role === 'cashier') {
-      return pathname === '/merchant/pos';
-    }
-
-    if (user.role === 'inventory_manager') {
-      const allowed = ['/merchant/inventory', '/merchant/products', '/merchant/batches', '/merchant/transfers', '/merchant/purchasing', '/merchant/suppliers'];
-      return allowed.some(p => pathname.startsWith(p));
-    }
-
-    if (user.role === 'accountant') {
-      const allowed = ['/merchant/accounting', '/merchant/sales', '/merchant/customers', '/merchant/expenses', '/merchant/reports', '/merchant/dashboard'];
-      return allowed.some(p => pathname.startsWith(p));
-    }
-
-    if (user.role === 'branch_manager') {
-      const disallowed = ['/merchant/branches', '/merchant/employees', '/merchant/settings', '/merchant/onboarding'];
-      return !disallowed.some(p => pathname.startsWith(p));
-    }
-
-    return true;
+    return isPageAllowed(pathname, user);
   }, [user, pathname]);
 
   useEffect(() => {
     if (!isLoading && user && !isAuthorized) {
-      if (user.role === 'cashier') {
-        router.replace('/merchant/pos');
-      } else if (user.role === 'inventory_manager') {
-        router.replace('/merchant/inventory');
-      } else if (user.role === 'accountant') {
-        router.replace('/merchant/accounting');
-      } else {
-        router.replace('/merchant/dashboard');
-      }
+      const destination = getFirstAllowedPage(user);
+      router.replace(destination);
     }
   }, [user, isLoading, isAuthorized, router]);
 

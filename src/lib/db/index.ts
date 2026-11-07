@@ -85,6 +85,13 @@ function getDatabase(): Database.Database {
     // Execute DDL schema
     db.exec(DDL_SCHEMA);
 
+    // Auto-migrate allowed_pages column on users table if missing
+    try {
+      db.exec('ALTER TABLE users ADD COLUMN allowed_pages TEXT;');
+    } catch {
+      // Column already exists
+    }
+
     // Ensure Super Admin & Initial Plan always exist upon initialization
     try {
       const adminExists = db.prepare('SELECT id FROM users WHERE phone = ? OR username = ?').get('01211583961', '01211583961');
