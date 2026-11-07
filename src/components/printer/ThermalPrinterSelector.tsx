@@ -199,3 +199,4 @@ export function ThermalPrinterSelector({ onPrinterChange, compact = false }: The
     </div>
   );
 }
+

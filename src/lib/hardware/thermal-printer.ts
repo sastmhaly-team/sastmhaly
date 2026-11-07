@@ -315,6 +315,16 @@ export function printViaIsolatedIframe(elementId: string, options?: { isCompact?
 
   const compactClass = options?.extraCompact ? 'compact-receipt-extra' : options?.isCompact ? 'compact-receipt' : '';
 
+  // Extract all stylesheets and style blocks from parent document so Tailwind is 100% applied
+  let headStyles = '';
+  try {
+    headStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map((el) => el.outerHTML)
+      .join('\n');
+  } catch {
+    // fallback
+  }
+
   doc.open();
   doc.write(`
     <!DOCTYPE html>
@@ -322,6 +332,7 @@ export function printViaIsolatedIframe(elementId: string, options?: { isCompact?
     <head>
       <meta charset="utf-8" />
       <title>فاتورة البيع</title>
+      ${headStyles}
       <style>
         @page {
           size: auto;
@@ -329,89 +340,170 @@ export function printViaIsolatedIframe(elementId: string, options?: { isCompact?
         }
         * {
           box-sizing: border-box;
-          margin: 0;
-          padding: 0;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
-        body {
+        html, body {
           background: #ffffff !important;
           color: #000000 !important;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Cairo", monospace;
-          font-size: 10px;
-          line-height: 1.25;
-          direction: rtl;
-          text-align: right;
-          width: 76mm;
-          max-width: 100%;
-          margin: 0 auto;
-          padding: 2mm 1.5mm;
-          overflow: visible;
+          font-family: monospace, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Cairo", sans-serif !important;
+          direction: rtl !important;
+          text-align: right !important;
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: visible !important;
         }
+
+        /* Core Flexbox Layout */
+        .flex { display: flex !important; }
+        .flex-col { flex-direction: column !important; }
+        .items-center { align-items: center !important; }
+        .items-start { align-items: flex-start !important; }
+        .justify-center { justify-content: center !important; }
+        .justify-between { justify-content: space-between !important; }
+        .w-full { width: 100% !important; }
+        .mx-auto { margin-left: auto !important; margin-right: auto !important; }
+
+        /* Typography & Alignment */
+        .text-center { text-align: center !important; }
+        .text-right { text-align: right !important; }
+        .text-left { text-align: left !important; }
+        .font-bold { font-weight: 700 !important; }
+        .font-semibold { font-weight: 600 !important; }
+        .font-normal { font-weight: 400 !important; }
+        .font-mono { font-family: monospace, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Cairo", sans-serif !important; }
+        .font-sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Cairo", sans-serif !important; }
+        
+        .text-xs { font-size: 11px !important; }
+        .text-sm { font-size: 13px !important; }
+        .text-\\[9px\\] { font-size: 9px !important; }
+        .text-\\[10px\\] { font-size: 10px !important; }
+        .text-\\[11px\\] { font-size: 11px !important; }
+        .tracking-tight { letter-spacing: -0.025em !important; }
+        .tracking-wider { letter-spacing: 0.05em !important; }
+
+        /* Colors */
+        .text-black { color: #000000 !important; }
+        .text-gray-500 { color: #6b7280 !important; }
+        .text-gray-600 { color: #4b5563 !important; }
+        .text-gray-700 { color: #374151 !important; }
+        .text-emerald-600 { color: #059669 !important; }
+        .bg-white { background-color: #ffffff !important; }
+
+        /* Borders & Dividers */
+        .border { border: 1px solid #d1d5db !important; }
+        .border-b { border-bottom: 1px solid #000000 !important; }
+        .border-t { border-top: 1px solid #000000 !important; }
+        .border-dashed { border-style: dashed !important; }
+        .border-dotted { border-style: dotted !important; }
+        .border-black { border-color: #000000 !important; }
+        .border-gray-300 { border-color: #d1d5db !important; }
+        .border-collapse { border-collapse: collapse !important; }
+        .rounded-lg { border-radius: 8px !important; }
+        .divide-y > * + * { border-top: 1px solid #d1d5db !important; }
+        .divide-dotted > * + * { border-top-style: dotted !important; }
+
+        /* Spacing */
+        .space-y-0\\.5 > * + * { margin-top: 2px !important; }
+        .space-y-1 > * + * { margin-top: 3px !important; }
+        .space-y-1\\.5 > * + * { margin-top: 4px !important; }
+        .space-y-2 > * + * { margin-top: 6px !important; }
+        .space-y-3 > * + * { margin-top: 8px !important; }
+        .my-1\\.5 { margin-top: 6px !important; margin-bottom: 6px !important; border-top: 1px dashed #000000 !important; height: 0 !important; }
+        .pt-1 { padding-top: 3px !important; }
+        .pt-1\\.5 { padding-top: 4px !important; }
+        .pt-2 { padding-top: 6px !important; }
+        .pb-1 { padding-bottom: 3px !important; }
+        .pb-2 { padding-bottom: 6px !important; }
+        .py-1 { padding-top: 2px !important; padding-bottom: 2px !important; }
+        .p-4 { padding: 8px !important; }
+        .mt-2 { margin-top: 6px !important; }
+        .mb-1 { margin-bottom: 3px !important; }
+        .mb-1\\.5 { margin-bottom: 4px !important; }
+
+        /* Table */
         table {
-          width: 100%;
-          border-collapse: collapse;
+          width: 100% !important;
+          border-collapse: collapse !important;
         }
-        tr, td, th {
-          padding: 1px 0;
-          page-break-inside: avoid;
-          break-inside: avoid;
+        th, td {
+          padding: 2px 0 !important;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
         }
+
+        /* Images */
         img {
-          display: block;
-          margin: 0 auto 2px auto;
-          max-height: 36px;
-          max-width: 110px;
-          object-fit: contain;
+          display: block !important;
+          margin-left: auto !important;
+          margin-right: auto !important;
+          object-fit: contain !important;
         }
+        .max-h-12 { max-height: 48px !important; }
+        .max-h-6 { max-height: 24px !important; }
+        .max-w-\\[130px\\] { max-width: 130px !important; }
+        .object-contain { object-fit: contain !important; }
+
+        /* Receipt Outer Container */
+        #printable-receipt {
+          width: 76mm !important;
+          max-width: 76mm !important;
+          margin: 0 auto !important;
+          padding: 8px 6px !important;
+          background: #ffffff !important;
+          color: #000000 !important;
+          direction: rtl !important;
+          text-align: right !important;
+          font-family: monospace, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Cairo", sans-serif !important;
+          font-size: 11px !important;
+        }
+
+        /* Footer */
         .receipt-footer {
           display: block !important;
+          text-align: center !important;
           page-break-before: avoid !important;
           break-before: avoid !important;
           page-break-inside: avoid !important;
           break-inside: avoid !important;
           page-break-after: avoid !important;
           break-after: avoid !important;
-          margin-top: 3px !important;
-          padding-top: 3px !important;
-          border-top: 1px dashed #000 !important;
+          margin-top: 6px !important;
+          padding-top: 6px !important;
+          border-top: 1px dashed #000000 !important;
         }
         .receipt-footer img {
-          max-height: 22px !important;
-          max-width: 22px !important;
-          margin: 1px auto !important;
           display: block !important;
+          margin: 2px auto !important;
+          max-height: 24px !important;
         }
         .receipt-footer p {
+          text-align: center !important;
           margin: 0 !important;
-          padding: 0 !important;
-          line-height: 1.2 !important;
         }
-        .space-y-3 > * + * { margin-top: 3px; }
-        .space-y-2 > * + * { margin-top: 2px; }
-        .space-y-1 > * + * { margin-top: 1.5px; }
-        .my-1\\.5 { margin-top: 2px; margin-bottom: 2px; }
 
+        /* Compact Modes */
         .compact-receipt {
-          font-size: 9px !important;
+          font-size: 9.5px !important;
           line-height: 1.15 !important;
-          padding: 1.5mm 1mm !important;
         }
-        .compact-receipt img { max-height: 24px !important; }
-        .compact-receipt tr, .compact-receipt td, .compact-receipt th { padding: 0.75px 0 !important; }
+        .compact-receipt img { max-height: 22px !important; }
+        .compact-receipt th, .compact-receipt td { padding: 1px 0 !important; }
 
         .compact-receipt-extra {
-          font-size: 8px !important;
+          font-size: 8.5px !important;
           line-height: 1.1 !important;
-          padding: 1mm 0.5mm !important;
         }
         .compact-receipt-extra img { max-height: 18px !important; }
-        .compact-receipt-extra tr, .compact-receipt-extra td, .compact-receipt-extra th { padding: 0.5px 0 !important; }
-        .compact-receipt-extra .space-y-3 > * + * { margin-top: 1.5px !important; }
+        .compact-receipt-extra th, .compact-receipt-extra td { padding: 0.5px 0 !important; }
+        .compact-receipt-extra .space-y-3 > * + * { margin-top: 2px !important; }
       </style>
     </head>
     <body class="${compactClass}">
-      ${receipt.innerHTML}
+      <div id="printable-receipt" dir="rtl" class="p-4 bg-white text-black font-mono text-[11px] space-y-3 text-right" style="width: 76mm; margin: 0 auto;">
+        ${receipt.innerHTML}
+      </div>
     </body>
     </html>
   `);
@@ -478,3 +570,4 @@ export async function printReceiptUnified(
   printViaIsolatedIframe(elementId, options);
   return { success: true };
 }
+
