@@ -784,9 +784,9 @@ export default function SalesManagementPage() {
                 </div>
 
                 {/* Footer */}
-                <div className="receipt-footer text-center pt-1.5 mt-2 text-[10px] text-gray-700 border-t border-dashed border-black space-y-1">
+                <div className="receipt-footer text-center pt-2 mt-2 text-[10px] text-gray-700 space-y-1 border-none">
                   <p>{receiptFooter || 'شكراً لتعاملكم معنا'}</p>
-                  <div className="flex flex-col items-center justify-center pt-1 border-t border-dotted border-gray-300 space-y-0.5">
+                  <div className="flex flex-col items-center justify-center pt-1 space-y-0.5 border-none">
                     <img src="/logo.png" alt="Sastmhaly Logo" width={26} height={26} className="object-contain max-h-6 mx-auto" />
                     <p className="font-bold text-[9px] tracking-wider text-gray-600">Powered by Sastmhaly</p>
                   </div>

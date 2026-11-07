@@ -298,6 +298,14 @@ body {
     break-before: avoid !important;
     page-break-after: auto !important;
     break-after: auto !important;
+    border: none !important;
+    border-width: 0 !important;
+    box-shadow: none !important;
+  }
+  #printable-receipt {
+    border: none !important;
+    border-width: 0 !important;
+    box-shadow: none !important;
   }
   /* Default POS Thermal Receipt mode (58mm / 80mm continuous roll) */
   #print-mount:not(.document-mode):not(.barcode-label-mode) {
@@ -375,7 +383,20 @@ body {
     margin-bottom: 2px !important;
   }
 
-  /* CRITICAL: Receipt footer must stay glued directly under invoice totals without page break or blank gaps */
+  /* CRITICAL: Receipt footer must stay glued directly under invoice totals without page break or blank gaps, and with NO borders or cuts around it */
+  #print-mount .receipt-footer,
+  #print-mount .receipt-footer *,
+  #print-mount .receipt-footer *::before,
+  #print-mount .receipt-footer *::after {
+    border: none !important;
+    border-width: 0 !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    border-left: none !important;
+    border-right: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
   #print-mount .receipt-footer {
     display: block !important;
     page-break-before: avoid !important;
@@ -384,20 +405,22 @@ body {
     break-inside: avoid !important;
     page-break-after: avoid !important;
     break-after: avoid !important;
-    margin-top: 3px !important;
-    padding-top: 3px !important;
-    border-top: 1px dashed black !important;
+    margin-top: 6px !important;
+    padding-top: 4px !important;
+    border: none !important;
   }
   #print-mount .receipt-footer img {
-    max-height: 22px !important;
-    max-width: 22px !important;
-    margin: 1px auto !important;
+    max-height: 24px !important;
+    max-width: 24px !important;
+    margin: 4px auto 2px auto !important;
     display: block !important;
+    border: none !important;
   }
   #print-mount .receipt-footer p {
     margin: 0 !important;
     padding: 0 !important;
     line-height: 1.2 !important;
+    border: none !important;
   }
 
   /* Compact scaling for longer receipts to guarantee fitting in 1 page on mini thermal printers */

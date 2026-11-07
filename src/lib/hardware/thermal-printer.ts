@@ -327,8 +327,11 @@ export function printViaIsolatedIframe(elementId: string, options?: { isCompact?
           size: auto;
           margin: 0 !important;
         }
-        * {
+        *, *::before, *::after {
           box-sizing: border-box;
+          border-width: 0;
+          border-style: solid;
+          border-color: transparent;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
@@ -391,6 +394,7 @@ export function printViaIsolatedIframe(elementId: string, options?: { isCompact?
         .bg-white { background-color: #ffffff !important; }
 
         /* Borders & Dividers */
+        .border-none { border: none !important; border-width: 0 !important; }
         .border { border: 1px solid #d1d5db !important; }
         .border-b { border-bottom: 1px solid #000000 !important; }
         .border-t { border-top: 1px solid #000000 !important; }
@@ -465,9 +469,25 @@ export function printViaIsolatedIframe(elementId: string, options?: { isCompact?
           text-align: right !important;
           font-family: monospace, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Cairo", sans-serif !important;
           font-size: 11px !important;
+          border: none !important;
+          border-width: 0 !important;
+          box-shadow: none !important;
         }
 
-        /* Footer */
+        /* Footer - Clean with NO borders or cut lines around message or logo */
+        .receipt-footer,
+        .receipt-footer *,
+        .receipt-footer *::before,
+        .receipt-footer *::after {
+          border: none !important;
+          border-width: 0 !important;
+          border-top: none !important;
+          border-bottom: none !important;
+          border-left: none !important;
+          border-right: none !important;
+          outline: none !important;
+          box-shadow: none !important;
+        }
         .receipt-footer {
           display: block !important;
           text-align: center !important;
@@ -477,18 +497,21 @@ export function printViaIsolatedIframe(elementId: string, options?: { isCompact?
           break-inside: avoid !important;
           page-break-after: avoid !important;
           break-after: avoid !important;
-          margin-top: 6px !important;
-          padding-top: 6px !important;
-          border-top: 1px dashed #000000 !important;
+          margin-top: 8px !important;
+          padding-top: 4px !important;
+          border: none !important;
         }
         .receipt-footer img {
           display: block !important;
-          margin: 2px auto !important;
+          margin: 4px auto 2px auto !important;
           max-height: 24px !important;
+          border: none !important;
         }
         .receipt-footer p {
           text-align: center !important;
           margin: 0 !important;
+          padding: 0 !important;
+          border: none !important;
         }
 
         /* Compact Modes */

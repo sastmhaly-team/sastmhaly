@@ -1606,9 +1606,9 @@ export default function PosPage() {
             </div>
 
             {/* Footer */}
-            <div className="receipt-footer text-center text-[10px] pt-1.5 mt-2 border-t border-dashed border-black space-y-1">
+            <div className="receipt-footer text-center text-[10px] pt-2 mt-2 space-y-1 border-none">
               <p className="text-[10px] text-gray-700">{receiptFooter || 'شكراً لتعاملكم معنا'}</p>
-              <div className="flex flex-col items-center justify-center pt-1 border-t border-dotted border-gray-300 space-y-0.5">
+              <div className="flex flex-col items-center justify-center pt-1 space-y-0.5 border-none">
                 <img 
                   src="/logo.png" 
                   alt="Sastmhaly Logo" 
