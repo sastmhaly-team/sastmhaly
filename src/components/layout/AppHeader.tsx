@@ -81,11 +81,11 @@ export function AppHeader() {
                 priority
               />
             </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-bold text-[#0B1730] tracking-tight leading-none">
+            <div className="flex flex-col min-w-0">
+              <span className="text-sm font-bold text-[#0B1730] tracking-tight leading-none truncate">
                 {lang === 'ar' ? 'سستمهالي' : 'Sastmhaly'}
               </span>
-              <span className="text-[10px] font-medium text-[#687386] leading-tight">
+              <span className="text-[10px] font-medium text-[#687386] leading-tight truncate max-w-[85px] sm:max-w-[140px] hidden xs:inline sm:inline">
                 {user?.role === 'super_admin' 
                   ? t('super_admin_portal')
                   : (tenant ? (lang === 'ar' ? tenant.name : tenant.name) : t('tagline'))}
@@ -106,7 +106,7 @@ export function AppHeader() {
         </div>
 
         {/* Right Tools & User Info */}
-        <div className="flex items-center gap-2.5 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           
           {/* Offline / Online Status Indicator & Sync Action */}
           <OfflineIndicator />

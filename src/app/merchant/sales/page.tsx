@@ -403,62 +403,59 @@ export default function SalesManagementPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-start text-xs">
-              <thead className="bg-[#F7F9FC] text-[#687386] border-b border-[#E5EAF2] font-semibold">
-                <tr>
-                  <th className="py-3 px-4 text-start">{isRtl ? 'رقم الفاتورة' : 'Invoice #'}</th>
-                  <th className="py-3 px-4 text-start">{isRtl ? 'التاريخ والوقت' : 'Date & Time'}</th>
-                  <th className="py-3 px-4 text-start">{isRtl ? 'الفرع' : 'Branch'}</th>
-                  <th className="py-3 px-4 text-start">{isRtl ? 'الكاشير' : 'Cashier'}</th>
-                  <th className="py-3 px-4 text-start">{isRtl ? 'العميل' : 'Customer'}</th>
-                  <th className="py-3 px-4 text-start">{isRtl ? 'طريقة الدفع' : 'Payment'}</th>
-                  <th className="py-3 px-4 text-start">{isRtl ? 'الإجمالي' : 'Total'}</th>
-                  <th className="py-3 px-4 text-center">{isRtl ? 'الحالة' : 'Status'}</th>
-                  <th className="py-3 px-4 text-end">{isRtl ? 'الإجراءات' : 'Actions'}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E5EAF2]">
-                {filteredSales.slice(0, visibleCount).map((sale) => (
-                  <tr key={sale.id} className="hover:bg-[#F7F9FC]/60 transition-colors">
-                    <td className="py-3 px-4 font-bold text-[#0B1730]">
-                      {sale.sale_number}
-                    </td>
-                    <td className="py-3 px-4 text-[#687386]">
-                      {new Date(sale.created_at).toLocaleString(isRtl ? 'ar-EG' : 'en-US', {
-                        dateStyle: 'short',
-                        timeStyle: 'short'
-                      })}
-                    </td>
-                    <td className="py-3 px-4 text-[#172033]">
-                      {sale.branch_name || 'الفرع الرئيسي'}
-                    </td>
-                    <td className="py-3 px-4 text-[#687386]">
-                      {sale.cashier_name || 'كاشير'}
-                    </td>
-                    <td className="py-3 px-4 text-[#172033]">
-                      {sale.customer_name || (isRtl ? 'عميل نقدي عام' : 'Walk-in Customer')}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="capitalize text-[#172033] font-medium">
+          <div>
+            {/* Mobile Cards View (< md) */}
+            <div className="md:hidden divide-y divide-[#E5EAF2]">
+              {filteredSales.slice(0, visibleCount).map((sale) => (
+                <div key={sale.id} className="p-3.5 space-y-2.5 bg-white hover:bg-[#F8FAFC] transition-colors">
+                  {/* Row 1: Invoice # + Status + Date */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="font-mono font-bold text-sm text-[#0B1730]">
+                        {sale.sale_number}
+                      </span>
+                      <p className="text-[11px] text-[#687386] mt-0.5">
+                        {new Date(sale.created_at).toLocaleString(isRtl ? 'ar-EG' : 'en-US', {
+                          dateStyle: 'short',
+                          timeStyle: 'short'
+                        })}
+                      </p>
+                    </div>
+                    <div>
+                      {getStatusBadge(sale.status)}
+                    </div>
+                  </div>
+
+                  {/* Row 2: Customer & Branch info */}
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-[#172033]">
+                    <span className="font-medium text-[#0B1730]">
+                      👤 {sale.customer_name || (isRtl ? 'عميل نقدي عام' : 'Walk-in Customer')}
+                    </span>
+                    <span className="text-[#687386]">•</span>
+                    <span className="text-[#687386]">
+                      📍 {sale.branch_name || (isRtl ? 'الفرع الرئيسي' : 'Main Branch')}
+                    </span>
+                  </div>
+
+                  {/* Row 3: Total + Payment Method + Actions */}
+                  <div className="flex items-center justify-between pt-2 border-t border-dashed border-[#E5EAF2]">
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-black text-sm text-[#0B1730]">
+                        {sale.total_amount.toFixed(2)} {isRtl ? 'ج.م' : 'EGP'}
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-[#172033]">
                         {sale.payment_method === 'cash' ? (isRtl ? 'كاش' : 'Cash') :
-                         sale.payment_method === 'card' ? (isRtl ? 'فيزا/بطاقة' : 'Card') :
+                         sale.payment_method === 'card' ? (isRtl ? 'بطاقة' : 'Card') :
                          sale.payment_method === 'mobile_wallet' ? (isRtl ? 'محفظة' : 'Wallet') :
                          sale.payment_method === 'customer_credit' ? (isRtl ? 'آجل' : 'Credit') : sale.payment_method}
                       </span>
-                    </td>
-                    <td className="py-3 px-4 font-black text-[#0B1730]">
-                      {sale.total_amount.toFixed(2)} {isRtl ? 'ج.م' : 'EGP'}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      {getStatusBadge(sale.status)}
-                    </td>
-                    <td className="py-3 px-4 text-end space-x-1 rtl:space-x-reverse">
-                      {/* WhatsApp Share Button */}
+                    </div>
+
+                    <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleShareWhatsApp(sale)}
                         disabled={sharingSaleId === sale.id}
-                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                        className="p-2 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors cursor-pointer"
                         title={isRtl ? 'مشاركة الفاتورة عبر واتساب' : 'Share invoice via WhatsApp'}
                       >
                         {sharingSaleId === sale.id ? (
@@ -470,26 +467,117 @@ export default function SalesManagementPage() {
 
                       <button
                         onClick={() => handleViewDetail(sale.id)}
-                        className="p-1.5 text-[#246BFD] hover:bg-[#F0F9FF] rounded-lg transition-colors"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-[#246BFD] bg-[#EEF4FF] hover:bg-[#DCE7FE] rounded-lg transition-colors"
                         title={isRtl ? 'عرض الفاتورة والإيصال' : 'View invoice & receipt'}
                       >
-                        <Eye className="w-4 h-4" />
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>{isRtl ? 'عرض' : 'View'}</span>
                       </button>
 
                       {sale.status === 'completed' && (
                         <button
                           onClick={() => handleOpenReturn(sale)}
-                          className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                          className="p-2 text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors"
                           title={isRtl ? 'إرجاع / استرداد' : 'Return / Refund'}
                         >
                           <RotateCcw className="w-4 h-4" />
                         </button>
                       )}
-                    </td>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table (hidden on mobile < md) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-start text-xs">
+                <thead className="bg-[#F7F9FC] text-[#687386] border-b border-[#E5EAF2] font-semibold">
+                  <tr>
+                    <th className="py-3 px-4 text-start">{isRtl ? 'رقم الفاتورة' : 'Invoice #'}</th>
+                    <th className="py-3 px-4 text-start">{isRtl ? 'التاريخ والوقت' : 'Date & Time'}</th>
+                    <th className="py-3 px-4 text-start">{isRtl ? 'الفرع' : 'Branch'}</th>
+                    <th className="py-3 px-4 text-start">{isRtl ? 'الكاشير' : 'Cashier'}</th>
+                    <th className="py-3 px-4 text-start">{isRtl ? 'العميل' : 'Customer'}</th>
+                    <th className="py-3 px-4 text-start">{isRtl ? 'طريقة الدفع' : 'Payment'}</th>
+                    <th className="py-3 px-4 text-start">{isRtl ? 'الإجمالي' : 'Total'}</th>
+                    <th className="py-3 px-4 text-center">{isRtl ? 'الحالة' : 'Status'}</th>
+                    <th className="py-3 px-4 text-end">{isRtl ? 'الإجراءات' : 'Actions'}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-[#E5EAF2]">
+                  {filteredSales.slice(0, visibleCount).map((sale) => (
+                    <tr key={sale.id} className="hover:bg-[#F7F9FC]/60 transition-colors">
+                      <td className="py-3 px-4 font-bold text-[#0B1730]">
+                        {sale.sale_number}
+                      </td>
+                      <td className="py-3 px-4 text-[#687386]">
+                        {new Date(sale.created_at).toLocaleString(isRtl ? 'ar-EG' : 'en-US', {
+                          dateStyle: 'short',
+                          timeStyle: 'short'
+                        })}
+                      </td>
+                      <td className="py-3 px-4 text-[#172033]">
+                        {sale.branch_name || 'الفرع الرئيسي'}
+                      </td>
+                      <td className="py-3 px-4 text-[#687386]">
+                        {sale.cashier_name || 'كاشير'}
+                      </td>
+                      <td className="py-3 px-4 text-[#172033]">
+                        {sale.customer_name || (isRtl ? 'عميل نقدي عام' : 'Walk-in Customer')}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="capitalize text-[#172033] font-medium">
+                          {sale.payment_method === 'cash' ? (isRtl ? 'كاش' : 'Cash') :
+                           sale.payment_method === 'card' ? (isRtl ? 'فيزا/بطاقة' : 'Card') :
+                           sale.payment_method === 'mobile_wallet' ? (isRtl ? 'محفظة' : 'Wallet') :
+                           sale.payment_method === 'customer_credit' ? (isRtl ? 'آجل' : 'Credit') : sale.payment_method}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-black text-[#0B1730]">
+                        {sale.total_amount.toFixed(2)} {isRtl ? 'ج.م' : 'EGP'}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        {getStatusBadge(sale.status)}
+                      </td>
+                      <td className="py-3 px-4 text-end space-x-1 rtl:space-x-reverse">
+                        {/* WhatsApp Share Button */}
+                        <button
+                          onClick={() => handleShareWhatsApp(sale)}
+                          disabled={sharingSaleId === sale.id}
+                          className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                          title={isRtl ? 'مشاركة الفاتورة عبر واتساب' : 'Share invoice via WhatsApp'}
+                        >
+                          {sharingSaleId === sale.id ? (
+                            <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <MessageCircle className="w-4 h-4" />
+                          )}
+                        </button>
+
+                        <button
+                          onClick={() => handleViewDetail(sale.id)}
+                          className="p-1.5 text-[#246BFD] hover:bg-[#F0F9FF] rounded-lg transition-colors"
+                          title={isRtl ? 'عرض الفاتورة والإيصال' : 'View invoice & receipt'}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+
+                        {sale.status === 'completed' && (
+                          <button
+                            onClick={() => handleOpenReturn(sale)}
+                            className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                            title={isRtl ? 'إرجاع / استرداد' : 'Return / Refund'}
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
             {/* Load More Pagination (20 by 20) */}
             {filteredSales.length > visibleCount && (

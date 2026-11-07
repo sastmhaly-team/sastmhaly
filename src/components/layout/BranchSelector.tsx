@@ -18,12 +18,12 @@ export function BranchSelector() {
 
   return (
     <div className="relative inline-flex items-center">
-      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E5EAF2] bg-white text-xs font-medium text-[#172033] shadow-xs">
-        <Store className="w-3.5 h-3.5 text-[#246BFD]" />
+      <div className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg border border-[#E5EAF2] bg-white text-xs font-medium text-[#172033] shadow-xs">
+        <Store className="w-3.5 h-3.5 text-[#246BFD] shrink-0" />
         
         {isLocked ? (
           <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-[#0B1730]">
+            <span className="font-semibold text-[#0B1730] max-w-[85px] sm:max-w-[150px] truncate">
               {branches.find(b => b.id === user.branch_id)
                 ? (lang === 'ar' ? branches.find(b => b.id === user.branch_id)?.name_ar : branches.find(b => b.id === user.branch_id)?.name_en)
                 : t('all_branches')}
@@ -33,11 +33,11 @@ export function BranchSelector() {
             </span>
           </div>
         ) : (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 min-w-0">
             <select
               value={activeBranchId}
               onChange={(e) => setActiveBranchId(e.target.value)}
-              className="bg-transparent border-none text-xs font-semibold text-[#0B1730] focus:outline-none cursor-pointer pr-1"
+              className="bg-transparent border-none text-xs font-semibold text-[#0B1730] focus:outline-none cursor-pointer pr-1 max-w-[90px] sm:max-w-[150px] truncate"
             >
               <option value="all">
                 🌐 {t('all_branches')}
@@ -48,7 +48,7 @@ export function BranchSelector() {
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-3 h-3 text-[#687386] pointer-events-none" />
+            <ChevronDown className="w-3 h-3 text-[#687386] pointer-events-none shrink-0" />
           </div>
         )}
       </div>

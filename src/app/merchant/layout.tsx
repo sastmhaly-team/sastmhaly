@@ -3,6 +3,7 @@
 import React, { useEffect } from 'react';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { AppSidebar } from '@/components/layout/AppSidebar';
+import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
 import { useAuth } from '@/lib/auth/context';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -199,7 +200,7 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
       <div className="flex flex-1 w-full min-h-0 overflow-hidden">
         <AppSidebar />
         <main className="flex-1 min-w-0 h-full overflow-y-auto overscroll-contain transition-all duration-300 ease-in-out">
-          <div className={isPos ? "w-full h-full p-2 sm:p-3" : "p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full"}>
+          <div className={isPos ? "w-full h-full p-2 sm:p-3 pb-16 md:pb-3" : "p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full pb-24 md:pb-8"}>
             {/* Warning Banner when subscription is about to end (within 7 days) */}
             {tenant && tenant.days_remaining !== undefined && tenant.days_remaining <= 7 && tenant.days_remaining > 0 && (
               <div className="mb-4 p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
@@ -224,6 +225,9 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
           </div>
         </main>
       </div>
+
+      {/* Mobile Bottom Navigation Bar */}
+      <MobileBottomNav />
     </div>
   );
 }

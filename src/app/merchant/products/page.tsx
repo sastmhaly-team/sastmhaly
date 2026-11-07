@@ -13,8 +13,10 @@ import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Package, Plus, Search, Filter, Upload, Barcode, 
   Scale, CalendarDays, AlertTriangle, CheckCircle2, Download,
-  Layers, Edit2, Trash2, X, Check, FolderPlus
+  Layers, Edit2, Trash2, X, Check, FolderPlus, Printer, Sparkles
 } from 'lucide-react';
+import { BarcodePrintModal } from '@/components/barcode/BarcodePrintModal';
+import { generateRandomBarcode } from '@/lib/barcode/code128';
 
 export default function MerchantProductsPage() {
   const { tenant, activeBranchId } = useAuth();
@@ -25,6 +27,9 @@ export default function MerchantProductsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Barcode Print Modal state
+  const [barcodeModalProduct, setBarcodeModalProduct] = useState<Product | null>(null);
   
   // Filters
   const [search, setSearch] = useState('');
@@ -613,9 +618,115 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
         </div>
       </div>
 
-      {/* Catalog Table */}
+      {/* Catalog Table & Mobile Cards */}
       <div className="bg-white rounded-xl border border-[#E5EAF2] overflow-hidden shadow-2xs">
-        <div className="overflow-x-auto">
+        
+        {/* Mobile View: Responsive Cards (< md) */}
+        <div className="md:hidden divide-y divide-[#E5EAF2]">
+          {loading ? (
+            <div className="p-8 text-center text-[#687386]">
+              {t('loading')}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="p-8 text-center text-[#687386]">
+              {t('no_records')}
+            </div>
+          ) : (
+            filtered.slice(0, visibleCount).map((p) => {
+              const isLow = p.current_stock !== undefined && p.current_stock <= p.min_stock_alert;
+              return (
+                <div key={p.id} className="p-3.5 space-y-2.5 bg-white hover:bg-[#F8FAFC] transition-colors">
+                  {/* Header: Name + Stock Badge */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-bold text-[#0B1730] text-sm leading-snug truncate">
+                        {lang === 'ar' ? p.name_ar : p.name_en}
+                      </h4>
+                      <p className="text-[11px] text-[#687386] truncate">
+                        {lang === 'ar' ? p.name_en : p.name_ar}
+                      </p>
+                    </div>
+                    <span className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold font-mono ${
+                      isLow ? 'bg-[#FEF2F2] text-[#EF4444] border border-[#FECACA]' : 'bg-[#ECFDF5] text-[#10B981] border border-[#A7F3D0]'
+                    }`}>
+                      {p.current_stock ?? 0} {p.unit_name_en || 'PCS'}
+                    </span>
+                  </div>
+
+                  {/* Info Tags: Category + SKU + Barcode */}
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                    <span className="px-2 py-0.5 rounded bg-gray-100 text-[#172033] font-medium">
+                      {lang === 'ar' ? p.category_name_ar : p.category_name_en}
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-blue-50 text-[#246BFD] font-mono font-semibold">
+                      {p.sku}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setBarcodeModalProduct(p)}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#EEF4FF] text-[#246BFD] font-mono hover:bg-[#DCE7FE] transition-colors"
+                      title={lang === 'ar' ? 'طباعة ملصق الباركود' : 'Print Barcode'}
+                    >
+                      <Barcode className="w-3.5 h-3.5 text-[#246BFD]" />
+                      <span>{p.barcode}</span>
+                    </button>
+                    {p.is_weighted === 1 && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#FEF3C7] text-[#D97706]">
+                        {lang === 'ar' ? 'وزن (كجم)' : 'Weight'}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Prices & Actions */}
+                  <div className="flex items-center justify-between pt-2 border-t border-dashed border-[#E5EAF2]">
+                    <div>
+                      <span className="text-[10px] text-[#687386] block">
+                        {lang === 'ar' ? 'سعر البيع' : 'Selling Price'}
+                      </span>
+                      <span className="font-black text-sm text-[#0B1730]">
+                        {p.selling_price.toFixed(2)} {t('currency')}
+                      </span>
+                      <span className="text-[10px] text-[#687386] ms-2">
+                        ({lang === 'ar' ? 'التكلفة:' : 'Cost:'} {p.cost_price.toFixed(2)})
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setBarcodeModalProduct(p)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors"
+                        title={lang === 'ar' ? 'طباعة ملصق الباركود' : 'Print Barcode Label'}
+                      >
+                        <Printer className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>{lang === 'ar' ? 'طباعة' : 'Print'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(p)}
+                        className="p-1.5 rounded-lg text-[#246BFD] hover:bg-[#EEF4FF] transition-colors border border-[#E5EAF2]"
+                        title={lang === 'ar' ? 'تعديل الصنف' : 'Edit Product'}
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteProduct(p)}
+                        className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors border border-[#E5EAF2]"
+                        title={lang === 'ar' ? 'حذف الصنف' : 'Delete Product'}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop View: Full Table (hidden on mobile < md) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-xs text-left rtl:text-right border-collapse">
             <thead className="bg-[#F7F9FC] border-b border-[#E5EAF2] text-[#687386] uppercase font-bold text-[11px]">
               <tr>
@@ -693,6 +804,14 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
                       </td>
                       <td className="px-4 py-3.5 text-center">
                         <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setBarcodeModalProduct(p)}
+                            title={lang === 'ar' ? 'طباعة ملصق الباركود' : 'Print Barcode Label'}
+                            className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors cursor-pointer"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                          </button>
                           <button
                             type="button"
                             onClick={() => openEditModal(p)}
@@ -781,9 +900,40 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
                 <label className="block font-semibold text-[#172033]">
                   {lang === 'ar' ? 'الباركود الرئيسي *' : 'Primary Barcode *'}
                 </label>
-                <span className="text-[10px] text-[#246BFD] font-medium bg-[#EEF4FF] px-1.5 py-0.5 rounded">
-                  {lang === 'ar' ? 'يدعم المسح المباشر بالماسح' : 'Scanner auto-detects'}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, barcode: generateRandomBarcode('622') }))}
+                    className="inline-flex items-center gap-1 text-[11px] text-[#246BFD] hover:underline font-bold cursor-pointer"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>{lang === 'ar' ? 'توليد تلقائي' : 'Auto Generate'}</span>
+                  </button>
+                  {formData.barcode && (
+                    <button
+                      type="button"
+                      onClick={() => setBarcodeModalProduct({
+                        id: 'temp-new',
+                        name_ar: formData.name_ar || (lang === 'ar' ? 'صنف جديد' : 'New Product'),
+                        name_en: formData.name_en || 'New Product',
+                        barcode: formData.barcode,
+                        selling_price: Number(formData.selling_price) || 0,
+                        cost_price: Number(formData.cost_price) || 0,
+                        sku: formData.sku || 'SKU-NEW',
+                        category_id: formData.category_id,
+                        unit_id: formData.unit_id,
+                        tax_rate: formData.tax_rate,
+                        min_stock_alert: formData.min_stock_alert,
+                        is_weighted: formData.is_weighted ? 1 : 0,
+                        has_batch_tracking: formData.has_batch_tracking ? 1 : 0,
+                      } as Product)}
+                      className="inline-flex items-center gap-1 text-[11px] text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors"
+                    >
+                      <Printer className="w-3 h-3 text-emerald-600" />
+                      <span>{lang === 'ar' ? 'طباعة الملصق' : 'Print Label'}</span>
+                    </button>
+                  )}
+                </div>
               </div>
               <input
                 type="text"
@@ -956,9 +1106,40 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
                 <label className="block font-semibold text-[#172033]">
                   {lang === 'ar' ? 'الباركود الرئيسي *' : 'Primary Barcode *'}
                 </label>
-                <span className="text-[10px] text-[#246BFD] font-medium bg-[#EEF4FF] px-1.5 py-0.5 rounded">
-                  {lang === 'ar' ? 'يدعم المسح المباشر بالماسح' : 'Scanner auto-detects'}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setEditFormData(prev => ({ ...prev, barcode: generateRandomBarcode('622') }))}
+                    className="inline-flex items-center gap-1 text-[11px] text-[#246BFD] hover:underline font-bold cursor-pointer"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>{lang === 'ar' ? 'توليد جديد' : 'Generate'}</span>
+                  </button>
+                  {editFormData.barcode && (
+                    <button
+                      type="button"
+                      onClick={() => setBarcodeModalProduct({
+                        id: editingProductId || 'temp-edit',
+                        name_ar: editFormData.name_ar,
+                        name_en: editFormData.name_en,
+                        barcode: editFormData.barcode,
+                        selling_price: Number(editFormData.selling_price) || 0,
+                        cost_price: Number(editFormData.cost_price) || 0,
+                        sku: editFormData.sku,
+                        category_id: editFormData.category_id,
+                        unit_id: editFormData.unit_id,
+                        tax_rate: editFormData.tax_rate,
+                        min_stock_alert: editFormData.min_stock_alert,
+                        is_weighted: editFormData.is_weighted ? 1 : 0,
+                        has_batch_tracking: editFormData.has_batch_tracking ? 1 : 0,
+                      } as Product)}
+                      className="inline-flex items-center gap-1 text-[11px] text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors"
+                    >
+                      <Printer className="w-3 h-3 text-emerald-600" />
+                      <span>{lang === 'ar' ? 'طباعة الملصق' : 'Print Label'}</span>
+                    </button>
+                  )}
+                </div>
               </div>
               <input
                 type="text"
@@ -1354,6 +1535,17 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
           </div>
         </div>
       </Modal>
+
+      {/* Barcode Sticker Print Modal */}
+      {barcodeModalProduct && (
+        <BarcodePrintModal
+          isOpen={!!barcodeModalProduct}
+          onClose={() => setBarcodeModalProduct(null)}
+          product={barcodeModalProduct}
+          tenantName={tenant?.name}
+          currency={t('currency')}
+        />
+      )}
 
     </div>
   );

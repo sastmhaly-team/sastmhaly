@@ -278,12 +278,27 @@ body {
     break-before: avoid !important;
   }
   /* Default POS Thermal Receipt mode */
-  #print-mount:not(.document-mode) {
+  #print-mount:not(.document-mode):not(.barcode-label-mode) {
     width: 76mm !important;
     max-width: 76mm !important;
     padding: 2mm 1.5mm !important;
     font-size: 10px !important;
     line-height: 1.25 !important;
+  }
+  /* Barcode Sticker Label mode */
+  #print-mount.barcode-label-mode {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+    font-size: 11px !important;
+  }
+  #print-mount.barcode-label-mode .barcode-sticker-item {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    border: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   /* Full Document / Payslip mode (Standard A4 / Portrait) */
   #print-mount.document-mode {
@@ -371,6 +386,34 @@ body {
     margin: 0 !important;
     padding: 0 !important;
     border: none !important;
+  }
+}
+
+/* Mobile Phone UI Enhancements */
+@media (max-width: 768px) {
+  /* Prevent iOS Safari from auto-zooming inputs on focus */
+  input[type="text"],
+  input[type="number"],
+  input[type="search"],
+  input[type="password"],
+  input[type="tel"],
+  input[type="email"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+  
+  /* Touch target optimizations and smooth scrolling */
+  button, 
+  a, 
+  input, 
+  select {
+    touch-action: manipulation;
+  }
+
+  /* Safe scrolling containers on iOS */
+  body, html {
+    -webkit-overflow-scrolling: touch;
   }
 }
 

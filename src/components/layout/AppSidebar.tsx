@@ -179,7 +179,7 @@ export function AppSidebar() {
   const visibleGroups = getVisibleNavGroups();
 
   const renderNavList = (onItemClick?: () => void) => (
-    <div className="flex-1 py-4 px-3 space-y-6 overflow-y-auto overscroll-contain">
+    <div className="flex-1 py-4 px-3 space-y-6 overflow-y-auto overscroll-contain pb-24 md:pb-6">
       {isSuperAdmin ? (
         <div className="space-y-1">
           <div className="px-3 py-1 text-[11px] font-bold text-[#687386] uppercase tracking-wider">
