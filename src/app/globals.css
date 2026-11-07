@@ -234,6 +234,11 @@ body {
   background: #94A3B8;
 }
 
+/* Screen mode: #print-mount is strictly hidden */
+#print-mount {
+  display: none;
+}
+
 /* Print styles for POS Thermal Receipt (58mm / 80mm) & HR Documents/Payslips */
 @media print {
   @page {
@@ -270,20 +275,20 @@ body {
     text-align: right !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-    page-break-after: avoid !important;
-    break-after: avoid !important;
     page-break-before: avoid !important;
     break-before: avoid !important;
+    page-break-after: auto !important;
+    break-after: auto !important;
   }
-  /* Default POS Thermal Receipt mode */
+  /* Default POS Thermal Receipt mode (58mm / 80mm continuous roll) */
   #print-mount:not(.document-mode):not(.barcode-label-mode) {
     width: 76mm !important;
-    max-width: 76mm !important;
+    max-width: 100% !important;
     padding: 2mm 1.5mm !important;
     font-size: 10px !important;
     line-height: 1.25 !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
   }
   /* Barcode Sticker Label mode */
   #print-mount.barcode-label-mode {
@@ -313,14 +318,13 @@ body {
     visibility: visible !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
+    box-sizing: border-box !important;
   }
   #print-mount img {
     display: block !important;
-    margin: 0 auto 3px auto !important;
-    max-height: 38px !important;
-    max-width: 120px !important;
+    margin: 0 auto 2px auto !important;
+    max-height: 36px !important;
+    max-width: 110px !important;
     object-fit: contain !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
@@ -328,15 +332,53 @@ body {
   #print-mount table {
     width: 100% !important;
     border-collapse: collapse !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
   }
   #print-mount tr,
   #print-mount td,
   #print-mount th {
-    padding: 1.5px 0 !important;
+    padding: 1px 0 !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
+  }
+
+  /* Tight continuous spacing for receipt stream */
+  #print-mount:not(.document-mode):not(.barcode-label-mode) .space-y-3 > * + * {
+    margin-top: 3px !important;
+  }
+  #print-mount:not(.document-mode):not(.barcode-label-mode) .space-y-2 > * + * {
+    margin-top: 2px !important;
+  }
+  #print-mount:not(.document-mode):not(.barcode-label-mode) .space-y-1 > * + * {
+    margin-top: 1.5px !important;
+  }
+  #print-mount:not(.document-mode):not(.barcode-label-mode) .my-1\.5 {
+    margin-top: 2px !important;
+    margin-bottom: 2px !important;
+  }
+
+  /* CRITICAL: Receipt footer must stay glued directly under invoice totals without page break or blank gaps */
+  #print-mount .receipt-footer {
+    display: block !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    margin-top: 3px !important;
+    padding-top: 3px !important;
+    border-top: 1px dashed black !important;
+  }
+  #print-mount .receipt-footer img {
+    max-height: 22px !important;
+    max-width: 22px !important;
+    margin: 1px auto !important;
+    display: block !important;
+  }
+  #print-mount .receipt-footer p {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1.2 !important;
   }
 
   /* Compact scaling for longer receipts to guarantee fitting in 1 page on mini thermal printers */
@@ -346,12 +388,12 @@ body {
     padding: 1.5mm 1mm !important;
   }
   #print-mount.compact-receipt img {
-    max-height: 28px !important;
+    max-height: 24px !important;
   }
   #print-mount.compact-receipt tr,
   #print-mount.compact-receipt td,
   #print-mount.compact-receipt th {
-    padding: 1px 0 !important;
+    padding: 0.75px 0 !important;
   }
 
   #print-mount.compact-receipt-extra {
@@ -360,7 +402,7 @@ body {
     padding: 1mm 0.5mm !important;
   }
   #print-mount.compact-receipt-extra img {
-    max-height: 22px !important;
+    max-height: 18px !important;
   }
   #print-mount.compact-receipt-extra tr,
   #print-mount.compact-receipt-extra td,
@@ -370,7 +412,7 @@ body {
   #print-mount.compact-receipt-extra .space-y-3 > * + *,
   #print-mount.compact-receipt-extra .space-y-2 > * + *,
   #print-mount.compact-receipt-extra .space-y-1 > * + * {
-    margin-top: 2px !important;
+    margin-top: 1.5px !important;
   }
 
   button,

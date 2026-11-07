@@ -110,7 +110,7 @@ export default function PosPage() {
 
     setTimeout(() => {
       window.print();
-    }, 50);
+    }, 100);
   };
 
   const handleSaveQuickCustomer = async (e: React.FormEvent) => {
@@ -1610,17 +1610,17 @@ export default function PosPage() {
             </div>
 
             {/* Footer */}
-            <div className="text-center text-[10px] pt-2 border-t border-dashed border-black space-y-2">
-              <p>{receiptFooter || 'شكراً لتعاملكم معنا'}</p>
-              <div className="flex flex-col items-center justify-center pt-2 border-t border-dotted border-gray-300 space-y-1.5">
+            <div className="receipt-footer text-center text-[10px] pt-1.5 mt-2 border-t border-dashed border-black space-y-1">
+              <p className="text-[10px] text-gray-700">{receiptFooter || 'شكراً لتعاملكم معنا'}</p>
+              <div className="flex flex-col items-center justify-center pt-1 border-t border-dotted border-gray-300 space-y-0.5">
                 <Image 
                   src="/logo.png" 
                   alt="Sastmhaly Logo" 
-                  width={38} 
-                  height={38} 
-                  className="object-contain" 
+                  width={26} 
+                  height={26} 
+                  className="object-contain max-h-6" 
                 />
-                <p className="font-bold text-[11px] tracking-wider text-gray-700">Powered by Sastmhaly</p>
+                <p className="font-bold text-[9px] tracking-wider text-gray-600">Powered by Sastmhaly</p>
               </div>
             </div>
           </div>

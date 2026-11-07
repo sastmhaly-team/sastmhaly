@@ -102,7 +102,7 @@ export default function SalesManagementPage() {
 
     setTimeout(() => {
       window.print();
-    }, 50);
+    }, 100);
   };
 
   const mergeWithOfflineSales = (serverSales: Sale[]): Sale[] => {
@@ -754,11 +754,12 @@ export default function SalesManagementPage() {
                   </div>
                 </div>
 
-                <div className="text-center pt-2 text-[10px] text-gray-500 border-t border-dashed space-y-2">
+                {/* Footer */}
+                <div className="receipt-footer text-center pt-1.5 mt-2 text-[10px] text-gray-700 border-t border-dashed border-black space-y-1">
                   <p>{receiptFooter || 'شكراً لتعاملكم معنا'}</p>
-                  <div className="flex flex-col items-center justify-center pt-2 border-t border-dotted border-gray-300 space-y-1.5">
-                    <Image src="/logo.png" alt="Sastmhaly Logo" width={38} height={38} className="object-contain" />
-                    <p className="font-bold text-[11px] tracking-wider text-gray-700">Powered by Sastmhaly</p>
+                  <div className="flex flex-col items-center justify-center pt-1 border-t border-dotted border-gray-300 space-y-0.5">
+                    <Image src="/logo.png" alt="Sastmhaly Logo" width={26} height={26} className="object-contain max-h-6" />
+                    <p className="font-bold text-[9px] tracking-wider text-gray-600">Powered by Sastmhaly</p>
                   </div>
                 </div>
               </div>
