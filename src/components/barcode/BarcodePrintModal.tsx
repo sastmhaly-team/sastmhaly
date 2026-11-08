@@ -5,6 +5,7 @@ import { Modal } from '@/components/ui/Modal';
 import { BarcodeSvg } from './BarcodeSvg';
 import { Printer, Download, Sparkles, Plus, Minus, Tag, Check } from 'lucide-react';
 import { printBarcodeLabelsIsolated } from '@/lib/hardware/thermal-printer';
+import { renderCode128SvgString } from '@/lib/barcode/code128';
 
 export interface BarcodePrintProduct {
   name_ar: string;
@@ -44,19 +45,50 @@ export function BarcodePrintModal({
       '50x25': { width: '50mm', height: '25mm' },
     }[labelSize];
 
-    const stickerHtml = document.getElementById('barcode-single-sticker-preview')?.innerHTML || '';
+    const is25mm = labelSize === '38x25' || labelSize === '50x25';
+    const svgHeight = is25mm ? 18 : 24;
+    const storeFontSize = is25mm ? '8.5px' : '9.5px';
+    const prodFontSize = is25mm ? '9.5px' : '10.5px';
+    const priceFontSize = is25mm ? '11px' : '12px';
+    const codeFontSize = is25mm ? '8.5px' : '9.5px';
 
-    // Generate repeat stickers based on copies
-    let stickersGrid = '';
-    for (let i = 0; i < copies; i++) {
-      stickersGrid += `
-        <div class="barcode-sticker-item" style="width: ${sizeDimensions.width}; height: ${sizeDimensions.height}; page-break-inside: avoid; break-inside: avoid; margin: 1mm auto; box-sizing: border-box; padding: 1.5mm; text-align: center; background: #fff; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; border: none;">
-          ${stickerHtml}
+    const barcodeSvgHtml = renderCode128SvgString(product.barcode, svgHeight);
+
+    const singleStickerHtml = `
+      <div style="width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center; overflow: hidden; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Cairo', sans-serif;">
+        ${showStoreName ? `
+          <div style="font-size: ${storeFontSize}; font-weight: 700; color: #1f2937; line-height: 1.1; max-height: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%;">
+            ${tenantName}
+          </div>
+        ` : ''}
+
+        ${showProductName ? `
+          <div style="font-size: ${prodFontSize}; font-weight: 900; color: #000000; line-height: 1.15; max-height: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%;">
+            ${product.name_ar || product.name_en}
+          </div>
+        ` : ''}
+
+        ${showPrice ? `
+          <div style="font-size: ${priceFontSize}; font-weight: 900; color: #000000; line-height: 1.1; margin: 0.5px 0;">
+            ${product.selling_price.toFixed(2)} <span style="font-size: 7.5px; font-weight: 600;">${currency}</span>
+          </div>
+        ` : ''}
+
+        <div style="width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden;">
+          ${barcodeSvgHtml}
+          <span style="font-family: monospace, monospace; font-size: ${codeFontSize}; font-weight: 700; letter-spacing: 0.15em; color: #000000; line-height: 1; margin-top: 1px; text-align: center;">
+            ${product.barcode}
+          </span>
         </div>
-      `;
+      </div>
+    `;
+
+    const stickersList: string[] = [];
+    for (let i = 0; i < copies; i++) {
+      stickersList.push(singleStickerHtml);
     }
 
-    printBarcodeLabelsIsolated(stickersGrid, sizeDimensions);
+    printBarcodeLabelsIsolated(stickersList, sizeDimensions);
   };
 
   return (

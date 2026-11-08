@@ -63,6 +63,17 @@ export function encodeCode128(text: string): { totalWidth: number; bars: Barcode
 }
 
 /**
+ * Renders Code 128 barcode as a standalone inline SVG string with crisp rendering
+ */
+export function renderCode128SvgString(text: string, height: number = 24): string {
+  const { totalWidth, bars } = encodeCode128(text);
+  const rects = bars
+    .map(bar => `<rect x="${bar.x}" y="0" width="${bar.width}" height="${height}" fill="#000000" />`)
+    .join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} ${height}" style="width: 100%; height: ${height}px; display: block;" preserveAspectRatio="none" shape-rendering="crispEdges"><rect x="0" y="0" width="${totalWidth}" height="${height}" fill="#ffffff" />${rects}</svg>`;
+}
+
+/**
  * Generates an Egyptian standard or custom retail 13-digit barcode (EAN-13 style)
  */
 export function generateRandomBarcode(prefix: string = '622'): string {

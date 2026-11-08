@@ -605,36 +605,47 @@ export async function printReceiptUnified(
 }
 
 /**
- * Isolated Iframe Print specifically for Barcode Labels / Stickers
- * Ensures 0 margins, NO browser headers/footers (no URL, no page numbers, no title),
- * and prevents main window UI freezes or crashes.
+ * Isolated Iframe Print specifically for Mini Barcode Labels / Stickers
+ * Sets the EXACT physical page dimensions via @page { size: width height; margin: 0 !important; }
+ * Ensures each sticker prints on exactly 1 label with zero bleed, zero overflow, and no extra label feed.
  */
 export function printBarcodeLabelsIsolated(
-  stickersHtml: string,
-  dimensions?: { width: string; height: string }
+  stickers: string[] | string,
+  dimensions: { width: string; height: string }
 ): void {
   if (typeof window === 'undefined') return;
 
-  let iframe = document.getElementById('barcode-print-iframe') as HTMLIFrameElement;
-  if (!iframe) {
-    iframe = document.createElement('iframe');
-    iframe.id = 'barcode-print-iframe';
-    iframe.style.position = 'fixed';
-    iframe.style.top = '-9999px';
-    iframe.style.left = '-9999px';
-    iframe.style.width = dimensions?.width || '40mm';
-    iframe.style.height = '100px';
-    iframe.style.border = 'none';
-    iframe.style.opacity = '0';
-    iframe.style.pointerEvents = 'none';
-    document.body.appendChild(iframe);
+  // Remove any previous barcode print iframe to guarantee fresh styles
+  const oldIframe = document.getElementById('barcode-print-iframe');
+  if (oldIframe) {
+    oldIframe.remove();
   }
+
+  const iframe = document.createElement('iframe');
+  iframe.id = 'barcode-print-iframe';
+  iframe.style.position = 'fixed';
+  iframe.style.top = '-9999px';
+  iframe.style.left = '-9999px';
+  iframe.style.width = dimensions.width;
+  iframe.style.height = dimensions.height;
+  iframe.style.border = 'none';
+  iframe.style.opacity = '0';
+  iframe.style.pointerEvents = 'none';
+  document.body.appendChild(iframe);
 
   const doc = iframe.contentWindow?.document || iframe.contentDocument;
   if (!doc) {
     window.print();
     return;
   }
+
+  const stickersList = Array.isArray(stickers) ? stickers : [stickers];
+
+  const pagesHtml = stickersList.map((stickerContent, idx) => `
+    <div class="barcode-label-page" data-page="${idx + 1}">
+      ${stickerContent}
+    </div>
+  `).join('');
 
   doc.open();
   doc.write(`
@@ -645,14 +656,13 @@ export function printBarcodeLabelsIsolated(
       <title></title>
       <style>
         @page {
-          size: auto;
+          size: ${dimensions.width} ${dimensions.height};
           margin: 0 !important;
         }
         *, *::before, *::after {
           box-sizing: border-box;
-          border-width: 0;
-          border-style: solid;
-          border-color: transparent;
+          margin: 0;
+          padding: 0;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
@@ -663,52 +673,52 @@ export function printBarcodeLabelsIsolated(
           direction: rtl !important;
           margin: 0 !important;
           padding: 0 !important;
-          width: 100% !important;
+          width: ${dimensions.width} !important;
           height: auto !important;
+          overflow: hidden !important;
         }
-        .barcode-stickers-container {
-          display: flex !important;
-          flex-wrap: wrap !important;
-          justify-content: center !important;
-          align-items: center !important;
-          gap: 2mm !important;
-          padding: 1mm !important;
-          margin: 0 auto !important;
-        }
-        .barcode-sticker-item {
-          page-break-inside: avoid !important;
-          break-inside: avoid !important;
-          margin: 1mm auto !important;
+        .barcode-label-page {
+          width: ${dimensions.width} !important;
+          height: ${dimensions.height} !important;
+          max-width: ${dimensions.width} !important;
+          max-height: ${dimensions.height} !important;
+          margin: 0 !important;
+          padding: 0.8mm 1.2mm !important;
           box-sizing: border-box !important;
-          padding: 1.5mm !important;
-          text-align: center !important;
-          background: #ffffff !important;
           display: flex !important;
           flex-direction: column !important;
           justify-content: space-between !important;
           align-items: center !important;
+          text-align: center !important;
           overflow: hidden !important;
+          background: #ffffff !important;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          page-break-after: always !important;
+          break-after: page !important;
           border: none !important;
         }
-        @media screen {
-          .barcode-sticker-item {
-            border: 1px dashed #cbd5e1 !important;
-          }
+        .barcode-label-page:last-child {
+          page-break-after: avoid !important;
+          break-after: avoid !important;
         }
         @media print {
           @page {
-            size: auto;
+            size: ${dimensions.width} ${dimensions.height};
             margin: 0 !important;
           }
           html, body {
             margin: 0 !important;
             padding: 0 !important;
+            width: ${dimensions.width} !important;
+            height: ${dimensions.height} !important;
           }
-          .barcode-sticker-item {
+          .barcode-label-page {
             border: none !important;
+            margin: 0 !important;
           }
         }
-        /* Typography & Utilities matching Tailwind */
+        /* Typography & Utilities */
         .text-center { text-align: center !important; }
         .w-full { width: 100% !important; }
         .truncate { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
@@ -716,44 +726,25 @@ export function printBarcodeLabelsIsolated(
         .font-black { font-weight: 900 !important; }
         .font-semibold { font-weight: 600 !important; }
         .font-normal { font-weight: 400 !important; }
-        .font-mono { font-family: monospace, -apple-system, sans-serif !important; }
-        .text-\\[9px\\] { font-size: 9px !important; }
-        .text-\\[10px\\] { font-size: 10px !important; }
-        .text-\\[11px\\] { font-size: 11px !important; }
-        .text-\\[13px\\] { font-size: 13px !important; }
+        .font-mono { font-family: monospace, monospace !important; }
         .text-gray-800 { color: #1f2937 !important; }
-        .text-gray-600 { color: #4b5563 !important; }
         .text-black { color: #000000 !important; }
         .tracking-tight { letter-spacing: -0.025em !important; }
-        .tracking-\\[0\\.2em\\] { letter-spacing: 0.2em !important; }
-        .leading-tight { line-height: 1.2 !important; }
-        .line-clamp-1 {
-          display: -webkit-box !important;
-          -webkit-line-clamp: 1 !important;
-          -webkit-box-orient: vertical !important;
-          overflow: hidden !important;
-        }
+        .leading-tight { line-height: 1.15 !important; }
         .flex { display: flex !important; }
         .flex-col { flex-direction: column !important; }
         .items-center { align-items: center !important; }
         .justify-between { justify-content: space-between !important; }
-        .select-none { user-select: none !important; }
-        .px-1 { padding-left: 4px !important; padding-right: 4px !important; }
-        .my-0\\.5 { margin-top: 2px !important; margin-bottom: 2px !important; }
-        .mt-0\\.5 { margin-top: 2px !important; }
         svg {
           display: block !important;
           width: 100% !important;
           height: auto !important;
-          max-height: 40px !important;
           shape-rendering: crispEdges !important;
         }
       </style>
     </head>
     <body>
-      <div class="barcode-stickers-container">
-        ${stickersHtml}
-      </div>
+      ${pagesHtml}
     </body>
     </html>
   `);
