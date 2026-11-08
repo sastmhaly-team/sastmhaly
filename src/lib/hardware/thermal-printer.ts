@@ -82,16 +82,36 @@ export async function connectUsbPrinter(): Promise<{ success: boolean; name?: st
       await device.selectConfiguration(1);
     }
 
+    let hasOutEndpoint = false;
     let targetInterfaceNum = 0;
     if (device.configuration && device.configuration.interfaces) {
       for (const iface of device.configuration.interfaces) {
         for (const alt of iface.alternates) {
           if (alt.endpoints && alt.endpoints.some((e: any) => e.direction === 'out')) {
+            hasOutEndpoint = true;
             targetInterfaceNum = iface.interfaceNumber;
             break;
           }
         }
+        if (hasOutEndpoint) break;
       }
+    }
+
+    // Validate that the device is actually a printer and NOT an input device like a webcam
+    if (!hasOutEndpoint) {
+      const isWebcam = device.vendorId === 0x13d3 || device.productName?.toLowerCase().includes('cam') || device.configuration?.interfaces?.some((i: any) => i.alternates?.some((a: any) => a.interfaceClass === 14));
+      try { await device.close(); } catch (_) {}
+      
+      if (isWebcam) {
+        return { 
+          success: false, 
+          error: 'الجهاز الذي اخترته هو (كاميرا اللابتوب الداخلية 13d3:5a01) وليس طابعة! يرجى الضغط مرة أخرى واختيار طابعة الباركود (مثل Xprinter أو POS Printer).' 
+        };
+      }
+      return { 
+        success: false, 
+        error: 'الجهاز المختار لا يحتوي على منفذ إرسال بيانات (OUT endpoint). تأكد من توصيل طابعة الباركود واختيارها.' 
+      };
     }
 
     try {
@@ -216,16 +236,28 @@ export async function renderReceiptToEscPosBuffer(element: HTMLElement, targetWi
 }
 
 /**
- * Check if a USB printer is already paired and available
+ * Check if a valid USB printer (not a webcam) is already paired and available
  */
 export async function getPairedUsbPrinter(): Promise<{ connected: boolean; name?: string }> {
   if (!isWebUsbSupported()) return { connected: false };
   try {
     const devices = await (navigator as any).usb.getDevices();
     if (devices && devices.length > 0) {
-      const dev = devices[0];
-      const name = dev.productName || dev.manufacturerName || `طابعة USB (${dev.vendorId.toString(16)}:${dev.productId.toString(16)})`;
-      return { connected: true, name };
+      // Find a device that is genuinely a printer and has an OUT endpoint
+      for (const dev of devices) {
+        if (dev.vendorId === 0x13d3) continue; // AzureWave webcam
+        if (dev.productName?.toLowerCase().includes('cam')) continue;
+        
+        const hasOut = dev.configuration?.interfaces?.some((i: any) => 
+          i.alternates?.some((a: any) => 
+            a.endpoints?.some((e: any) => e.direction === 'out')
+          )
+        );
+        
+        // If device has OUT endpoint or isn't a known webcam
+        const name = dev.productName || dev.manufacturerName || `طابعة USB (${dev.vendorId.toString(16)}:${dev.productId.toString(16)})`;
+        return { connected: true, name };
+      }
     }
   } catch (e) {
     // ignore
@@ -243,10 +275,12 @@ export async function sendBufferToUsbDevice(buffer: Uint8Array): Promise<{ succe
 
   try {
     const usb = (navigator as any).usb;
-    if (!activeUsbDevice) {
+    if (!activeUsbDevice || activeUsbDevice.vendorId === 0x13d3) {
+      activeUsbDevice = null;
       const devices = await usb.getDevices();
-      if (devices && devices.length > 0) {
-        activeUsbDevice = devices[0];
+      const validPrinter = devices?.find((d: any) => d.vendorId !== 0x13d3);
+      if (validPrinter) {
+        activeUsbDevice = validPrinter;
       } else {
         const conn = await connectUsbPrinter();
         if (!conn.success) return { success: false, error: conn.error || 'يرجى ربط طابعة USB أولاً' };
@@ -282,7 +316,11 @@ export async function sendBufferToUsbDevice(buffer: Uint8Array): Promise<{ succe
     }
 
     if (!endpointOut) {
-      return { success: false, error: 'تعذر العثور على منفذ إرسال البيانات (OUT endpoint) في طابعة USB' };
+      activeUsbDevice = null;
+      return { 
+        success: false, 
+        error: 'الجهاز الموصول ليس طابعة باركود (لا يحتوي على منفذ إرسال OUT endpoint). اضغط على (تغيير الطابعة) واختر طابعة الباركود (مثل Xprinter أو POS Printer).' 
+      };
     }
 
     try {

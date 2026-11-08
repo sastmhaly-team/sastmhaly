@@ -55,11 +55,14 @@ export function BarcodePrintModal({
   useEffect(() => {
     if (isOpen && typeof window !== 'undefined') {
       getPairedUsbPrinter().then((res) => {
-        if (res.connected && res.name) {
+        if (res.connected && res.name && !res.name.includes('13d3') && !res.name.includes('5a01')) {
           setUsbPrinterName(res.name);
           setPrintMethod('usb');
-        } else if (!isWebUsbSupported()) {
-          setPrintMethod('system');
+        } else {
+          setUsbPrinterName(null);
+          if (!isWebUsbSupported()) {
+            setPrintMethod('system');
+          }
         }
       });
     }
@@ -149,6 +152,14 @@ export function BarcodePrintModal({
     setIsConnectingUsb(false);
 
     if (res.success && res.name) {
+      if (res.name.includes('13d3') || res.name.includes('5a01')) {
+        setUsbPrinterName(null);
+        setUsbFeedback({ 
+          success: false, 
+          message: 'تنبيه: لقد اخترت كاميرا اللابتوب الداخلية (13d3:5a01) بالخطأ! اضغط على الزر مرة أخرى واختر طابعة الباركود (مثل Xprinter أو POS Printer).' 
+        });
+        return;
+      }
       setUsbPrinterName(res.name);
       setPrintMethod('usb');
       setUsbFeedback({ success: true, message: `تم الاتصال بنجاح بطابعة: ${res.name}` });
@@ -367,7 +378,7 @@ export function BarcodePrintModal({
                     </div>
                     <div>
                       <p className="font-bold text-blue-950">اختر طابعة الباركود المتصلة بالـ USB</p>
-                      <p className="text-[10px] text-blue-700">اضغط للاختيار من قائمة أجهزة الـ USB وسيتعرف عليها المتصفح فوراً</p>
+                      <p className="text-[10px] text-blue-700">اضغط للاختيار من القائمة (اختر اسم طابعة الباركود مثل Xprinter أو POS Printer وليس كاميرا اللابتوب)</p>
                     </div>
                   </div>
                   <button
