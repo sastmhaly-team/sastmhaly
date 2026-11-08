@@ -5,14 +5,17 @@ import { Modal } from '@/components/ui/Modal';
 import { BarcodeSvg } from './BarcodeSvg';
 import { 
   Printer, Download, Sparkles, Plus, Minus, Tag, Check, AlertCircle, 
-  RotateCw, HelpCircle, Usb, CheckCircle2, RefreshCw, Zap 
+  RotateCw, HelpCircle, Usb, CheckCircle2, RefreshCw, Zap, Cable 
 } from 'lucide-react';
 import { 
   printBarcodeLabelsIsolated, 
   connectUsbPrinter, 
+  connectSerialPrinter,
   getPairedUsbPrinter, 
   printBarcodeDirectUsb, 
-  isWebUsbSupported 
+  printBarcodeDirectSerial,
+  isWebUsbSupported,
+  isWebSerialSupported 
 } from '@/lib/hardware/thermal-printer';
 import { renderCode128SvgString, encodeCode128 } from '@/lib/barcode/code128';
 
@@ -41,7 +44,7 @@ export function BarcodePrintModal({
 }: BarcodePrintModalProps) {
   const [copies, setCopies] = useState<number>(1);
   const [labelSize, setLabelSize] = useState<'38x25' | '40x30' | '50x25'>('38x25');
-  const [printMethod, setPrintMethod] = useState<'usb' | 'system'>('usb');
+  const [printMethod, setPrintMethod] = useState<'usb' | 'serial' | 'system'>('usb');
   const [usbPrinterName, setUsbPrinterName] = useState<string | null>(null);
   const [isConnectingUsb, setIsConnectingUsb] = useState<boolean>(false);
   const [isPrintingUsb, setIsPrintingUsb] = useState<boolean>(false);
@@ -168,8 +171,24 @@ export function BarcodePrintModal({
     }
   };
 
-  // Direct USB Print (No browser dialog, No blank feeds, Instant)
-  const handlePrintDirectUsb = async () => {
+  // Pair Serial / COM port directly
+  const handleConnectSerial = async () => {
+    setIsConnectingUsb(true);
+    setUsbFeedback(null);
+    const res = await connectSerialPrinter();
+    setIsConnectingUsb(false);
+
+    if (res.success && res.name) {
+      setUsbPrinterName(res.name);
+      setPrintMethod('serial');
+      setUsbFeedback({ success: true, message: `تم الاتصال بنجاح بمنفذ: ${res.name}` });
+    } else {
+      setUsbFeedback({ success: false, message: res.error || 'فشل الاتصال بمنفذ Serial' });
+    }
+  };
+
+  // Direct Hardware Print (USB or Serial via TSPL)
+  const handlePrintDirect = async () => {
     setIsPrintingUsb(true);
     setUsbFeedback(null);
 
@@ -180,11 +199,17 @@ export function BarcodePrintModal({
     }[labelSize];
 
     const canvas = generateStickerCanvas(dims.dotsW, dims.dotsH);
-    const res = await printBarcodeDirectUsb(canvas, dims.w, dims.h, copies);
+    
+    let res: { success: boolean; error?: string };
+    if (printMethod === 'serial') {
+      res = await printBarcodeDirectSerial(canvas, dims.w, dims.h, copies);
+    } else {
+      res = await printBarcodeDirectUsb(canvas, dims.w, dims.h, copies);
+    }
     setIsPrintingUsb(false);
 
     if (res.success) {
-      setUsbFeedback({ success: true, message: `تمت طباعة ${copies} ملصق مباشرة عبر USB بنجاح! ⚡` });
+      setUsbFeedback({ success: true, message: `تمت طباعة ${copies} ملصق مباشرة بنجاح! ⚡` });
       setTimeout(() => {
         onClose();
       }, 1200);
@@ -381,15 +406,29 @@ export function BarcodePrintModal({
                       <p className="text-[10px] text-blue-700">اضغط للاختيار من القائمة (اختر اسم طابعة الباركود مثل Xprinter أو POS Printer وليس كاميرا اللابتوب)</p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleConnectUsb}
-                    disabled={isConnectingUsb}
-                    className="px-3.5 py-1.5 bg-[#246BFD] hover:bg-[#1A54D4] text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
-                  >
-                    {isConnectingUsb ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Usb className="w-3.5 h-3.5" />}
-                    <span>اختيار الطابعة (USB)</span>
-                  </button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleConnectUsb}
+                      disabled={isConnectingUsb}
+                      className="px-3.5 py-1.5 bg-[#246BFD] hover:bg-[#1A54D4] text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      {isConnectingUsb ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Usb className="w-3.5 h-3.5" />}
+                      <span>اختيار كابل USB</span>
+                    </button>
+                    {isWebSerialSupported() && (
+                      <button
+                        type="button"
+                        onClick={handleConnectSerial}
+                        disabled={isConnectingUsb}
+                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                        title="منفذ COM الافتراضي يعمل مباشرة في ويندوز بدون تعارض"
+                      >
+                        <Cable className="w-3.5 h-3.5" />
+                        <span>منفذ Serial / COM</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -411,7 +450,7 @@ export function BarcodePrintModal({
                 <span className="font-semibold leading-relaxed">{usbFeedback.message}</span>
               </div>
               {!usbFeedback.success && (
-                <div className="flex items-center gap-2 pt-1">
+                <div className="flex items-center gap-2 pt-1 flex-wrap">
                   <button
                     type="button"
                     onClick={() => {
@@ -424,6 +463,16 @@ export function BarcodePrintModal({
                     <Printer className="w-3.5 h-3.5" />
                     <span>التبديل إلى طابعة المتصفح الآن (مع تدوير 90°)</span>
                   </button>
+                  {isWebSerialSupported() && (
+                    <button
+                      type="button"
+                      onClick={handleConnectSerial}
+                      className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Cable className="w-3.5 h-3.5" />
+                      <span>تجربة منفذ Serial / COM</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -680,10 +729,10 @@ export function BarcodePrintModal({
               إلغاء
             </button>
 
-            {printMethod === 'usb' ? (
+            {printMethod === 'usb' || printMethod === 'serial' ? (
               <button
                 type="button"
-                onClick={handlePrintDirectUsb}
+                onClick={handlePrintDirect}
                 disabled={isPrintingUsb}
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer disabled:opacity-50"
               >
@@ -692,7 +741,7 @@ export function BarcodePrintModal({
                 ) : (
                   <Zap className="w-4 h-4" />
                 )}
-                <span>طباعة {copies} ملصق فوراً عبر USB ⚡</span>
+                <span>طباعة {copies} ملصق فوراً {printMethod === 'serial' ? 'عبر COM' : 'عبر USB'} ⚡</span>
               </button>
             ) : (
               <button
