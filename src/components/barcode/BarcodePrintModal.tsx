@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { BarcodeSvg } from './BarcodeSvg';
-import { Printer, Download, Sparkles, Plus, Minus, Tag, Check } from 'lucide-react';
+import { Printer, Download, Sparkles, Plus, Minus, Tag, Check, AlertCircle } from 'lucide-react';
 import { printBarcodeLabelsIsolated } from '@/lib/hardware/thermal-printer';
 import { renderCode128SvgString } from '@/lib/barcode/code128';
 
@@ -31,7 +31,7 @@ export function BarcodePrintModal({
   currency = 'ج.م',
 }: BarcodePrintModalProps) {
   const [copies, setCopies] = useState<number>(1);
-  const [labelSize, setLabelSize] = useState<'38x25' | '40x30' | '50x25'>('40x30');
+  const [labelSize, setLabelSize] = useState<'38x25' | '40x30' | '50x25'>('38x25');
   const [showPrice, setShowPrice] = useState<boolean>(true);
   const [showStoreName, setShowStoreName] = useState<boolean>(true);
   const [showProductName, setShowProductName] = useState<boolean>(true);
@@ -39,6 +39,7 @@ export function BarcodePrintModal({
   if (!product) return null;
 
   const handlePrint = () => {
+    // Exact dimensions: 38x25 mm is 3.8 cm width x 2.5 cm height
     const sizeDimensions = {
       '38x25': { width: '38mm', height: '25mm' },
       '40x30': { width: '40mm', height: '30mm' },
@@ -46,37 +47,38 @@ export function BarcodePrintModal({
     }[labelSize];
 
     const is25mm = labelSize === '38x25' || labelSize === '50x25';
-    const svgHeight = is25mm ? 18 : 24;
-    const storeFontSize = is25mm ? '8.5px' : '9.5px';
-    const prodFontSize = is25mm ? '9.5px' : '10.5px';
-    const priceFontSize = is25mm ? '11px' : '12px';
-    const codeFontSize = is25mm ? '8.5px' : '9.5px';
+    // Calibrated heights to guarantee total content height is under 14mm, leaving >10mm margin inside 25mm height
+    const svgHeight = is25mm ? 15 : 22;
+    const storeFontSize = is25mm ? '8px' : '9.5px';
+    const prodFontSize = is25mm ? '8.5px' : '10px';
+    const priceFontSize = is25mm ? '9.5px' : '11.5px';
+    const codeFontSize = is25mm ? '8px' : '9px';
 
     const barcodeSvgHtml = renderCode128SvgString(product.barcode, svgHeight);
 
     const singleStickerHtml = `
-      <div style="width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center; overflow: hidden; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Cairo', sans-serif;">
+      <div style="width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center; overflow: hidden; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Cairo', sans-serif; direction: ltr;">
         ${showStoreName ? `
-          <div style="font-size: ${storeFontSize}; font-weight: 700; color: #1f2937; line-height: 1.1; max-height: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%;">
+          <div style="font-size: ${storeFontSize}; font-weight: 700; color: #1f2937; line-height: 1.1; max-height: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; text-align: center; direction: rtl;">
             ${tenantName}
           </div>
         ` : ''}
 
         ${showProductName ? `
-          <div style="font-size: ${prodFontSize}; font-weight: 900; color: #000000; line-height: 1.15; max-height: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%;">
+          <div style="font-size: ${prodFontSize}; font-weight: 900; color: #000000; line-height: 1.1; max-height: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; text-align: center; direction: rtl;">
             ${product.name_ar || product.name_en}
           </div>
         ` : ''}
 
         ${showPrice ? `
-          <div style="font-size: ${priceFontSize}; font-weight: 900; color: #000000; line-height: 1.1; margin: 0.5px 0;">
-            ${product.selling_price.toFixed(2)} <span style="font-size: 7.5px; font-weight: 600;">${currency}</span>
+          <div style="font-size: ${priceFontSize}; font-weight: 900; color: #000000; line-height: 1; margin: 0.5px 0; text-align: center; direction: rtl;">
+            ${product.selling_price.toFixed(2)} <span style="font-size: 7px; font-weight: 600;">${currency}</span>
           </div>
         ` : ''}
 
-        <div style="width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden;">
+        <div style="width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; direction: ltr;">
           ${barcodeSvgHtml}
-          <span style="font-family: monospace, monospace; font-size: ${codeFontSize}; font-weight: 700; letter-spacing: 0.15em; color: #000000; line-height: 1; margin-top: 1px; text-align: center;">
+          <span style="font-family: monospace, monospace; font-size: ${codeFontSize}; font-weight: 700; letter-spacing: 0.12em; color: #000000; line-height: 1; margin-top: 0.5px; text-align: center; display: block; width: 100%;">
             ${product.barcode}
           </span>
         </div>
@@ -166,9 +168,9 @@ export function BarcodePrintModal({
             </label>
             <div className="grid grid-cols-3 gap-1.5">
               {[
-                { id: '38x25', label: '38×25 mm', desc: 'صغير' },
-                { id: '40x30', label: '40×30 mm', desc: 'قياسي' },
-                { id: '50x25', label: '50×25 mm', desc: 'عريض' },
+                { id: '38x25', label: '2.5 × 3.8 cm', desc: '38×25 mm (الافتراضي)' },
+                { id: '40x30', label: '3.0 × 4.0 cm', desc: '40×30 mm' },
+                { id: '50x25', label: '2.5 × 5.0 cm', desc: '50×25 mm' },
               ].map(sz => (
                 <button
                   key={sz.id}
@@ -263,6 +265,17 @@ export function BarcodePrintModal({
             />
             <span className="font-semibold text-gray-700">سعر البيع</span>
           </label>
+        </div>
+
+        {/* Instruction Alert for Mini 2.5 x 3.8 cm Thermal Printers */}
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-xs text-amber-900 flex items-start gap-2.5">
+          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-0.5 leading-relaxed">
+            <p className="font-bold text-amber-900">تنبيه هام للطباعة على الملصقات الصغيرة (2.5 × 3.8 سم):</p>
+            <p className="text-[11px] text-amber-800">
+              في نافذة الطباعة الخاصة بجهازك (Print Settings)، تأكد من <strong>إلغاء تحديد خيار (Headers and footers / الرؤوس والتذييلات)</strong> لمنع ظهور الرابط والتاريخ على الملصق، واختيار مقاس الورق <strong>38x25mm (أو 2.5x3.8 cm)</strong>.
+            </p>
+          </div>
         </div>
 
         {/* Action Buttons */}

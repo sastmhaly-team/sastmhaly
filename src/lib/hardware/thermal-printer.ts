@@ -607,6 +607,7 @@ export async function printReceiptUnified(
 /**
  * Isolated Iframe Print specifically for Mini Barcode Labels / Stickers
  * Sets the EXACT physical page dimensions via @page { size: width height; margin: 0 !important; }
+ * Origin starts at TOP-LEFT (0, 0) with LTR alignment as required by thermal label printer hardware.
  * Ensures each sticker prints on exactly 1 label with zero bleed, zero overflow, and no extra label feed.
  */
 export function printBarcodeLabelsIsolated(
@@ -647,18 +648,25 @@ export function printBarcodeLabelsIsolated(
     </div>
   `).join('');
 
+  // Temporarily clear main document title so Chrome has no title string to print
+  const originalTitle = document.title;
+
   doc.open();
   doc.write(`
     <!DOCTYPE html>
-    <html dir="rtl" lang="ar">
+    <html dir="ltr" lang="en">
     <head>
       <meta charset="utf-8" />
       <title></title>
       <style>
         @page {
           size: ${dimensions.width} ${dimensions.height};
-          margin: 0 !important;
+          margin: 0mm !important;
         }
+        @page :first { margin: 0mm !important; }
+        @page :left { margin: 0mm !important; }
+        @page :right { margin: 0mm !important; }
+
         *, *::before, *::after {
           box-sizing: border-box;
           margin: 0;
@@ -669,12 +677,16 @@ export function printBarcodeLabelsIsolated(
         html, body {
           background: #ffffff !important;
           color: #000000 !important;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Cairo", sans-serif !important;
-          direction: rtl !important;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Cairo", Arial, sans-serif !important;
+          direction: ltr !important;
+          text-align: left !important;
           margin: 0 !important;
           padding: 0 !important;
           width: ${dimensions.width} !important;
-          height: auto !important;
+          height: ${dimensions.height} !important;
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
           overflow: hidden !important;
         }
         .barcode-label-page {
@@ -683,7 +695,7 @@ export function printBarcodeLabelsIsolated(
           max-width: ${dimensions.width} !important;
           max-height: ${dimensions.height} !important;
           margin: 0 !important;
-          padding: 0.8mm 1.2mm !important;
+          padding: 0.5mm 1mm !important;
           box-sizing: border-box !important;
           display: flex !important;
           flex-direction: column !important;
@@ -692,6 +704,10 @@ export function printBarcodeLabelsIsolated(
           text-align: center !important;
           overflow: hidden !important;
           background: #ffffff !important;
+          direction: ltr !important;
+          position: relative !important;
+          top: 0 !important;
+          left: 0 !important;
           page-break-inside: avoid !important;
           break-inside: avoid !important;
           page-break-after: always !important;
@@ -705,17 +721,23 @@ export function printBarcodeLabelsIsolated(
         @media print {
           @page {
             size: ${dimensions.width} ${dimensions.height};
-            margin: 0 !important;
+            margin: 0mm !important;
           }
           html, body {
             margin: 0 !important;
             padding: 0 !important;
             width: ${dimensions.width} !important;
             height: ${dimensions.height} !important;
+            direction: ltr !important;
+            top: 0 !important;
+            left: 0 !important;
           }
           .barcode-label-page {
             border: none !important;
             margin: 0 !important;
+            direction: ltr !important;
+            top: 0 !important;
+            left: 0 !important;
           }
         }
         /* Typography & Utilities */
@@ -727,14 +749,6 @@ export function printBarcodeLabelsIsolated(
         .font-semibold { font-weight: 600 !important; }
         .font-normal { font-weight: 400 !important; }
         .font-mono { font-family: monospace, monospace !important; }
-        .text-gray-800 { color: #1f2937 !important; }
-        .text-black { color: #000000 !important; }
-        .tracking-tight { letter-spacing: -0.025em !important; }
-        .leading-tight { line-height: 1.15 !important; }
-        .flex { display: flex !important; }
-        .flex-col { flex-direction: column !important; }
-        .items-center { align-items: center !important; }
-        .justify-between { justify-content: space-between !important; }
         svg {
           display: block !important;
           width: 100% !important;
@@ -754,8 +768,13 @@ export function printBarcodeLabelsIsolated(
     try {
       const contentWin = iframe.contentWindow;
       if (contentWin) {
+        document.title = '';
+        contentWin.document.title = '';
         contentWin.focus();
         contentWin.print();
+        setTimeout(() => {
+          document.title = originalTitle;
+        }, 1500);
       } else {
         window.print();
       }
