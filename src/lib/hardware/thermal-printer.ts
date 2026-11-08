@@ -81,7 +81,24 @@ export async function connectUsbPrinter(): Promise<{ success: boolean; name?: st
     if (device.configuration === null) {
       await device.selectConfiguration(1);
     }
-    await device.claimInterface(0);
+
+    let targetInterfaceNum = 0;
+    if (device.configuration && device.configuration.interfaces) {
+      for (const iface of device.configuration.interfaces) {
+        for (const alt of iface.alternates) {
+          if (alt.endpoints && alt.endpoints.some((e: any) => e.direction === 'out')) {
+            targetInterfaceNum = iface.interfaceNumber;
+            break;
+          }
+        }
+      }
+    }
+
+    try {
+      await device.claimInterface(targetInterfaceNum);
+    } catch (e) {
+      console.warn('Interface claim notice on connect:', e);
+    }
 
     activeUsbDevice = device;
     const name = device.productName || device.manufacturerName || `طابعة USB (${device.vendorId.toString(16)}:${device.productId.toString(16)})`;
@@ -199,24 +216,37 @@ export async function renderReceiptToEscPosBuffer(element: HTMLElement, targetWi
 }
 
 /**
- * Print directly to connected USB thermal printer without browser print dialog
+ * Check if a USB printer is already paired and available
  */
-export async function printDirectUsb(elementId: string): Promise<{ success: boolean; error?: string }> {
-  const element = document.getElementById(elementId);
-  if (!element) return { success: false, error: 'عنصر الفاتورة غير موجود' };
+export async function getPairedUsbPrinter(): Promise<{ connected: boolean; name?: string }> {
+  if (!isWebUsbSupported()) return { connected: false };
+  try {
+    const devices = await (navigator as any).usb.getDevices();
+    if (devices && devices.length > 0) {
+      const dev = devices[0];
+      const name = dev.productName || dev.manufacturerName || `طابعة USB (${dev.vendorId.toString(16)}:${dev.productId.toString(16)})`;
+      return { connected: true, name };
+    }
+  } catch (e) {
+    // ignore
+  }
+  return { connected: false };
+}
+
+/**
+ * Send raw binary buffer to active USB thermal printer
+ */
+export async function sendBufferToUsbDevice(buffer: Uint8Array): Promise<{ success: boolean; error?: string }> {
+  if (!isWebUsbSupported()) {
+    return { success: false, error: 'المتصفح لا يدعم اتصال USB (يرجى استخدام Chrome أو Edge)' };
+  }
 
   try {
+    const usb = (navigator as any).usb;
     if (!activeUsbDevice) {
-      // Try to re-detect paired USB device
-      const usb = (navigator as any).usb;
       const devices = await usb.getDevices();
       if (devices && devices.length > 0) {
         activeUsbDevice = devices[0];
-        await activeUsbDevice.open();
-        if (activeUsbDevice.configuration === null) {
-          await activeUsbDevice.selectConfiguration(1);
-        }
-        await activeUsbDevice.claimInterface(0);
       } else {
         const conn = await connectUsbPrinter();
         if (!conn.success) return { success: false, error: conn.error || 'يرجى ربط طابعة USB أولاً' };
@@ -227,18 +257,135 @@ export async function printDirectUsb(elementId: string): Promise<{ success: bool
       return { success: false, error: 'طابعة USB غير متصلة' };
     }
 
-    // Determine target width (384 for 58mm, 576 for 80mm)
-    const buffer = await renderReceiptToEscPosBuffer(element, 384);
-
-    // Find OUT endpoint
-    const iface = activeUsbDevice.configuration.interfaces[0];
-    const endpointOut = iface.alternates[0].endpoints.find((e: any) => e.direction === 'out');
-    if (!endpointOut) {
-      return { success: false, error: 'تعذر العثور على منفذ إرسال البيانات لطابعة USB' };
+    if (!activeUsbDevice.opened) {
+      await activeUsbDevice.open();
+    }
+    if (activeUsbDevice.configuration === null) {
+      await activeUsbDevice.selectConfiguration(1);
     }
 
-    await activeUsbDevice.transferOut(endpointOut.endpointNumber, buffer);
+    let targetInterfaceNum = 0;
+    let endpointOut: any = null;
+
+    if (activeUsbDevice.configuration && activeUsbDevice.configuration.interfaces) {
+      for (const iface of activeUsbDevice.configuration.interfaces) {
+        for (const alt of iface.alternates) {
+          const outEp = alt.endpoints?.find((e: any) => e.direction === 'out');
+          if (outEp) {
+            targetInterfaceNum = iface.interfaceNumber;
+            endpointOut = outEp;
+            break;
+          }
+        }
+        if (endpointOut) break;
+      }
+    }
+
+    if (!endpointOut) {
+      return { success: false, error: 'تعذر العثور على منفذ إرسال البيانات (OUT endpoint) في طابعة USB' };
+    }
+
+    try {
+      await activeUsbDevice.claimInterface(targetInterfaceNum);
+    } catch (e) {
+      // If already claimed, ignore
+    }
+
+    // Split large buffers into 16KB chunks to prevent USB packet overflow
+    const chunkSize = 16384;
+    for (let offset = 0; offset < buffer.length; offset += chunkSize) {
+      const chunk = buffer.subarray(offset, Math.min(offset + chunkSize, buffer.length));
+      await activeUsbDevice.transferOut(endpointOut.endpointNumber, chunk);
+    }
+
     return { success: true };
+  } catch (err: any) {
+    console.error('USB transfer error:', err);
+    return { success: false, error: err.message || 'فشلت الطباعة عبر USB' };
+  }
+}
+
+/**
+ * Build TSPL binary command buffer from a rendered canvas for thermal barcode label printers
+ * (Xprinter XP-365B, XP-235B, Rongta, TSC, Gprinter, etc.)
+ */
+export function createTsplBarcodeBuffer(
+  widthMm: number,
+  heightMm: number,
+  canvas: HTMLCanvasElement,
+  copies: number = 1
+): Uint8Array {
+  const widthBytes = Math.ceil(canvas.width / 8);
+  const heightDots = canvas.height;
+  
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Could not get 2D canvas context');
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imgData.data;
+
+  // In TSPL mode 0, 0 is white, 1 is black
+  const rasterData = new Uint8Array(widthBytes * heightDots);
+
+  for (let y = 0; y < heightDots; y++) {
+    for (let x = 0; x < canvas.width; x++) {
+      const idx = (y * canvas.width + x) * 4;
+      const r = data[idx];
+      const g = data[idx + 1];
+      const b = data[idx + 2];
+      const a = data[idx + 3];
+
+      const isBlack = a > 128 && (0.299 * r + 0.587 * g + 0.114 * b) < 165;
+      if (isBlack) {
+        const byteIndex = y * widthBytes + Math.floor(x / 8);
+        const bitIndex = 7 - (x % 8);
+        rasterData[byteIndex] |= (1 << bitIndex);
+      }
+    }
+  }
+
+  const encoder = new TextEncoder();
+  const headerStr = `SIZE ${widthMm} mm, ${heightMm} mm\r\nGAP 2 mm, 0 mm\r\nDIRECTION 1\r\nCLS\r\nBITMAP 0,0,${widthBytes},${heightDots},0,`;
+  const header = encoder.encode(headerStr);
+  const footerStr = `\r\nPRINT ${copies},1\r\n`;
+  const footer = encoder.encode(footerStr);
+
+  const fullBuffer = new Uint8Array(header.length + rasterData.length + footer.length);
+  fullBuffer.set(header, 0);
+  fullBuffer.set(rasterData, header.length);
+  fullBuffer.set(footer, header.length + rasterData.length);
+  return fullBuffer;
+}
+
+/**
+ * Print barcode label directly to connected USB thermal printer via TSPL protocol
+ * Runs in under 100ms without opening any browser dialog
+ */
+export async function printBarcodeDirectUsb(
+  canvas: HTMLCanvasElement,
+  widthMm: number,
+  heightMm: number,
+  copies: number = 1
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const buffer = createTsplBarcodeBuffer(widthMm, heightMm, canvas, copies);
+    return await sendBufferToUsbDevice(buffer);
+  } catch (err: any) {
+    console.error('Direct USB barcode print error:', err);
+    return { success: false, error: err.message || 'فشلت الطباعة المباشرة عبر USB' };
+  }
+}
+
+/**
+ * Print directly to connected USB thermal printer without browser print dialog
+ */
+export async function printDirectUsb(elementId: string): Promise<{ success: boolean; error?: string }> {
+  const element = document.getElementById(elementId);
+  if (!element) return { success: false, error: 'عنصر الفاتورة غير موجود' };
+
+  try {
+    // Determine target width (384 for 58mm, 576 for 80mm)
+    const buffer = await renderReceiptToEscPosBuffer(element, 384);
+    return await sendBufferToUsbDevice(buffer);
   } catch (err: any) {
     console.error('USB print error:', err);
     return { success: false, error: err.message || 'فشلت الطباعة عبر USB' };

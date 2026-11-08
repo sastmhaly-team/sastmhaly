@@ -1,10 +1,19 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { BarcodeSvg } from './BarcodeSvg';
-import { Printer, Download, Sparkles, Plus, Minus, Tag, Check, AlertCircle, RotateCw, HelpCircle } from 'lucide-react';
-import { printBarcodeLabelsIsolated } from '@/lib/hardware/thermal-printer';
+import { 
+  Printer, Download, Sparkles, Plus, Minus, Tag, Check, AlertCircle, 
+  RotateCw, HelpCircle, Usb, CheckCircle2, RefreshCw, Zap 
+} from 'lucide-react';
+import { 
+  printBarcodeLabelsIsolated, 
+  connectUsbPrinter, 
+  getPairedUsbPrinter, 
+  printBarcodeDirectUsb, 
+  isWebUsbSupported 
+} from '@/lib/hardware/thermal-printer';
 import { renderCode128SvgString, encodeCode128 } from '@/lib/barcode/code128';
 
 export interface BarcodePrintProduct {
@@ -32,15 +41,152 @@ export function BarcodePrintModal({
 }: BarcodePrintModalProps) {
   const [copies, setCopies] = useState<number>(1);
   const [labelSize, setLabelSize] = useState<'38x25' | '40x30' | '50x25'>('38x25');
+  const [printMethod, setPrintMethod] = useState<'usb' | 'system'>('usb');
+  const [usbPrinterName, setUsbPrinterName] = useState<string | null>(null);
+  const [isConnectingUsb, setIsConnectingUsb] = useState<boolean>(false);
+  const [isPrintingUsb, setIsPrintingUsb] = useState<boolean>(false);
+  const [usbFeedback, setUsbFeedback] = useState<{ success: boolean; message: string } | null>(null);
   const [orientation, setOrientation] = useState<'horizontal' | 'rotate90' | 'vertical'>('horizontal');
   const [showPrice, setShowPrice] = useState<boolean>(true);
   const [showStoreName, setShowStoreName] = useState<boolean>(true);
   const [showProductName, setShowProductName] = useState<boolean>(true);
 
+  // Check on mount if a USB printer is already paired
+  useEffect(() => {
+    if (isOpen && typeof window !== 'undefined') {
+      getPairedUsbPrinter().then((res) => {
+        if (res.connected && res.name) {
+          setUsbPrinterName(res.name);
+          setPrintMethod('usb');
+        } else if (!isWebUsbSupported()) {
+          setPrintMethod('system');
+        }
+      });
+    }
+  }, [isOpen]);
+
   if (!product) return null;
 
-  const handlePrint = () => {
-    // Exact dimensions: 38x25 mm is 3.8 cm width x 2.5 cm height
+  // Generate an accurate canvas representation of the sticker
+  const generateStickerCanvas = (widthPx: number, heightPx: number): HTMLCanvasElement => {
+    const canvas = document.createElement('canvas');
+    canvas.width = widthPx;
+    canvas.height = heightPx;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return canvas;
+
+    // Crisp White Background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, widthPx, heightPx);
+
+    let currentY = Math.round(heightPx * 0.05);
+
+    // 1. Store Name
+    if (showStoreName) {
+      ctx.fillStyle = '#1f2937';
+      ctx.font = `bold ${Math.round(heightPx * 0.11)}px -apple-system, BlinkMacSystemFont, "Cairo", Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(tenantName, widthPx / 2, currentY, widthPx - 16);
+      currentY += Math.round(heightPx * 0.13);
+    }
+
+    // 2. Product Name
+    if (showProductName) {
+      ctx.fillStyle = '#000000';
+      ctx.font = `900 ${Math.round(heightPx * 0.12)}px -apple-system, BlinkMacSystemFont, "Cairo", Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      const prodName = product.name_ar || product.name_en || '';
+      ctx.fillText(prodName, widthPx / 2, currentY, widthPx - 16);
+      currentY += Math.round(heightPx * 0.14);
+    }
+
+    // 3. Price
+    if (showPrice) {
+      ctx.fillStyle = '#000000';
+      ctx.font = `900 ${Math.round(heightPx * 0.14)}px -apple-system, BlinkMacSystemFont, "Cairo", Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`${product.selling_price.toFixed(2)} ${currency}`, widthPx / 2, currentY, widthPx - 16);
+      currentY += Math.round(heightPx * 0.16);
+    }
+
+    // 4. Barcode Bars
+    const { totalWidth, bars } = encodeCode128(product.barcode);
+    const barcodeAvailableWidth = widthPx - 24;
+    const barcodeAvailableHeight = Math.max(30, heightPx - currentY - Math.round(heightPx * 0.16));
+    const scaleX = barcodeAvailableWidth / totalWidth;
+    const startX = 12;
+
+    ctx.fillStyle = '#000000';
+    for (const bar of bars) {
+      ctx.fillRect(
+        startX + bar.x * scaleX,
+        currentY,
+        Math.max(1, bar.width * scaleX),
+        barcodeAvailableHeight
+      );
+    }
+
+    currentY += barcodeAvailableHeight + 4;
+
+    // 5. Barcode Number
+    ctx.fillStyle = '#000000';
+    ctx.font = `bold ${Math.round(heightPx * 0.10)}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(product.barcode, widthPx / 2, currentY);
+
+    return canvas;
+  };
+
+  // Pair or switch USB printer directly
+  const handleConnectUsb = async () => {
+    setIsConnectingUsb(true);
+    setUsbFeedback(null);
+    const res = await connectUsbPrinter();
+    setIsConnectingUsb(false);
+
+    if (res.success && res.name) {
+      setUsbPrinterName(res.name);
+      setPrintMethod('usb');
+      setUsbFeedback({ success: true, message: `تم الاتصال بنجاح بطابعة: ${res.name}` });
+    } else {
+      setUsbFeedback({ success: false, message: res.error || 'فشل الاتصال بطابعة USB' });
+    }
+  };
+
+  // Direct USB Print (No browser dialog, No blank feeds, Instant)
+  const handlePrintDirectUsb = async () => {
+    setIsPrintingUsb(true);
+    setUsbFeedback(null);
+
+    const dims = {
+      '38x25': { w: 38, h: 25, dotsW: 304, dotsH: 200 },
+      '40x30': { w: 40, h: 30, dotsW: 320, dotsH: 240 },
+      '50x25': { w: 50, h: 25, dotsW: 400, dotsH: 200 },
+    }[labelSize];
+
+    const canvas = generateStickerCanvas(dims.dotsW, dims.dotsH);
+    const res = await printBarcodeDirectUsb(canvas, dims.w, dims.h, copies);
+    setIsPrintingUsb(false);
+
+    if (res.success) {
+      setUsbFeedback({ success: true, message: `تمت طباعة ${copies} ملصق مباشرة عبر USB بنجاح! ⚡` });
+      setTimeout(() => {
+        onClose();
+      }, 1200);
+    } else {
+      setUsbFeedback({ 
+        success: false, 
+        message: `${res.error} (يمكنك استخدام خيار طباعة المتصفح كبديل) `
+      });
+    }
+  };
+
+  // System Print via isolated iframe
+  const handlePrintSystem = () => {
     const sizeDimensions = {
       '38x25': { width: '38mm', height: '25mm' },
       '40x30': { width: '40mm', height: '30mm' },
@@ -48,7 +194,6 @@ export function BarcodePrintModal({
     }[labelSize];
 
     const is25mm = labelSize === '38x25' || labelSize === '50x25';
-    // Calibrated heights to guarantee total content height is under 14mm, leaving >10mm margin inside 25mm height
     const svgHeight = is25mm ? 15 : 22;
     const storeFontSize = is25mm ? '8px' : '9.5px';
     const prodFontSize = is25mm ? '8.5px' : '10px';
@@ -96,80 +241,10 @@ export function BarcodePrintModal({
 
   const handleDownloadImage = () => {
     if (!product) return;
-    const canvas = document.createElement('canvas');
-    // High-resolution 300 DPI canvas for 38x25mm (approx 449 x 295 pixels)
     const widthPx = labelSize === '50x25' ? 590 : labelSize === '40x30' ? 472 : 449;
     const heightPx = labelSize === '40x30' ? 354 : 295;
+    const canvas = generateStickerCanvas(widthPx, heightPx);
 
-    canvas.width = widthPx;
-    canvas.height = heightPx;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Fill Crisp White Background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, widthPx, heightPx);
-
-    let currentY = 18;
-
-    // 1. Store Name
-    if (showStoreName) {
-      ctx.fillStyle = '#1f2937';
-      ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Cairo", Arial, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText(tenantName, widthPx / 2, currentY, widthPx - 24);
-      currentY += 30;
-    }
-
-    // 2. Product Name
-    if (showProductName) {
-      ctx.fillStyle = '#000000';
-      ctx.font = '900 26px -apple-system, BlinkMacSystemFont, "Cairo", Arial, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      const prodName = product.name_ar || product.name_en || '';
-      ctx.fillText(prodName, widthPx / 2, currentY, widthPx - 20);
-      currentY += 34;
-    }
-
-    // 3. Price
-    if (showPrice) {
-      ctx.fillStyle = '#000000';
-      ctx.font = '900 30px -apple-system, BlinkMacSystemFont, "Cairo", Arial, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText(`${product.selling_price.toFixed(2)} ${currency}`, widthPx / 2, currentY, widthPx - 20);
-      currentY += 38;
-    }
-
-    // 4. Barcode Bars
-    const { totalWidth, bars } = encodeCode128(product.barcode);
-    const barcodeAvailableWidth = widthPx - 40;
-    const barcodeAvailableHeight = Math.max(50, heightPx - currentY - 48);
-    const scaleX = barcodeAvailableWidth / totalWidth;
-    const startX = 20;
-
-    ctx.fillStyle = '#000000';
-    for (const bar of bars) {
-      ctx.fillRect(
-        startX + bar.x * scaleX,
-        currentY,
-        Math.max(1, bar.width * scaleX),
-        barcodeAvailableHeight
-      );
-    }
-
-    currentY += barcodeAvailableHeight + 6;
-
-    // 5. Barcode Number
-    ctx.fillStyle = '#000000';
-    ctx.font = 'bold 22px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(product.barcode, widthPx / 2, currentY);
-
-    // Trigger instant PNG file download
     const link = document.createElement('a');
     link.download = `barcode-${product.barcode}-${labelSize}.png`;
     link.href = canvas.toDataURL('image/png');
@@ -197,6 +272,129 @@ export function BarcodePrintModal({
           <div className="text-left rtl:text-right font-black text-sm text-[#246BFD]">
             {product.selling_price.toFixed(2)} {currency}
           </div>
+        </div>
+
+        {/* Print Method Switcher: Direct USB vs Browser System Print */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="block font-bold text-xs text-[#0B1730]">
+              طريقة الطباعة (Print Method):
+            </label>
+            <span className="text-[10px] text-gray-500">
+              {printMethod === 'usb' ? '⚡ طباعة مباشرة بدون نوافذ' : '📄 طباعة عبر نافذة المتصفح'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <button
+              type="button"
+              onClick={() => setPrintMethod('usb')}
+              className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer flex items-start gap-2.5 ${
+                printMethod === 'usb'
+                  ? 'bg-emerald-50/70 border-emerald-500 text-emerald-950 font-bold shadow-xs'
+                  : 'bg-white border-[#E5EAF2] text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <div className={`p-1.5 rounded-lg ${printMethod === 'usb' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                <Usb className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="font-bold flex items-center gap-1.5">
+                  <span>طابعة USB مباشرة (الأفضل)</span>
+                  {printMethod === 'usb' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+                </div>
+                <div className="text-[10px] opacity-80 font-normal mt-0.5">
+                  تطبع فوراً بضغطة زر مثل البرامج المثبتة بدون أي نوافذ
+                </div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPrintMethod('system')}
+              className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer flex items-start gap-2.5 ${
+                printMethod === 'system'
+                  ? 'bg-blue-50/70 border-blue-500 text-blue-950 font-bold shadow-xs'
+                  : 'bg-white border-[#E5EAF2] text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <div className={`p-1.5 rounded-lg ${printMethod === 'system' ? 'bg-[#246BFD] text-white' : 'bg-gray-100 text-gray-500'}`}>
+                <Printer className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="font-bold flex items-center gap-1.5">
+                  <span>طابعة المتصفح (System Print)</span>
+                  {printMethod === 'system' && <CheckCircle2 className="w-3.5 h-3.5 text-[#246BFD]" />}
+                </div>
+                <div className="text-[10px] opacity-80 font-normal mt-0.5">
+                  تفتح نافذة الطباعة لاختيار أي طابعة معرفة بالكمبيوتر
+                </div>
+              </div>
+            </button>
+          </div>
+
+          {/* USB Device Status / Pair Button */}
+          {printMethod === 'usb' && (
+            <div className="mt-2 animate-in fade-in zoom-in-95">
+              {usbPrinterName ? (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700 shrink-0">
+                      <Usb className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <span>متصل: {usbPrinterName}</span>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      </div>
+                      <p className="text-[10px] text-emerald-700">جاهز للطباعة المباشرة ببروتوكول TSPL بدون ورق أبيض زائد</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleConnectUsb}
+                    disabled={isConnectingUsb}
+                    className="px-2.5 py-1 text-[11px] font-bold text-emerald-800 bg-white border border-emerald-300 rounded-lg hover:bg-emerald-100 transition-colors cursor-pointer"
+                  >
+                    {isConnectingUsb ? 'جاري الفحص...' : 'تغيير الطابعة'}
+                  </button>
+                </div>
+              ) : (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-xs text-blue-900">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center text-[#246BFD] shrink-0">
+                      <Usb className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-blue-950">اختر طابعة الباركود المتصلة بالـ USB</p>
+                      <p className="text-[10px] text-blue-700">اضغط للاختيار من قائمة أجهزة الـ USB وسيتعرف عليها المتصفح فوراً</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleConnectUsb}
+                    disabled={isConnectingUsb}
+                    className="px-3.5 py-1.5 bg-[#246BFD] hover:bg-[#1A54D4] text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    {isConnectingUsb ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Usb className="w-3.5 h-3.5" />}
+                    <span>اختيار الطابعة (USB)</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* USB Feedback Toast */}
+          {usbFeedback && (
+            <div className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 ${
+              usbFeedback.success 
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900 font-bold' 
+                : 'bg-red-50 border-red-200 text-red-900'
+            }`}>
+              {usbFeedback.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />}
+              <span>{usbFeedback.message}</span>
+            </div>
+          )}
         </div>
 
         {/* Live Sticker Preview */}
@@ -449,14 +647,30 @@ export function BarcodePrintModal({
               إلغاء
             </button>
 
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#246BFD] hover:bg-[#1A54D4] active:scale-95 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer"
-            >
-              <Printer className="w-4 h-4" />
-              <span>طباعة {copies} ملصق باركود 🏷️</span>
-            </button>
+            {printMethod === 'usb' ? (
+              <button
+                type="button"
+                onClick={handlePrintDirectUsb}
+                disabled={isPrintingUsb}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isPrintingUsb ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Zap className="w-4 h-4" />
+                )}
+                <span>طباعة {copies} ملصق فوراً عبر USB ⚡</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handlePrintSystem}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#246BFD] hover:bg-[#1A54D4] active:scale-95 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>طباعة {copies} ملصق عبر المتصفح 🏷️</span>
+              </button>
+            )}
           </div>
         </div>
 
