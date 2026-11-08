@@ -127,6 +127,13 @@ export async function connectUsbPrinter(): Promise<{ success: boolean; name?: st
     return { success: true, name };
   } catch (err: any) {
     console.error('USB printer connect error:', err);
+    const msg = (err.message || '').toLowerCase();
+    if (msg.includes('access denied') || msg.includes('securityerror')) {
+      return { 
+        success: false, 
+        error: 'ويندوز يحجز طابعة الـ USB لصالح تعريف الويندوز المثبت (Access Denied). يرجى التبديل لخيار (طابعة المتصفح) واختيار (تدوير 90°) للطباعة فوراً وبشكل مضبوط عبر الويندوز.' 
+      };
+    }
     return { success: false, error: err.message || 'فشل الاتصال بطابعة USB' };
   }
 }
@@ -339,7 +346,49 @@ export async function sendBufferToUsbDevice(buffer: Uint8Array): Promise<{ succe
     return { success: true };
   } catch (err: any) {
     console.error('USB transfer error:', err);
+    const msg = (err.message || '').toLowerCase();
+    if (msg.includes('access denied') || msg.includes('securityerror')) {
+      return { 
+        success: false, 
+        error: 'ويندوز يحجز طابعة الـ USB لصالح تعريف الويندوز المثبت (Access Denied). يرجى التبديل لخيار (طابعة المتصفح) مع تفعيل (تدوير 90°) للطباعة المباشرة عبر الويندوز.' 
+      };
+    }
     return { success: false, error: err.message || 'فشلت الطباعة عبر USB' };
+  }
+}
+
+/**
+ * Print barcode label directly to connected Serial / COM thermal printer via TSPL protocol
+ */
+export async function printBarcodeDirectSerial(
+  canvas: HTMLCanvasElement,
+  widthMm: number,
+  heightMm: number,
+  copies: number = 1
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!activeSerialPort) {
+      const conn = await connectSerialPrinter();
+      if (!conn.success) return { success: false, error: conn.error || 'يرجى ربط منفذ الطابعة أولاً' };
+    }
+
+    if (!activeSerialPort) {
+      return { success: false, error: 'منفذ الطابعة غير متصل' };
+    }
+
+    const buffer = createTsplBarcodeBuffer(widthMm, heightMm, canvas, copies);
+
+    if (!activeSerialPort.readable || !activeSerialPort.writable) {
+      await activeSerialPort.open({ baudRate: 9600 });
+    }
+    const writer = activeSerialPort.writable.getWriter();
+    await writer.write(buffer);
+    writer.releaseLock();
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Serial barcode print error:', err);
+    return { success: false, error: err.message || 'فشلت الطباعة عبر منفذ Serial' };
   }
 }
 

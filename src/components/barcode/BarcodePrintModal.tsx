@@ -397,13 +397,35 @@ export function BarcodePrintModal({
 
           {/* USB Feedback Toast */}
           {usbFeedback && (
-            <div className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 ${
+            <div className={`p-3 rounded-xl border text-xs space-y-2 ${
               usbFeedback.success 
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-900 font-bold' 
-                : 'bg-red-50 border-red-200 text-red-900'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900 font-bold flex items-center gap-2' 
+                : 'bg-amber-50 border-amber-300 text-amber-950'
             }`}>
-              {usbFeedback.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />}
-              <span>{usbFeedback.message}</span>
+              <div className="flex items-center gap-2">
+                {usbFeedback.success ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                )}
+                <span className="font-semibold leading-relaxed">{usbFeedback.message}</span>
+              </div>
+              {!usbFeedback.success && (
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPrintMethod('system');
+                      setOrientation('rotate90');
+                      setUsbFeedback(null);
+                    }}
+                    className="px-3 py-1.5 bg-[#246BFD] hover:bg-[#1A54D4] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>التبديل إلى طابعة المتصفح الآن (مع تدوير 90°)</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
