@@ -605,14 +605,23 @@ export async function printReceiptUnified(
 }
 
 /**
+ * Options for Barcode Label printing
+ */
+export interface BarcodePrintOptions {
+  orientation?: 'horizontal' | 'rotate90' | 'vertical';
+}
+
+/**
  * Isolated Iframe Print specifically for Mini Barcode Labels / Stickers
  * Sets the EXACT physical page dimensions via @page { size: width height; margin: 0 !important; }
  * Origin starts at TOP-LEFT (0, 0) with LTR alignment as required by thermal label printer hardware.
- * Ensures each sticker prints on exactly 1 label with zero bleed, zero overflow, and no extra label feed.
+ * Supports standard horizontal mode and 90-degree counter-rotation for inverted printer drivers.
+ * Calibrated to prevent fractional sub-pixel overflow and suppress blank label feeds.
  */
 export function printBarcodeLabelsIsolated(
   stickers: string[] | string,
-  dimensions: { width: string; height: string }
+  dimensions: { width: string; height: string },
+  options?: BarcodePrintOptions
 ): void {
   if (typeof window === 'undefined') return;
 
@@ -641,10 +650,15 @@ export function printBarcodeLabelsIsolated(
   }
 
   const stickersList = Array.isArray(stickers) ? stickers : [stickers];
+  const isRotated = options?.orientation === 'rotate90';
 
   const pagesHtml = stickersList.map((stickerContent, idx) => `
     <div class="barcode-label-page" data-page="${idx + 1}">
-      ${stickerContent}
+      ${isRotated ? `
+        <div class="barcode-rotated-inner" style="width: calc(${dimensions.height} - 1.5mm) !important; height: calc(${dimensions.width} - 1.5mm) !important; transform: rotate(90deg) !important; transform-origin: center center !important; display: flex !important; flex-direction: column !important; justify-content: space-between !important; align-items: center !important; text-align: center !important; box-sizing: border-box !important;">
+          ${stickerContent}
+        </div>
+      ` : stickerContent}
     </div>
   `).join('');
 
@@ -682,32 +696,27 @@ export function printBarcodeLabelsIsolated(
           text-align: left !important;
           margin: 0 !important;
           padding: 0 !important;
-          width: ${dimensions.width} !important;
-          height: ${dimensions.height} !important;
-          position: absolute !important;
-          top: 0 !important;
-          left: 0 !important;
-          overflow: hidden !important;
+          width: 100% !important;
+          height: auto !important;
+          overflow: visible !important;
         }
         .barcode-label-page {
           width: ${dimensions.width} !important;
-          height: ${dimensions.height} !important;
+          height: calc(${dimensions.height} - 0.5mm) !important;
           max-width: ${dimensions.width} !important;
-          max-height: ${dimensions.height} !important;
+          max-height: calc(${dimensions.height} - 0.5mm) !important;
           margin: 0 !important;
           padding: 0.5mm 1mm !important;
           box-sizing: border-box !important;
           display: flex !important;
           flex-direction: column !important;
-          justify-content: space-between !important;
+          justify-content: ${isRotated ? 'center' : 'space-between'} !important;
           align-items: center !important;
           text-align: center !important;
           overflow: hidden !important;
           background: #ffffff !important;
           direction: ltr !important;
           position: relative !important;
-          top: 0 !important;
-          left: 0 !important;
           page-break-inside: avoid !important;
           break-inside: avoid !important;
           page-break-after: always !important;
@@ -726,18 +735,20 @@ export function printBarcodeLabelsIsolated(
           html, body {
             margin: 0 !important;
             padding: 0 !important;
-            width: ${dimensions.width} !important;
-            height: ${dimensions.height} !important;
+            width: 100% !important;
+            height: auto !important;
             direction: ltr !important;
-            top: 0 !important;
-            left: 0 !important;
           }
           .barcode-label-page {
             border: none !important;
             margin: 0 !important;
             direction: ltr !important;
-            top: 0 !important;
-            left: 0 !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          .barcode-label-page:last-child {
+            page-break-after: avoid !important;
+            break-after: avoid !important;
           }
         }
         /* Typography & Utilities */

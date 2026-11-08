@@ -3,9 +3,9 @@
 import React, { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { BarcodeSvg } from './BarcodeSvg';
-import { Printer, Download, Sparkles, Plus, Minus, Tag, Check, AlertCircle } from 'lucide-react';
+import { Printer, Download, Sparkles, Plus, Minus, Tag, Check, AlertCircle, RotateCw, HelpCircle } from 'lucide-react';
 import { printBarcodeLabelsIsolated } from '@/lib/hardware/thermal-printer';
-import { renderCode128SvgString } from '@/lib/barcode/code128';
+import { renderCode128SvgString, encodeCode128 } from '@/lib/barcode/code128';
 
 export interface BarcodePrintProduct {
   name_ar: string;
@@ -32,6 +32,7 @@ export function BarcodePrintModal({
 }: BarcodePrintModalProps) {
   const [copies, setCopies] = useState<number>(1);
   const [labelSize, setLabelSize] = useState<'38x25' | '40x30' | '50x25'>('38x25');
+  const [orientation, setOrientation] = useState<'horizontal' | 'rotate90' | 'vertical'>('horizontal');
   const [showPrice, setShowPrice] = useState<boolean>(true);
   const [showStoreName, setShowStoreName] = useState<boolean>(true);
   const [showProductName, setShowProductName] = useState<boolean>(true);
@@ -90,7 +91,89 @@ export function BarcodePrintModal({
       stickersList.push(singleStickerHtml);
     }
 
-    printBarcodeLabelsIsolated(stickersList, sizeDimensions);
+    printBarcodeLabelsIsolated(stickersList, sizeDimensions, { orientation });
+  };
+
+  const handleDownloadImage = () => {
+    if (!product) return;
+    const canvas = document.createElement('canvas');
+    // High-resolution 300 DPI canvas for 38x25mm (approx 449 x 295 pixels)
+    const widthPx = labelSize === '50x25' ? 590 : labelSize === '40x30' ? 472 : 449;
+    const heightPx = labelSize === '40x30' ? 354 : 295;
+
+    canvas.width = widthPx;
+    canvas.height = heightPx;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Fill Crisp White Background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, widthPx, heightPx);
+
+    let currentY = 18;
+
+    // 1. Store Name
+    if (showStoreName) {
+      ctx.fillStyle = '#1f2937';
+      ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Cairo", Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(tenantName, widthPx / 2, currentY, widthPx - 24);
+      currentY += 30;
+    }
+
+    // 2. Product Name
+    if (showProductName) {
+      ctx.fillStyle = '#000000';
+      ctx.font = '900 26px -apple-system, BlinkMacSystemFont, "Cairo", Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      const prodName = product.name_ar || product.name_en || '';
+      ctx.fillText(prodName, widthPx / 2, currentY, widthPx - 20);
+      currentY += 34;
+    }
+
+    // 3. Price
+    if (showPrice) {
+      ctx.fillStyle = '#000000';
+      ctx.font = '900 30px -apple-system, BlinkMacSystemFont, "Cairo", Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`${product.selling_price.toFixed(2)} ${currency}`, widthPx / 2, currentY, widthPx - 20);
+      currentY += 38;
+    }
+
+    // 4. Barcode Bars
+    const { totalWidth, bars } = encodeCode128(product.barcode);
+    const barcodeAvailableWidth = widthPx - 40;
+    const barcodeAvailableHeight = Math.max(50, heightPx - currentY - 48);
+    const scaleX = barcodeAvailableWidth / totalWidth;
+    const startX = 20;
+
+    ctx.fillStyle = '#000000';
+    for (const bar of bars) {
+      ctx.fillRect(
+        startX + bar.x * scaleX,
+        currentY,
+        Math.max(1, bar.width * scaleX),
+        barcodeAvailableHeight
+      );
+    }
+
+    currentY += barcodeAvailableHeight + 6;
+
+    // 5. Barcode Number
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 22px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(product.barcode, widthPx / 2, currentY);
+
+    // Trigger instant PNG file download
+    const link = document.createElement('a');
+    link.download = `barcode-${product.barcode}-${labelSize}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
   };
 
   return (
@@ -117,12 +200,20 @@ export function BarcodePrintModal({
         </div>
 
         {/* Live Sticker Preview */}
-        <div className="p-4 bg-[#F8FAFC] border border-[#E5EAF2] rounded-xl flex flex-col items-center justify-center">
-          <span className="text-[11px] font-bold text-[#687386] mb-2">معاينة شكل الملصق الحراري</span>
+        <div className="p-4 bg-[#F8FAFC] border border-[#E5EAF2] rounded-xl flex flex-col items-center justify-center relative">
+          <div className="flex items-center justify-between w-full max-w-[280px] mb-2 px-1">
+            <span className="text-[11px] font-bold text-[#687386]">معاينة شكل الملصق الحراري</span>
+            {orientation === 'rotate90' && (
+              <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                <RotateCw className="w-2.5 h-2.5" />
+                <span>تدوير 90° مفعل</span>
+              </span>
+            )}
+          </div>
           
           <div
             id="barcode-single-sticker-preview"
-            className="bg-white border border-gray-300 rounded-lg p-2.5 shadow-sm flex flex-col justify-between items-center text-center transition-all"
+            className="bg-white border border-gray-300 rounded-lg p-2.5 shadow-sm flex flex-col justify-between items-center text-center transition-all relative overflow-hidden"
             style={{
               width: labelSize === '50x25' ? '210px' : labelSize === '40x30' ? '185px' : '170px',
               minHeight: labelSize === '40x30' ? '135px' : '115px',
@@ -234,6 +325,56 @@ export function BarcodePrintModal({
 
         </div>
 
+        {/* Orientation Selector */}
+        <div className="space-y-1.5 text-xs">
+          <label className="block font-bold text-[#0B1730]">
+            توجيه الطباعة على الطابعة (Print Orientation):
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => setOrientation('horizontal')}
+              className={`py-2 px-2 rounded-lg border text-center transition-all cursor-pointer ${
+                orientation === 'horizontal'
+                  ? 'bg-[#0B1730] text-white border-[#0B1730] font-bold shadow-xs'
+                  : 'bg-white border-[#E5EAF2] text-[#687386] hover:bg-gray-50'
+              }`}
+            >
+              <div className="text-[11px] font-bold">بالعرض (أفقي)</div>
+              <div className="text-[9px] opacity-75">الوضع الافتراضي القياسي</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setOrientation('rotate90')}
+              className={`py-2 px-2 rounded-lg border text-center transition-all cursor-pointer ${
+                orientation === 'rotate90'
+                  ? 'bg-amber-600 text-white border-amber-600 font-bold shadow-xs'
+                  : 'bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100'
+              }`}
+            >
+              <div className="text-[11px] font-bold flex items-center justify-center gap-1">
+                <RotateCw className="w-3 h-3" />
+                <span>تدوير 90°</span>
+              </div>
+              <div className="text-[9px] opacity-90">إذا طبعت طابعتك بالجنب</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setOrientation('vertical')}
+              className={`py-2 px-2 rounded-lg border text-center transition-all cursor-pointer ${
+                orientation === 'vertical'
+                  ? 'bg-[#0B1730] text-white border-[#0B1730] font-bold shadow-xs'
+                  : 'bg-white border-[#E5EAF2] text-[#687386] hover:bg-gray-50'
+              }`}
+            >
+              <div className="text-[11px] font-bold">بالطول (رأسي)</div>
+              <div className="text-[9px] opacity-75">للملصقات الطولية</div>
+            </button>
+          </div>
+        </div>
+
         {/* Toggles */}
         <div className="flex items-center gap-4 text-xs pt-1 border-t border-[#E5EAF2] flex-wrap">
           <label className="inline-flex items-center gap-1.5 cursor-pointer">
@@ -268,34 +409,55 @@ export function BarcodePrintModal({
         </div>
 
         {/* Instruction Alert for Mini 2.5 x 3.8 cm Thermal Printers */}
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-xs text-amber-900 flex items-start gap-2.5">
-          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <div className="space-y-0.5 leading-relaxed">
-            <p className="font-bold text-amber-900">تنبيه هام للطباعة على الملصقات الصغيرة (2.5 × 3.8 سم):</p>
-            <p className="text-[11px] text-amber-800">
-              في نافذة الطباعة الخاصة بجهازك (Print Settings)، تأكد من <strong>إلغاء تحديد خيار (Headers and footers / الرؤوس والتذييلات)</strong> لمنع ظهور الرابط والتاريخ على الملصق، واختيار مقاس الورق <strong>38x25mm (أو 2.5x3.8 cm)</strong>.
-            </p>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 space-y-2">
+          <div className="flex items-center gap-2 font-bold text-amber-900">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>إرشادات ضبط طابعة الباركود لمنع خروج ورق فارغ أو طباعة مقلوبة:</span>
           </div>
+          
+          <ul className="text-[11px] text-amber-800 space-y-1.5 list-disc list-inside leading-relaxed mr-1">
+            <li>
+              <strong>إذا طبعت الطابعة بالجنب (بالطول بدل العرض):</strong> اضغط على زر <strong>(تدوير 90°)</strong> أعلاه، وستطبع بالعرض فوراً وبشكل مضبوط.
+            </li>
+            <li>
+              <strong>لمنع خروج 5 ورقات بيضاء فارغة:</strong> في نافذة الطباعة (Print Settings) بجهازك، اضغط على <strong>حجم الورق (Paper size)</strong> واختر مقاس ملصقك <strong>38x25mm</strong> (أو 2.5x3.8 cm) وتأكد من <strong>إلغاء خيار (Headers and footers)</strong>. خروج الورق الأبيض يحدث لأن الويندوز يعتبر حجم الورقة A4 افتراضياً فيمرر الورق حتى نهاية الصفحة.
+            </li>
+            <li>
+              <strong>معايرة فواصل الورق:</strong> اضغط مع الاستمرار على زر (Feed / التغذية) في طابعة الباركود لمدة ثانيتين حتى تصدر صوتاً (Beep) لتقيس الطابعة فواصل الملصقات تلقائياً.
+            </li>
+          </ul>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#E5EAF2]">
+        <div className="flex items-center justify-between gap-2.5 pt-3 border-t border-[#E5EAF2] flex-wrap">
           <button
             type="button"
-            onClick={onClose}
-            className="px-4 py-2 border border-[#E5EAF2] rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer"
+            onClick={handleDownloadImage}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-[#E5EAF2] hover:bg-gray-100 rounded-xl text-xs font-semibold text-gray-700 transition-colors cursor-pointer"
+            title="تحميل الملصق كصورة PNG عالية الدقة للطباعة من أي برنامج آخر"
           >
-            إلغاء
+            <Download className="w-3.5 h-3.5 text-[#246BFD]" />
+            <span>تحميل الملصق كصورة (PNG)</span>
           </button>
 
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#246BFD] hover:bg-[#1A54D4] active:scale-95 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer"
-          >
-            <Printer className="w-4 h-4" />
-            <span>طباعة {copies} ملصق باركود 🏷️</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-[#E5EAF2] rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer"
+            >
+              إلغاء
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#246BFD] hover:bg-[#1A54D4] active:scale-95 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer"
+            >
+              <Printer className="w-4 h-4" />
+              <span>طباعة {copies} ملصق باركود 🏷️</span>
+            </button>
+          </div>
         </div>
 
       </div>
