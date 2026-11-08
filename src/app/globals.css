@@ -251,6 +251,12 @@ body {
   }
 }
 
+/* Top-level @page rule: eliminates browser default headers (date/title) and footers (URL/page numbers) */
+@page {
+  size: auto;
+  margin: 0 !important;
+}
+
 /* Print styles for POS Thermal Receipt (58mm / 80mm) & HR Documents/Payslips */
 @media print {
   @page {

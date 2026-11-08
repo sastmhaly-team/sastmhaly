@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { BarcodeSvg } from './BarcodeSvg';
 import { Printer, Download, Sparkles, Plus, Minus, Tag, Check } from 'lucide-react';
+import { printBarcodeLabelsIsolated } from '@/lib/hardware/thermal-printer';
 
 export interface BarcodePrintProduct {
   name_ar: string;
@@ -37,17 +38,6 @@ export function BarcodePrintModal({
   if (!product) return null;
 
   const handlePrint = () => {
-    // Generate isolated printable barcode stickers in #print-mount
-    let mount = document.getElementById('print-mount');
-    if (!mount) {
-      mount = document.createElement('div');
-      mount.id = 'print-mount';
-      document.body.appendChild(mount);
-    }
-
-    mount.className = 'barcode-label-mode';
-    mount.setAttribute('dir', 'rtl');
-
     const sizeDimensions = {
       '38x25': { width: '38mm', height: '25mm' },
       '40x30': { width: '40mm', height: '30mm' },
@@ -60,21 +50,13 @@ export function BarcodePrintModal({
     let stickersGrid = '';
     for (let i = 0; i < copies; i++) {
       stickersGrid += `
-        <div class="barcode-sticker-item" style="width: ${sizeDimensions.width}; height: ${sizeDimensions.height}; page-break-inside: avoid; break-inside: avoid; margin: 0 auto 2mm auto; box-sizing: border-box; padding: 1.5mm; text-align: center; border: 1px dashed #e2e8f0; background: #fff; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden;">
+        <div class="barcode-sticker-item" style="width: ${sizeDimensions.width}; height: ${sizeDimensions.height}; page-break-inside: avoid; break-inside: avoid; margin: 1mm auto; box-sizing: border-box; padding: 1.5mm; text-align: center; background: #fff; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; border: none;">
           ${stickerHtml}
         </div>
       `;
     }
 
-    mount.innerHTML = `
-      <div style="direction: rtl; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Cairo', monospace; display: flex; flex-wrap: wrap; justify-content: center; gap: 2mm;">
-        ${stickersGrid}
-      </div>
-    `;
-
-    setTimeout(() => {
-      window.print();
-    }, 80);
+    printBarcodeLabelsIsolated(stickersGrid, sizeDimensions);
   };
 
   return (

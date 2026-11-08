@@ -669,125 +669,134 @@ export default function SalesManagementPage() {
               <div 
                 id="printable-receipt"
                 dir="rtl"
-                className="max-w-[340px] mx-auto bg-white p-4 rounded-lg shadow-sm font-mono text-[11px] text-[#172033] space-y-3 text-right"
+                className="p-4 bg-white border border-dashed border-gray-300 rounded-lg text-black font-mono text-[11px] space-y-3 text-right"
+                style={{ width: '80mm', margin: '0 auto' }}
               >
-                <div className="text-center space-y-1 pb-2 border-b border-dashed border-gray-300">
-                  {/* Merchant Logo */}
-                  <div className="flex items-center justify-center mb-1.5">
+                {/* Header */}
+                <div className="text-center space-y-1">
+                  <div className="flex items-center justify-center mb-1">
                     {(liveTenant?.logo_url || tenant?.logo_url) ? (
-                      <img
-                        src={liveTenant?.logo_url || tenant?.logo_url}
-                        alt={liveTenant?.name || tenant?.name || 'Merchant Logo'}
-                        className="max-h-12 max-w-[130px] object-contain"
+                      <img 
+                        src={liveTenant?.logo_url || tenant?.logo_url} 
+                        alt={liveTenant?.name || tenant?.name || 'Merchant Logo'} 
+                        className="max-h-12 max-w-[130px] object-contain" 
                       />
                     ) : (
-                      <img
-                        src="/logo.png"
-                        alt="Merchant Logo"
-                        width={48}
-                        height={48}
-                        className="object-contain max-h-12 mx-auto"
+                      <img 
+                        src="/logo.png" 
+                        alt="Logo" 
+                        width={48} 
+                        height={48} 
+                        className="object-contain max-h-12 mx-auto" 
                       />
                     )}
                   </div>
-                  <h3 className="font-bold text-sm text-[#0B1730]">
-                    {liveTenant?.name || tenant?.name || selectedSale.branch_name_ar || 'سستمهالي'}
-                  </h3>
-                  <p className="text-[10px] text-gray-500">{selectedSale.branch_address || 'القاهرة، مصر'}</p>
-                  <p className="text-[10px] text-gray-500">{selectedSale.branch_phone || '01203356780'}</p>
+                  <h3 className="font-bold text-sm tracking-tight">{liveTenant?.name || tenant?.name || selectedSale.branch_name_ar || 'سستمهالي'}</h3>
+                  <p className="text-[10px] text-gray-600">{selectedSale.branch_address || 'القاهرة، مصر'}</p>
                   <div className="font-bold pt-1 text-xs">{selectedSale.sale_number}</div>
+                  {selectedSale.sale_number?.startsWith('OFF-') && (
+                    <div className="text-[10px] text-amber-700 font-bold bg-amber-50 border border-amber-300 rounded px-1.5 py-0.5 mt-0.5">
+                      ⚡ فاتورة أوفلاين (سيتم مزامنتها تلقائياً عند عودة الإنترنت)
+                    </div>
+                  )}
+                  <div className="border-t border-dashed border-black my-1.5"></div>
                 </div>
 
-                <div className="space-y-1 text-[10px]">
+                {/* Meta */}
+                <div className="text-[10px] space-y-0.5">
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-500">التاريخ:</span>
-                    <span className="font-sans">{new Date(selectedSale.created_at).toLocaleDateString('ar-EG')}</span>
+                    <span className="text-gray-600">التاريخ:</span>
+                    <span className="font-sans">{new Date(selectedSale.created_at || Date.now()).toLocaleDateString('ar-EG')}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-500">الكاشير:</span>
+                    <span className="text-gray-600">الكاشير:</span>
                     <span>{selectedSale.cashier_name || 'الكاشير'}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-500">العميل:</span>
+                    <span className="text-gray-600">العميل:</span>
                     <span>{selectedSale.customer_name || 'عميل نقدي'}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-500">طريقة الدفع:</span>
+                    <span className="text-gray-600">طريقة الدفع:</span>
                     <span>
                       {selectedSale.payment_method === 'card' ? 'بطاقة بنكية' :
                        selectedSale.payment_method === 'mobile_wallet' ? 'محفظة إلكترونية' :
                        selectedSale.payment_method === 'customer_credit' ? 'آجل (على الحساب)' : 'نقدي'}
                     </span>
                   </div>
+                  <div className="border-t border-dashed border-black my-1.5"></div>
                 </div>
 
-                {/* Items */}
-                <div className="pt-2 border-t border-dashed border-gray-300">
-                  <table className="w-full text-[10px] text-right border-collapse">
-                    <thead>
-                      <tr className="border-b border-black font-bold text-gray-600">
-                        <th className="py-1 text-right">الصنف</th>
-                        <th className="py-1 text-center">الكمية</th>
-                        <th className="py-1 text-left">الإجمالي</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-dotted divide-gray-300">
-                      {selectedSale.items?.map((item: any, idx) => {
-                        const productName = item.product_name_ar || item.product_name_en || item.product_name || item.name_ar || item.name_en || item.name || item.product?.name_ar || item.product?.name_en || 'صنف';
-                        return (
-                          <tr key={idx}>
-                            <td className="py-1 font-semibold">
-                              <div>{productName}</div>
-                              <div className="text-[9px] text-gray-500 font-normal">
-                                {item.quantity} × {Number(item.unit_price).toFixed(2)} ج.م
-                              </div>
-                            </td>
-                            <td className="py-1 text-center align-top">{item.quantity}</td>
-                            <td className="py-1 text-left font-bold align-top">{Number(item.line_total).toFixed(2)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                {/* Line Items */}
+                <table className="w-full text-[10px] text-right border-collapse">
+                  <thead>
+                    <tr className="border-b border-black">
+                      <th className="py-1 text-right">الصنف</th>
+                      <th className="py-1 text-center">الكمية</th>
+                      <th className="py-1 text-left">الإجمالي</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-dotted divide-gray-300">
+                    {selectedSale.items?.map((it: any, idx: number) => {
+                      const productName = it.product_name_ar || it.product_name_en || it.product_name || it.name_ar || it.name_en || it.name || it.product?.name_ar || it.product?.name_en || 'صنف';
+                      return (
+                        <tr key={idx}>
+                          <td className="py-1 font-semibold">{productName}</td>
+                          <td className="py-1 text-center">{it.quantity}</td>
+                          <td className="py-1 text-left font-bold">{Number(it.line_total ?? (Number(it.quantity) * Number(it.unit_price))).toFixed(2)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                <div className="border-t border-dashed border-black my-1.5"></div>
 
                 {/* Totals */}
-                <div className="pt-2 border-t border-dashed border-gray-300 space-y-1 text-xs">
+                <div className="space-y-0.5 text-[11px]">
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-500">المجموع الفرعي:</span>
-                    <span className="font-bold">{selectedSale.subtotal.toFixed(2)}</span>
+                    <span className="text-gray-600">المجموع الفرعي:</span>
+                    <span className="font-bold">{Number(selectedSale.subtotal).toFixed(2)} ج.م</span>
                   </div>
-                  {selectedSale.discount_amount > 0 && (
+                  {Number(selectedSale.discount_amount) > 0 ? (
                     <div className="flex justify-between items-center text-emerald-600">
                       <span>الخصم:</span>
-                      <span>-{selectedSale.discount_amount.toFixed(2)}</span>
+                      <span>-{Number(selectedSale.discount_amount).toFixed(2)} ج.م</span>
                     </div>
-                  )}
-                  {selectedSale.tax_amount > 0 && (
-                    <div className="flex justify-between items-center text-gray-500">
+                  ) : null}
+                  {Number(selectedSale.tax_amount) > 0 ? (
+                    <div className="flex justify-between items-center text-gray-600">
                       <span>ضريبة القيمة المضافة (14%):</span>
-                      <span>{selectedSale.tax_amount.toFixed(2)}</span>
+                      <span>{Number(selectedSale.tax_amount).toFixed(2)} ج.م</span>
                     </div>
-                  )}
-                  <div className="flex justify-between items-center font-bold text-sm text-[#0B1730] pt-1 border-t">
+                  ) : null}
+                  <div className="flex justify-between items-center font-bold text-xs pt-1 border-t border-black">
                     <span>الإجمالي النهائي:</span>
-                    <span>{selectedSale.total_amount.toFixed(2)} ج.م</span>
+                    <span>{Number(selectedSale.total_amount).toFixed(2)} ج.م</span>
                   </div>
-                  <div className="flex justify-between items-center text-[10px] text-gray-500 pt-1">
+                  <div className="flex justify-between items-center text-[10px] text-gray-600 pt-1">
                     <span>المدفوع:</span>
-                    <span>{selectedSale.paid_amount.toFixed(2)}</span>
+                    <span>{Number(selectedSale.paid_amount || selectedSale.total_amount).toFixed(2)} ج.م</span>
                   </div>
-                  <div className="flex justify-between items-center text-[10px] text-gray-500">
-                    <span>الباقي:</span>
-                    <span>{selectedSale.change_amount.toFixed(2)}</span>
-                  </div>
+                  {selectedSale.change_amount ? (
+                    <div className="flex justify-between items-center text-[10px]">
+                      <span>الباقي:</span>
+                      <span>{Number(selectedSale.change_amount).toFixed(2)} ج.م</span>
+                    </div>
+                  ) : null}
                 </div>
 
                 {/* Footer */}
-                <div className="receipt-footer text-center pt-2 mt-2 text-[10px] text-gray-700 space-y-1 border-none">
-                  <p>{receiptFooter || 'شكراً لتعاملكم معنا'}</p>
+                <div className="receipt-footer text-center text-[10px] pt-2 mt-2 space-y-1 border-none">
+                  <p className="text-[10px] text-gray-700">{receiptFooter || 'شكراً لتعاملكم معنا'}</p>
                   <div className="flex flex-col items-center justify-center pt-1 space-y-0.5 border-none">
-                    <img src="/logo.png" alt="Sastmhaly Logo" width={26} height={26} className="object-contain max-h-6 mx-auto" />
+                    <img 
+                      src="/logo.png" 
+                      alt="Sastmhaly Logo" 
+                      width={26} 
+                      height={26} 
+                      className="object-contain max-h-6 mx-auto" 
+                    />
                     <p className="font-bold text-[9px] tracking-wider text-gray-600">Powered by Sastmhaly</p>
                   </div>
                 </div>

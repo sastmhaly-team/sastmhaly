@@ -604,3 +604,174 @@ export async function printReceiptUnified(
   return { success: true };
 }
 
+/**
+ * Isolated Iframe Print specifically for Barcode Labels / Stickers
+ * Ensures 0 margins, NO browser headers/footers (no URL, no page numbers, no title),
+ * and prevents main window UI freezes or crashes.
+ */
+export function printBarcodeLabelsIsolated(
+  stickersHtml: string,
+  dimensions?: { width: string; height: string }
+): void {
+  if (typeof window === 'undefined') return;
+
+  let iframe = document.getElementById('barcode-print-iframe') as HTMLIFrameElement;
+  if (!iframe) {
+    iframe = document.createElement('iframe');
+    iframe.id = 'barcode-print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.top = '-9999px';
+    iframe.style.left = '-9999px';
+    iframe.style.width = dimensions?.width || '40mm';
+    iframe.style.height = '100px';
+    iframe.style.border = 'none';
+    iframe.style.opacity = '0';
+    iframe.style.pointerEvents = 'none';
+    document.body.appendChild(iframe);
+  }
+
+  const doc = iframe.contentWindow?.document || iframe.contentDocument;
+  if (!doc) {
+    window.print();
+    return;
+  }
+
+  doc.open();
+  doc.write(`
+    <!DOCTYPE html>
+    <html dir="rtl" lang="ar">
+    <head>
+      <meta charset="utf-8" />
+      <title></title>
+      <style>
+        @page {
+          size: auto;
+          margin: 0 !important;
+        }
+        *, *::before, *::after {
+          box-sizing: border-box;
+          border-width: 0;
+          border-style: solid;
+          border-color: transparent;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        html, body {
+          background: #ffffff !important;
+          color: #000000 !important;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Cairo", sans-serif !important;
+          direction: rtl !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
+          height: auto !important;
+        }
+        .barcode-stickers-container {
+          display: flex !important;
+          flex-wrap: wrap !important;
+          justify-content: center !important;
+          align-items: center !important;
+          gap: 2mm !important;
+          padding: 1mm !important;
+          margin: 0 auto !important;
+        }
+        .barcode-sticker-item {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          margin: 1mm auto !important;
+          box-sizing: border-box !important;
+          padding: 1.5mm !important;
+          text-align: center !important;
+          background: #ffffff !important;
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: space-between !important;
+          align-items: center !important;
+          overflow: hidden !important;
+          border: none !important;
+        }
+        @media screen {
+          .barcode-sticker-item {
+            border: 1px dashed #cbd5e1 !important;
+          }
+        }
+        @media print {
+          @page {
+            size: auto;
+            margin: 0 !important;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          .barcode-sticker-item {
+            border: none !important;
+          }
+        }
+        /* Typography & Utilities matching Tailwind */
+        .text-center { text-align: center !important; }
+        .w-full { width: 100% !important; }
+        .truncate { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+        .font-bold { font-weight: 700 !important; }
+        .font-black { font-weight: 900 !important; }
+        .font-semibold { font-weight: 600 !important; }
+        .font-normal { font-weight: 400 !important; }
+        .font-mono { font-family: monospace, -apple-system, sans-serif !important; }
+        .text-\\[9px\\] { font-size: 9px !important; }
+        .text-\\[10px\\] { font-size: 10px !important; }
+        .text-\\[11px\\] { font-size: 11px !important; }
+        .text-\\[13px\\] { font-size: 13px !important; }
+        .text-gray-800 { color: #1f2937 !important; }
+        .text-gray-600 { color: #4b5563 !important; }
+        .text-black { color: #000000 !important; }
+        .tracking-tight { letter-spacing: -0.025em !important; }
+        .tracking-\\[0\\.2em\\] { letter-spacing: 0.2em !important; }
+        .leading-tight { line-height: 1.2 !important; }
+        .line-clamp-1 {
+          display: -webkit-box !important;
+          -webkit-line-clamp: 1 !important;
+          -webkit-box-orient: vertical !important;
+          overflow: hidden !important;
+        }
+        .flex { display: flex !important; }
+        .flex-col { flex-direction: column !important; }
+        .items-center { align-items: center !important; }
+        .justify-between { justify-content: space-between !important; }
+        .select-none { user-select: none !important; }
+        .px-1 { padding-left: 4px !important; padding-right: 4px !important; }
+        .my-0\\.5 { margin-top: 2px !important; margin-bottom: 2px !important; }
+        .mt-0\\.5 { margin-top: 2px !important; }
+        svg {
+          display: block !important;
+          width: 100% !important;
+          height: auto !important;
+          max-height: 40px !important;
+          shape-rendering: crispEdges !important;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="barcode-stickers-container">
+        ${stickersHtml}
+      </div>
+    </body>
+    </html>
+  `);
+  doc.close();
+
+  setTimeout(() => {
+    try {
+      const contentWin = iframe.contentWindow;
+      if (contentWin) {
+        contentWin.focus();
+        contentWin.print();
+      } else {
+        window.print();
+      }
+    } catch (e) {
+      console.error('Barcode iframe print failed:', e);
+      window.print();
+    }
+  }, 100);
+}
+
