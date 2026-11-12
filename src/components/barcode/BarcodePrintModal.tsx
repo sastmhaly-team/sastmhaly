@@ -239,30 +239,84 @@ export function BarcodePrintModal({
     const barcodeSvgHtml = renderCode128SvgString(product.barcode, svgHeight);
 
     const singleStickerHtml = `
-      <div style="width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center; overflow: hidden; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Cairo', sans-serif; direction: ltr;">
+      <div style="
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: center;
+        text-align: center;
+        overflow: hidden;
+        box-sizing: border-box;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Cairo', sans-serif;
+      ">
         ${showStoreName ? `
-          <div style="font-size: ${storeFontSize}; font-weight: 700; color: #1f2937; line-height: 1.1; max-height: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; text-align: center; direction: rtl;">
-            ${tenantName}
-          </div>
+          <div style="
+            font-size: ${storeFontSize};
+            font-weight: 700;
+            color: #1f2937;
+            line-height: 1.2;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            width: 100%;
+            text-align: center;
+            direction: rtl;
+          ">${tenantName}</div>
         ` : ''}
 
         ${showProductName ? `
-          <div style="font-size: ${prodFontSize}; font-weight: 900; color: #000000; line-height: 1.1; max-height: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; text-align: center; direction: rtl;">
-            ${product.name_ar || product.name_en}
-          </div>
+          <div style="
+            font-size: ${prodFontSize};
+            font-weight: 900;
+            color: #000000;
+            line-height: 1.2;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            width: 100%;
+            text-align: center;
+            direction: rtl;
+          ">${product.name_ar || product.name_en}</div>
         ` : ''}
 
         ${showPrice ? `
-          <div style="font-size: ${priceFontSize}; font-weight: 900; color: #000000; line-height: 1; margin: 0.5px 0; text-align: center; direction: rtl;">
-            ${product.selling_price.toFixed(2)} <span style="font-size: 7px; font-weight: 600;">${currency}</span>
-          </div>
+          <div style="
+            font-size: ${priceFontSize};
+            font-weight: 900;
+            color: #000000;
+            line-height: 1;
+            text-align: center;
+            direction: ltr;
+            width: 100%;
+          ">${product.selling_price.toFixed(2)} <span style="font-size: 7px; font-weight: 600;">${currency}</span></div>
         ` : ''}
 
-        <div style="width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; direction: ltr;">
+        <div style="
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          direction: ltr;
+          flex-shrink: 0;
+        ">
           ${barcodeSvgHtml}
-          <span style="font-family: monospace, monospace; font-size: ${codeFontSize}; font-weight: 700; letter-spacing: 0.12em; color: #000000; line-height: 1; margin-top: 0.5px; text-align: center; display: block; width: 100%;">
-            ${product.barcode}
-          </span>
+          <span style="
+            font-family: monospace, monospace;
+            font-size: ${codeFontSize};
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            color: #000000;
+            line-height: 1;
+            margin-top: 0.5px;
+            text-align: center;
+            display: block;
+            width: 100%;
+            direction: ltr;
+          ">${product.barcode}</span>
         </div>
       </div>
     `;
@@ -610,7 +664,7 @@ export function BarcodePrintModal({
           <label className="block font-bold text-[#0B1730]">
             توجيه الطباعة على الطابعة (Print Orientation):
           </label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => setOrientation('horizontal')}
@@ -620,8 +674,8 @@ export function BarcodePrintModal({
                   : 'bg-white border-[#E5EAF2] text-[#687386] hover:bg-gray-50'
               }`}
             >
-              <div className="text-[11px] font-bold">بالعرض (أفقي)</div>
-              <div className="text-[9px] opacity-75">الوضع الافتراضي القياسي</div>
+              <div className="text-[11px] font-bold">بالعرض (الوضع الافتراضي ✓)</div>
+              <div className="text-[9px] opacity-75">للطابعات التي تطبع بالجنب فجرب هذا أولاً</div>
             </button>
 
             <button
@@ -635,22 +689,9 @@ export function BarcodePrintModal({
             >
               <div className="text-[11px] font-bold flex items-center justify-center gap-1">
                 <RotateCw className="w-3 h-3" />
-                <span>تدوير 90°</span>
+                <span>تدوير 90° (للطابعات التي تطبع مقلوبة)</span>
               </div>
-              <div className="text-[9px] opacity-90">إذا طبعت طابعتك بالجنب</div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setOrientation('vertical')}
-              className={`py-2 px-2 rounded-lg border text-center transition-all cursor-pointer ${
-                orientation === 'vertical'
-                  ? 'bg-[#0B1730] text-white border-[#0B1730] font-bold shadow-xs'
-                  : 'bg-white border-[#E5EAF2] text-[#687386] hover:bg-gray-50'
-              }`}
-            >
-              <div className="text-[11px] font-bold">بالطول (رأسي)</div>
-              <div className="text-[9px] opacity-75">للملصقات الطولية</div>
+              <div className="text-[9px] opacity-90">إذا طبع الوضع الافتراضي مقلوباً فاضغط هنا</div>
             </button>
           </div>
         </div>

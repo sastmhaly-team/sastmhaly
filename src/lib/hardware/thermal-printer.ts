@@ -846,11 +846,31 @@ export interface BarcodePrintOptions {
 }
 
 /**
- * Isolated Iframe Print specifically for Mini Barcode Labels / Stickers
- * Sets the EXACT physical page dimensions via @page { size: width height; margin: 0 !important; }
- * Origin starts at TOP-LEFT (0, 0) with LTR alignment as required by thermal label printer hardware.
- * Supports standard horizontal mode and 90-degree counter-rotation for inverted printer drivers.
- * Calibrated to prevent fractional sub-pixel overflow and suppress blank label feeds.
+ * Isolated Iframe Print specifically for Mini Barcode Labels / Stickers.
+ *
+ * ORIENTATION STRATEGY (industry-standard for Windows thermal label printers):
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Windows thermal-label drivers default to PORTRAIT orientation.
+ * When Chrome receives @page { size: 38mm 25mm } (width > height) it treats
+ * the page as LANDSCAPE, which makes the driver auto-rotate the job 90° →
+ * the label appears sideways.
+ *
+ * Fix: We ALWAYS declare the @page in PORTRAIT order (short-side × long-side),
+ * i.e. 25mm × 38mm for a 38×25 sticker. The physical label content is then
+ * CSS-rotated -90° inside the page so it reads correctly as landscape on paper.
+ *
+ * Result: Chrome sends a portrait page → Windows driver doesn't rotate →
+ * the sticker sits in its correct orientation on the physical label.
+ *
+ * "rotate90" toggle: used ONLY when the merchant's driver is already set to
+ * landscape mode, so we counter-rotate by +90° instead of -90°.
+ *
+ * Blank-feed prevention:
+ * - html/body height is clamped to exactly one label height so the browser
+ *   document is never taller than the physical sticker.
+ * - 0.5mm is subtracted from each label to prevent fractional-pixel overflow.
+ * - page-break-after:avoid on the last child prevents the driver from feeding
+ *   an extra blank label at the end.
  */
 export function printBarcodeLabelsIsolated(
   stickers: string[] | string,
@@ -884,19 +904,52 @@ export function printBarcodeLabelsIsolated(
   }
 
   const stickersList = Array.isArray(stickers) ? stickers : [stickers];
-  const isRotated = options?.orientation === 'rotate90';
+  const isExplicitRotate90 = options?.orientation === 'rotate90';
+
+  // ─── Portrait-based layout ───────────────────────────────────────────────
+  // For a 38mm × 25mm label (width × height):
+  //   • @page declares 25mm × 38mm  (portrait = short-side first)
+  //   • The .barcode-label-page box is 25mm wide × 38mm tall (portrait)
+  //   • The inner content wrapper is 38mm wide × 25mm tall, rotated -90°
+  //     so it reads in landscape on the physical paper.
+  //
+  // If the merchant switches "rotate90" (driver already in landscape), we
+  // flip back to landscape @page and rotate content +90° instead.
+  // ─────────────────────────────────────────────────────────────────────────
+  const pgWidth  = isExplicitRotate90 ? dimensions.width  : dimensions.height; // short-side first = portrait
+  const pgHeight = isExplicitRotate90 ? dimensions.height : dimensions.width;
+  const boxW     = isExplicitRotate90 ? dimensions.width  : dimensions.height;
+  const boxH     = isExplicitRotate90 ? dimensions.height : dimensions.width;
+
+  // The inner content div physically occupies the FULL label in landscape
+  // but lives inside a portrait page-box → achieve this with a 90° rotation.
+  // We subtract 1mm from each axis to leave a hairline bleed buffer.
+  const innerW   = `calc(${isExplicitRotate90 ? dimensions.height : dimensions.width}  - 1mm)`;
+  const innerH   = `calc(${isExplicitRotate90 ? dimensions.width  : dimensions.height} - 1mm)`;
+  const rotateDeg = isExplicitRotate90 ? '90deg' : '-90deg';
 
   const pagesHtml = stickersList.map((stickerContent, idx) => `
     <div class="barcode-label-page" data-page="${idx + 1}">
-      ${isRotated ? `
-        <div class="barcode-rotated-inner" style="width: calc(${dimensions.height} - 1.5mm) !important; height: calc(${dimensions.width} - 1.5mm) !important; transform: rotate(90deg) !important; transform-origin: center center !important; display: flex !important; flex-direction: column !important; justify-content: space-between !important; align-items: center !important; text-align: center !important; box-sizing: border-box !important;">
-          ${stickerContent}
-        </div>
-      ` : stickerContent}
+      <div class="barcode-inner" style="
+        width: ${innerW} !important;
+        height: ${innerH} !important;
+        transform: rotate(${rotateDeg}) !important;
+        transform-origin: center center !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        text-align: center !important;
+        box-sizing: border-box !important;
+        padding: 0.8mm 1mm !important;
+        overflow: hidden !important;
+      ">
+        ${stickerContent}
+      </div>
     </div>
   `).join('');
 
-  // Temporarily clear main document title so Chrome has no title string to print
+  // Temporarily clear main document title so Chrome prints no header/footer text
   const originalTitle = document.title;
 
   doc.open();
@@ -908,11 +961,11 @@ export function printBarcodeLabelsIsolated(
       <title></title>
       <style>
         @page {
-          size: ${dimensions.width} ${dimensions.height};
+          size: ${pgWidth} ${pgHeight};
           margin: 0mm !important;
         }
         @page :first { margin: 0mm !important; }
-        @page :left { margin: 0mm !important; }
+        @page :left  { margin: 0mm !important; }
         @page :right { margin: 0mm !important; }
 
         *, *::before, *::after {
@@ -922,6 +975,7 @@ export function printBarcodeLabelsIsolated(
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
+
         html, body {
           background: #ffffff !important;
           color: #000000 !important;
@@ -930,23 +984,29 @@ export function printBarcodeLabelsIsolated(
           text-align: left !important;
           margin: 0 !important;
           padding: 0 !important;
-          width: 100% !important;
-          height: auto !important;
-          overflow: visible !important;
+          /* Clamp body to exactly one label height to prevent blank feeds */
+          width: ${pgWidth} !important;
+          height: ${pgHeight} !important;
+          max-height: ${pgHeight} !important;
+          overflow: hidden !important;
         }
+
+        /*
+         * Each label page-box is PORTRAIT (short-side × long-side).
+         * The inner div is rotated to fill the landscape area.
+         */
         .barcode-label-page {
-          width: ${dimensions.width} !important;
-          height: calc(${dimensions.height} - 0.5mm) !important;
-          max-width: ${dimensions.width} !important;
-          max-height: calc(${dimensions.height} - 0.5mm) !important;
+          width: ${boxW} !important;
+          height: calc(${boxH} - 0.5mm) !important;
+          max-width: ${boxW} !important;
+          max-height: calc(${boxH} - 0.5mm) !important;
           margin: 0 !important;
-          padding: 0.5mm 1mm !important;
+          padding: 0 !important;
           box-sizing: border-box !important;
           display: flex !important;
           flex-direction: column !important;
-          justify-content: ${isRotated ? 'center' : 'space-between'} !important;
+          justify-content: center !important;
           align-items: center !important;
-          text-align: center !important;
           overflow: hidden !important;
           background: #ffffff !important;
           direction: ltr !important;
@@ -961,22 +1021,23 @@ export function printBarcodeLabelsIsolated(
           page-break-after: avoid !important;
           break-after: avoid !important;
         }
+
         @media print {
           @page {
-            size: ${dimensions.width} ${dimensions.height};
+            size: ${pgWidth} ${pgHeight};
             margin: 0mm !important;
           }
           html, body {
             margin: 0 !important;
             padding: 0 !important;
-            width: 100% !important;
-            height: auto !important;
-            direction: ltr !important;
+            width: ${pgWidth} !important;
+            height: ${pgHeight} !important;
+            max-height: ${pgHeight} !important;
+            overflow: hidden !important;
           }
           .barcode-label-page {
             border: none !important;
             margin: 0 !important;
-            direction: ltr !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
           }
@@ -985,15 +1046,16 @@ export function printBarcodeLabelsIsolated(
             break-after: avoid !important;
           }
         }
+
         /* Typography & Utilities */
-        .text-center { text-align: center !important; }
-        .w-full { width: 100% !important; }
-        .truncate { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
-        .font-bold { font-weight: 700 !important; }
-        .font-black { font-weight: 900 !important; }
-        .font-semibold { font-weight: 600 !important; }
-        .font-normal { font-weight: 400 !important; }
-        .font-mono { font-family: monospace, monospace !important; }
+        .text-center  { text-align: center !important; }
+        .w-full       { width: 100% !important; }
+        .truncate     { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+        .font-bold    { font-weight: 700 !important; }
+        .font-black   { font-weight: 900 !important; }
+        .font-semibold{ font-weight: 600 !important; }
+        .font-normal  { font-weight: 400 !important; }
+        .font-mono    { font-family: monospace, monospace !important; }
         svg {
           display: block !important;
           width: 100% !important;
@@ -1009,6 +1071,7 @@ export function printBarcodeLabelsIsolated(
   `);
   doc.close();
 
+  // 300ms gives the iframe time to fully lay out before the print dialog opens
   setTimeout(() => {
     try {
       const contentWin = iframe.contentWindow;
@@ -1019,7 +1082,7 @@ export function printBarcodeLabelsIsolated(
         contentWin.print();
         setTimeout(() => {
           document.title = originalTitle;
-        }, 1500);
+        }, 2000);
       } else {
         window.print();
       }
@@ -1027,6 +1090,6 @@ export function printBarcodeLabelsIsolated(
       console.error('Barcode iframe print failed:', e);
       window.print();
     }
-  }, 100);
+  }, 300);
 }
 
