@@ -17,7 +17,7 @@ import {
   isWebUsbSupported,
   isWebSerialSupported 
 } from '@/lib/hardware/thermal-printer';
-import { renderCode128SvgString, encodeCode128 } from '@/lib/barcode/code128';
+import { encodeCode128 } from '@/lib/barcode/code128';
 
 export interface BarcodePrintProduct {
   name_ar: string;
@@ -221,40 +221,28 @@ export function BarcodePrintModal({
     }
   };
 
-  // System Print via isolated iframe
+  // System Print via isolated iframe — uses Canvas → PNG image for pixel-perfect output.
+  // This eliminates ALL HTML/CSS layout issues (RTL shift, blank pages from flex height bugs).
   const handlePrintSystem = () => {
-    const sizeDimensions = {
-      '38x25': { width: '38mm', height: '25mm' },
-      '40x30': { width: '40mm', height: '30mm' },
-      '50x25': { width: '50mm', height: '25mm' },
+    const dims = {
+      '38x25': { width: '38mm', height: '25mm', dotsW: 456, dotsH: 300 },
+      '40x30': { width: '40mm', height: '30mm', dotsW: 480, dotsH: 360 },
+      '50x25': { width: '50mm', height: '25mm', dotsW: 600, dotsH: 300 },
     }[labelSize];
 
-    const is25mm = labelSize === '38x25' || labelSize === '50x25';
-    const svgHeight = is25mm ? 18 : 24;
-    const storeFontSize = is25mm ? '7.5px' : '9px';
-    const prodFontSize  = is25mm ? '8px'   : '10px';
-    const priceFontSize = is25mm ? '9px'   : '11px';
-    const codeFontSize  = is25mm ? '7px'   : '8.5px';
+    // For rotate90: render the canvas in portrait orientation (swap W/H)
+    const canvasW = orientation === 'rotate90' ? dims.dotsH : dims.dotsW;
+    const canvasH = orientation === 'rotate90' ? dims.dotsW : dims.dotsH;
+    const canvas  = generateStickerCanvas(canvasW, canvasH);
+    const dataUrl = canvas.toDataURL('image/png');
 
-    const barcodeSvgHtml = renderCode128SvgString(product.barcode, svgHeight);
+    // <img> has an exact, deterministic height — zero CSS layout ambiguity.
+    // The browser sees one image element per label, each exactly labelHeight tall.
+    // body height = N × labelHeight → Chrome generates exactly N print pages.
+    const imgHtml = `<img src="${dataUrl}" width="${canvasW}" height="${canvasH}" style="display:block;width:${dims.width};height:${dims.height};object-fit:fill;" />`;
 
-    // Build sticker content — a full-size flex column filling the label box.
-    // The .lbl div is already 38mm × 25mm landscape in the iframe, so
-    // width:100% = 38mm and height:100% = 25mm — no extra rotation needed.
-    const singleStickerHtml = `<div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;align-items:center;text-align:center;overflow:hidden;box-sizing:border-box;padding:1mm 1.5mm;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Cairo',sans-serif;">${
-      showStoreName ? `<div style="font-size:${storeFontSize};font-weight:700;color:#1f2937;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;text-align:center;direction:rtl;">${tenantName}</div>` : ''
-    }${
-      showProductName ? `<div style="font-size:${prodFontSize};font-weight:900;color:#000;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;text-align:center;direction:rtl;">${product.name_ar || product.name_en}</div>` : ''
-    }${
-      showPrice ? `<div style="font-size:${priceFontSize};font-weight:900;color:#000;line-height:1;text-align:center;direction:ltr;width:100%;">${product.selling_price.toFixed(2)}&nbsp;<span style="font-size:6.5px;font-weight:600;">${currency}</span></div>` : ''
-    }<div style="width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;direction:ltr;flex:1;min-height:0;">${barcodeSvgHtml}<span style="font-family:monospace;font-size:${codeFontSize};font-weight:700;letter-spacing:0.07em;color:#000;line-height:1;margin-top:0.5px;text-align:center;display:block;width:100%;direction:ltr;">${product.barcode}</span></div></div>`;
-
-    const stickersList: string[] = [];
-    for (let i = 0; i < copies; i++) {
-      stickersList.push(singleStickerHtml);
-    }
-
-    printBarcodeLabelsIsolated(stickersList, sizeDimensions, { orientation });
+    const stickersList = Array.from({ length: copies }, () => imgHtml);
+    printBarcodeLabelsIsolated(stickersList, { width: dims.width, height: dims.height }, { orientation });
   };
 
   const handleDownloadImage = () => {

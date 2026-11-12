@@ -848,26 +848,21 @@ export interface BarcodePrintOptions {
 /**
  * Isolated Iframe Print for Mini Barcode Labels / Stickers.
  *
- * STRATEGY:
+ * STRATEGY — IMAGE-BASED APPROACH:
  * ─────────────────────────────────────────────────────────────────────────────
- * We tell Chrome the page is LANDSCAPE (38mm × 25mm) with the `landscape`
- * keyword in @page.  The body and every label div are locked to exactly
- * 38mm × 25mm with overflow:hidden so the browser document is never taller
- * than one label (preventing blank-label feeds).
+ * Each sticker is passed as an <img> data URL (PNG rendered via Canvas).
+ * This eliminates every HTML/CSS layout ambiguity that caused blank pages:
  *
- * "rotate90" toggle is for printers whose driver is already set to portrait
- * mode — in that case we swap the page dimensions to 25mm × 38mm and rotate
- * the content +90° inside the page box.
+ *   • An <img> element has a 100% deterministic height — no flex, no RTL,
+ *     no height:100% resolution issues, no SVG overflow.
+ *   • body height = exactly N × labelHeight → Chrome generates exactly N pages.
+ *   • @page { size: W H landscape; margin: 0 } tells Chrome the exact page
+ *     size and suppresses header/footer text.
+ *   • We NEVER fall back to window.print() (which prints the merchant's main
+ *     page and shows the current date/time).
  *
- * Blank-feed prevention:
- *   body height = N labels × labelHeight (exact, not auto).
- *   Each label: page-break-after:always except the last (avoid).
- *   html/body overflow:hidden clips any sub-pixel spill.
- *
- * Date/time-in-header prevention:
- *   @page { margin: 0 } suppresses Chrome's header/footer text.
- *   We also blank document.title before calling .print().
- *   We NEVER fall back to window.print() — that would print the main page.
+ * "rotate90" toggle swaps page dimensions to portrait (25mm × 38mm) and
+ * the caller is expected to supply a rotated image for that case.
  */
 export function printBarcodeLabelsIsolated(
   stickers: string[] | string,
@@ -876,13 +871,12 @@ export function printBarcodeLabelsIsolated(
 ): void {
   if (typeof window === 'undefined') return;
 
-  // Remove any previous barcode print iframe to guarantee fresh styles
+  // Remove any previous barcode print iframe
   const oldIframe = document.getElementById('barcode-print-iframe');
   if (oldIframe) oldIframe.remove();
 
   const iframe = document.createElement('iframe');
   iframe.id = 'barcode-print-iframe';
-  // Keep the iframe off-screen but still rendered (display:none prevents print)
   iframe.style.cssText = [
     'position:fixed',
     'top:-9999px',
@@ -898,149 +892,121 @@ export function printBarcodeLabelsIsolated(
   document.body.appendChild(iframe);
 
   const doc = iframe.contentWindow?.document || iframe.contentDocument;
-  if (!doc) return; // No fallback to window.print() — that prints the whole page
+  if (!doc) return;
 
   const stickersList = Array.isArray(stickers) ? stickers : [stickers];
   const count = stickersList.length;
   const isRotate90 = options?.orientation === 'rotate90';
 
-  // ── Page dimensions ────────────────────────────────────────────────────────
-  // Default (horizontal): @page landscape  38mm × 25mm
-  // rotate90 (fallback):  @page portrait   25mm × 38mm  with CSS rotation
-  const labelW = dimensions.width;   // e.g. "38mm"
-  const labelH = dimensions.height;  // e.g. "25mm"
-
-  // For the page declaration we always put width first, height second.
-  // Adding the `landscape` keyword forces Chrome to treat width > height
-  // as landscape, stopping the driver from auto-rotating the job.
-  const pgW = isRotate90 ? labelH : labelW;
-  const pgH = isRotate90 ? labelW : labelH;
+  const labelW = dimensions.width;
+  const labelH = dimensions.height;
+  const pgW = isRotate90 ? labelH : labelW;   // e.g. "38mm"
+  const pgH = isRotate90 ? labelW : labelH;   // e.g. "25mm"
   const pgKeyword = isRotate90 ? 'portrait' : 'landscape';
 
-  // Total body height covers exactly N labels (no extra space = no blank feeds)
-  const bodyH = count === 1
-    ? pgH
-    : `calc(${pgH} * ${count})`;
+  // Body height = exactly N labels — Chrome will generate exactly N pages.
+  // Using mm arithmetic avoids float rounding that could add a phantom page.
+  const bodyH = count === 1 ? pgH : `calc(${pgH} * ${count})`;
 
-  // For rotate90: content is CSS-rotated inside a portrait page-box.
-  // The inner div has layout dims matching the PORTRAIT box so there is
-  // NO layout overflow (which was the previous bug causing phantom pages).
-  const innerStyle = isRotate90
-    ? `width:calc(${pgH} - 0.5mm);height:calc(${pgW} - 0.5mm);transform:rotate(90deg);transform-origin:center center;`
-    : '';
-
-  const pagesHtml = stickersList.map((content, idx) => {
+  const pagesHtml = stickersList.map((imgHtml, idx) => {
     const isLast = idx === count - 1;
-    const breakAfter = isLast
-      ? 'page-break-after:avoid!important;break-after:avoid!important;'
-      : 'page-break-after:always!important;break-after:page!important;';
-    return `
-      <div class="lbl" style="${breakAfter}">
-        ${isRotate90
-          ? `<div style="display:flex;flex-direction:column;justify-content:space-between;align-items:center;text-align:center;overflow:hidden;box-sizing:border-box;${innerStyle}">${content}</div>`
-          : content
-        }
-      </div>`;
+    const brk = isLast
+      ? 'page-break-after:avoid;break-after:avoid'
+      : 'page-break-after:always;break-after:page';
+    return `<div class="lbl" style="${brk}">${imgHtml}</div>`;
   }).join('');
 
-  // Save and blank the page title so Chrome prints no header/footer text
   const savedTitle = document.title;
   document.title = '';
 
   doc.open();
   doc.write(`<!DOCTYPE html>
-<html dir="ltr">
+<html>
 <head>
 <meta charset="utf-8">
 <title></title>
 <style>
-/* ── @page: exact label size, zero margin (also kills Chrome header/footer) ── */
 @page {
   size: ${pgW} ${pgH} ${pgKeyword};
-  margin: 0 !important;
+  margin: 0;
 }
-@page:first,@page:left,@page:right { margin: 0 !important; }
+@page:first,@page:left,@page:right { margin: 0; }
 
-/* ── Reset ── */
 *,*::before,*::after {
   box-sizing: border-box;
-  margin: 0; padding: 0;
+  margin: 0;
+  padding: 0;
   -webkit-print-color-adjust: exact !important;
   print-color-adjust: exact !important;
 }
 
-/* ── html / body locked to exact total print area ── */
 html, body {
-  width: ${pgW} !important;
-  height: ${bodyH} !important;
-  max-height: ${bodyH} !important;
-  overflow: hidden !important;
-  margin: 0 !important; padding: 0 !important;
-  background: #fff !important; color: #000 !important;
-  font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Cairo',Arial,sans-serif !important;
+  width: ${pgW};
+  height: ${bodyH};
+  max-height: ${bodyH};
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  background: #fff;
 }
 
-/* ── Each label: exact page dimensions, no overflow ── */
+/* Each label div is exactly one page tall — no overflow, no phantom pages. */
 .lbl {
-  width: ${pgW} !important;
-  height: calc(${pgH} - 0.3mm) !important;
-  max-height: calc(${pgH} - 0.3mm) !important;
-  overflow: hidden !important;
-  margin: 0 !important; padding: 0 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: space-between !important;
-  align-items: center !important;
-  text-align: center !important;
-  background: #fff !important;
-  page-break-inside: avoid !important;
-  break-inside: avoid !important;
-  position: relative !important;
+  width: ${pgW};
+  height: ${pgH};
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  display: block;
+  page-break-inside: avoid;
+  break-inside: avoid;
 }
 
-/* ── Print media overrides ── */
+/* The image fills the entire label box — exact size, no layout math needed. */
+.lbl img {
+  display: block;
+  width: ${pgW};
+  height: ${pgH};
+  object-fit: fill;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+
 @media print {
   @page {
     size: ${pgW} ${pgH} ${pgKeyword};
-    margin: 0 !important;
+    margin: 0;
   }
   html, body {
-    width: ${pgW} !important;
-    height: ${bodyH} !important;
-    max-height: ${bodyH} !important;
-    overflow: hidden !important;
+    width: ${pgW};
+    height: ${bodyH};
+    max-height: ${bodyH};
+    overflow: hidden;
   }
   .lbl {
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 }
-
-/* ── Utilities for sticker content ── */
-svg { display:block !important; width:100% !important; height:auto !important; shape-rendering:crispEdges !important; }
 </style>
 </head>
 <body>${pagesHtml}</body>
 </html>`);
   doc.close();
 
-  // 500ms lets the iframe layout fully render before the print dialog opens.
-  // Any less and Chrome may capture a blank/incomplete render.
+  // 600ms: images (data URLs) need a little more time to decode before print
   setTimeout(() => {
     try {
       const win = iframe.contentWindow;
-      if (!win) return;        // iframe gone — do nothing (never fall back to main window)
+      if (!win) return;
       win.document.title = '';
       win.focus();
       win.print();
     } catch (e) {
       console.error('[barcode-print] iframe print error:', e);
-      // Intentionally NOT calling window.print() — that would print the merchant's
-      // main page (which shows the current date/time and dashboard content).
     } finally {
-      // Restore title after print dialog closes (async)
       setTimeout(() => { document.title = savedTitle; }, 2500);
     }
-  }, 500);
+  }, 600);
 }
 
