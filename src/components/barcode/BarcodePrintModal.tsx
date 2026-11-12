@@ -230,96 +230,24 @@ export function BarcodePrintModal({
     }[labelSize];
 
     const is25mm = labelSize === '38x25' || labelSize === '50x25';
-    const svgHeight = is25mm ? 15 : 22;
-    const storeFontSize = is25mm ? '8px' : '9.5px';
-    const prodFontSize = is25mm ? '8.5px' : '10px';
-    const priceFontSize = is25mm ? '9.5px' : '11.5px';
-    const codeFontSize = is25mm ? '8px' : '9px';
+    const svgHeight = is25mm ? 18 : 24;
+    const storeFontSize = is25mm ? '7.5px' : '9px';
+    const prodFontSize  = is25mm ? '8px'   : '10px';
+    const priceFontSize = is25mm ? '9px'   : '11px';
+    const codeFontSize  = is25mm ? '7px'   : '8.5px';
 
     const barcodeSvgHtml = renderCode128SvgString(product.barcode, svgHeight);
 
-    const singleStickerHtml = `
-      <div style="
-        width: 100%;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        align-items: center;
-        text-align: center;
-        overflow: hidden;
-        box-sizing: border-box;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Cairo', sans-serif;
-      ">
-        ${showStoreName ? `
-          <div style="
-            font-size: ${storeFontSize};
-            font-weight: 700;
-            color: #1f2937;
-            line-height: 1.2;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            width: 100%;
-            text-align: center;
-            direction: rtl;
-          ">${tenantName}</div>
-        ` : ''}
-
-        ${showProductName ? `
-          <div style="
-            font-size: ${prodFontSize};
-            font-weight: 900;
-            color: #000000;
-            line-height: 1.2;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            width: 100%;
-            text-align: center;
-            direction: rtl;
-          ">${product.name_ar || product.name_en}</div>
-        ` : ''}
-
-        ${showPrice ? `
-          <div style="
-            font-size: ${priceFontSize};
-            font-weight: 900;
-            color: #000000;
-            line-height: 1;
-            text-align: center;
-            direction: ltr;
-            width: 100%;
-          ">${product.selling_price.toFixed(2)} <span style="font-size: 7px; font-weight: 600;">${currency}</span></div>
-        ` : ''}
-
-        <div style="
-          width: 100%;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          overflow: hidden;
-          direction: ltr;
-          flex-shrink: 0;
-        ">
-          ${barcodeSvgHtml}
-          <span style="
-            font-family: monospace, monospace;
-            font-size: ${codeFontSize};
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            color: #000000;
-            line-height: 1;
-            margin-top: 0.5px;
-            text-align: center;
-            display: block;
-            width: 100%;
-            direction: ltr;
-          ">${product.barcode}</span>
-        </div>
-      </div>
-    `;
+    // Build sticker content — a full-size flex column filling the label box.
+    // The .lbl div is already 38mm × 25mm landscape in the iframe, so
+    // width:100% = 38mm and height:100% = 25mm — no extra rotation needed.
+    const singleStickerHtml = `<div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;align-items:center;text-align:center;overflow:hidden;box-sizing:border-box;padding:1mm 1.5mm;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Cairo',sans-serif;">${
+      showStoreName ? `<div style="font-size:${storeFontSize};font-weight:700;color:#1f2937;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;text-align:center;direction:rtl;">${tenantName}</div>` : ''
+    }${
+      showProductName ? `<div style="font-size:${prodFontSize};font-weight:900;color:#000;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;text-align:center;direction:rtl;">${product.name_ar || product.name_en}</div>` : ''
+    }${
+      showPrice ? `<div style="font-size:${priceFontSize};font-weight:900;color:#000;line-height:1;text-align:center;direction:ltr;width:100%;">${product.selling_price.toFixed(2)}&nbsp;<span style="font-size:6.5px;font-weight:600;">${currency}</span></div>` : ''
+    }<div style="width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;direction:ltr;flex:1;min-height:0;">${barcodeSvgHtml}<span style="font-family:monospace;font-size:${codeFontSize};font-weight:700;letter-spacing:0.07em;color:#000;line-height:1;margin-top:0.5px;text-align:center;display:block;width:100%;direction:ltr;">${product.barcode}</span></div></div>`;
 
     const stickersList: string[] = [];
     for (let i = 0; i < copies; i++) {
