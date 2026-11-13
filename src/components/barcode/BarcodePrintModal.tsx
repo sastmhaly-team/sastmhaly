@@ -5,7 +5,8 @@ import { Modal } from '@/components/ui/Modal';
 import { BarcodeSvg } from './BarcodeSvg';
 import { 
   Printer, Download, Sparkles, Plus, Minus, Tag, Check, AlertCircle, 
-  RotateCw, HelpCircle, Usb, CheckCircle2, RefreshCw, Zap, Cable 
+  RotateCw, HelpCircle, Usb, CheckCircle2, RefreshCw, Zap, Cable,
+  Laptop, ExternalLink, ShieldCheck
 } from 'lucide-react';
 import { 
   printBarcodeLabelsIsolated, 
@@ -15,8 +16,15 @@ import {
   printBarcodeDirectUsb, 
   printBarcodeDirectSerial,
   isWebUsbSupported,
-  isWebSerialSupported 
+  isWebSerialSupported,
+  createTsplBarcodeBuffer
 } from '@/lib/hardware/thermal-printer';
+import {
+  checkPrintAgentStatus,
+  getPrintAgentPrinters,
+  printRawViaAgent,
+  AgentPrinter
+} from '@/lib/hardware/print-agent-client';
 import { encodeCode128 } from '@/lib/barcode/code128';
 
 export interface BarcodePrintProduct {
@@ -44,28 +52,56 @@ export function BarcodePrintModal({
 }: BarcodePrintModalProps) {
   const [copies, setCopies] = useState<number>(1);
   const [labelSize, setLabelSize] = useState<'38x25' | '40x30' | '50x25'>('38x25');
-  const [printMethod, setPrintMethod] = useState<'usb' | 'serial' | 'system'>('usb');
+  const [printMethod, setPrintMethod] = useState<'agent' | 'system' | 'usb' | 'serial'>('agent');
+  
+  // Sastmhaly Desktop Print Agent State
+  const [isAgentConnected, setIsAgentConnected] = useState<boolean>(false);
+  const [isCheckingAgent, setIsCheckingAgent] = useState<boolean>(false);
+  const [agentPrinters, setAgentPrinters] = useState<AgentPrinter[]>([]);
+  const [selectedAgentPrinter, setSelectedAgentPrinter] = useState<string>('');
+  const [isPrintingAgent, setIsPrintingAgent] = useState<boolean>(false);
+  const [agentFeedback, setAgentFeedback] = useState<{ success: boolean; message: string } | null>(null);
+
+  // USB / Serial Direct State
   const [usbPrinterName, setUsbPrinterName] = useState<string | null>(null);
   const [isConnectingUsb, setIsConnectingUsb] = useState<boolean>(false);
   const [isPrintingUsb, setIsPrintingUsb] = useState<boolean>(false);
   const [usbFeedback, setUsbFeedback] = useState<{ success: boolean; message: string } | null>(null);
+
   const [orientation, setOrientation] = useState<'horizontal' | 'rotate90' | 'vertical'>('horizontal');
   const [showPrice, setShowPrice] = useState<boolean>(true);
   const [showStoreName, setShowStoreName] = useState<boolean>(true);
   const [showProductName, setShowProductName] = useState<boolean>(true);
 
-  // Check on mount if a USB printer is already paired
+  // Check agent & USB on mount
+  const checkAgent = async () => {
+    setIsCheckingAgent(true);
+    try {
+      const status = await checkPrintAgentStatus();
+      if (status.connected) {
+        setIsAgentConnected(true);
+        setPrintMethod('agent');
+        const printerRes = await getPrintAgentPrinters();
+        if (printerRes.success && printerRes.printers.length > 0) {
+          setAgentPrinters(printerRes.printers);
+          setSelectedAgentPrinter(printerRes.defaultPrinter || printerRes.printers[0].name);
+        }
+      } else {
+        setIsAgentConnected(false);
+      }
+    } catch {
+      setIsAgentConnected(false);
+    } finally {
+      setIsCheckingAgent(false);
+    }
+  };
+
   useEffect(() => {
     if (isOpen && typeof window !== 'undefined') {
+      checkAgent();
       getPairedUsbPrinter().then((res) => {
         if (res.connected && res.name && !res.name.includes('13d3') && !res.name.includes('5a01')) {
           setUsbPrinterName(res.name);
-          setPrintMethod('usb');
-        } else {
-          setUsbPrinterName(null);
-          if (!isWebUsbSupported()) {
-            setPrintMethod('system');
-          }
         }
       });
     }
@@ -180,10 +216,43 @@ export function BarcodePrintModal({
 
     if (res.success && res.name) {
       setUsbPrinterName(res.name);
-      setPrintMethod('serial');
+      setPrintMethod('usb');
       setUsbFeedback({ success: true, message: `تم الاتصال بنجاح بمنفذ: ${res.name}` });
     } else {
       setUsbFeedback({ success: false, message: res.error || 'فشل الاتصال بمنفذ Serial' });
+    }
+  };
+
+  // Sastmhaly Print Agent Direct Spooler Print
+  const handlePrintAgent = async () => {
+    setIsPrintingAgent(true);
+    setAgentFeedback(null);
+
+    const dims = {
+      '38x25': { w: 38, h: 25, dotsW: 304, dotsH: 200 },
+      '40x30': { w: 40, h: 30, dotsW: 320, dotsH: 240 },
+      '50x25': { w: 50, h: 25, dotsW: 400, dotsH: 200 },
+    }[labelSize];
+
+    const canvas = generateStickerCanvas(dims.dotsW, dims.dotsH);
+    const buffer = createTsplBarcodeBuffer(dims.w, dims.h, canvas, copies);
+
+    const res = await printRawViaAgent(buffer, selectedAgentPrinter);
+    setIsPrintingAgent(false);
+
+    if (res.success) {
+      setAgentFeedback({ 
+        success: true, 
+        message: `تمت طباعة ${copies} ملصق فوراً بمساعد سستمهالي بنجاح وبدون أي هدر للورق! ⚡` 
+      });
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+    } else {
+      setAgentFeedback({ 
+        success: false, 
+        message: res.error || 'فشلت الطباعة عبر مساعد سستمهالي. تأكد من تشغيل البرنامج واختيار الطابعة الصحيحة.' 
+      });
     }
   };
 
@@ -221,28 +290,61 @@ export function BarcodePrintModal({
     }
   };
 
-  // System Print via isolated iframe — uses Canvas → PNG image for pixel-perfect output.
-  // This eliminates ALL HTML/CSS layout issues (RTL shift, blank pages from flex height bugs).
+  // System Print via isolated iframe — Canvas → PNG for pixel-perfect, correctly-oriented output.
+  //
+  // ORIENTATION STRATEGY:
+  // Windows thermal label printer drivers always print in PORTRAIT mode and cannot be
+  // overridden by CSS.  The driver then rotates portrait → landscape on the physical label.
+  //
+  // Default mode:
+  //   • Generate canvas in LANDSCAPE dims (38mm × 25mm content, correctly readable)
+  //   • Pre-rotate the canvas -90° in pixels → portrait canvas (25mm × 38mm)
+  //   • Send @page { size: 25mm 38mm } (portrait) → driver rotates +90° → net 0° → ✓
+  //
+  // rotate90 mode (for drivers that accept landscape natively):
+  //   • Generate canvas in LANDSCAPE dims, NO rotation
+  //   • Send @page { size: 38mm 25mm } (landscape)
   const handlePrintSystem = () => {
     const dims = {
-      '38x25': { width: '38mm', height: '25mm', dotsW: 456, dotsH: 300 },
-      '40x30': { width: '40mm', height: '30mm', dotsW: 480, dotsH: 360 },
-      '50x25': { width: '50mm', height: '25mm', dotsW: 600, dotsH: 300 },
+      '38x25': { lW: '38mm', lH: '25mm', dotsW: 456, dotsH: 300 },
+      '40x30': { lW: '40mm', lH: '30mm', dotsW: 480, dotsH: 360 },
+      '50x25': { lW: '50mm', lH: '25mm', dotsW: 600, dotsH: 300 },
     }[labelSize];
 
-    // For rotate90: render the canvas in portrait orientation (swap W/H)
-    const canvasW = orientation === 'rotate90' ? dims.dotsH : dims.dotsW;
-    const canvasH = orientation === 'rotate90' ? dims.dotsW : dims.dotsH;
-    const canvas  = generateStickerCanvas(canvasW, canvasH);
-    const dataUrl = canvas.toDataURL('image/png');
+    // Step 1: render landscape canvas (content is always laid out landscape)
+    const srcCanvas = generateStickerCanvas(dims.dotsW, dims.dotsH);
 
-    // <img> has an exact, deterministic height — zero CSS layout ambiguity.
-    // The browser sees one image element per label, each exactly labelHeight tall.
-    // body height = N × labelHeight → Chrome generates exactly N print pages.
-    const imgHtml = `<img src="${dataUrl}" width="${canvasW}" height="${canvasH}" style="display:block;width:${dims.width};height:${dims.height};object-fit:fill;" />`;
+    let printCanvas: HTMLCanvasElement;
+    let pgW: string;  // page width sent to browser/driver
+    let pgH: string;  // page height sent to browser/driver
+
+    if (orientation === 'rotate90') {
+      // Landscape @page — for drivers that accept landscape natively
+      printCanvas = srcCanvas;
+      pgW = dims.lW;   // 38mm
+      pgH = dims.lH;   // 25mm
+    } else {
+      // Portrait @page with canvas pre-rotated -90°.
+      // Driver rotates portrait (+90°) → net = 0° → landscape content on physical label.
+      const rot = document.createElement('canvas');
+      rot.width  = srcCanvas.height;   // 300 (portrait width = landscape height)
+      rot.height = srcCanvas.width;    // 456 (portrait height = landscape width)
+      const ctx = rot.getContext('2d')!;
+      ctx.translate(rot.width / 2, rot.height / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.drawImage(srcCanvas, -srcCanvas.width / 2, -srcCanvas.height / 2);
+      printCanvas = rot;
+      pgW = dims.lH;   // 25mm — portrait width
+      pgH = dims.lW;   // 38mm — portrait height
+    }
+
+    const dataUrl = printCanvas.toDataURL('image/png');
+    // <img> has a 100% deterministic height — no flex/height:100% ambiguity.
+    // body height = N × pgH → Chrome generates exactly N print pages.
+    const imgHtml = `<img src="${dataUrl}" width="${printCanvas.width}" height="${printCanvas.height}" style="display:block;width:${pgW};height:${pgH};object-fit:fill;" />`;
 
     const stickersList = Array.from({ length: copies }, () => imgHtml);
-    printBarcodeLabelsIsolated(stickersList, { width: dims.width, height: dims.height }, { orientation });
+    printBarcodeLabelsIsolated(stickersList, { width: pgW, height: pgH }, { orientation });
   };
 
   const handleDownloadImage = () => {
@@ -280,37 +382,37 @@ export function BarcodePrintModal({
           </div>
         </div>
 
-        {/* Print Method Switcher: Direct USB vs Browser System Print */}
+        {/* Print Method Switcher: Agent vs Browser System vs Direct USB */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="block font-bold text-xs text-[#0B1730]">
               طريقة الطباعة (Print Method):
             </label>
             <span className="text-[10px] text-gray-500">
-              {printMethod === 'usb' ? '⚡ طباعة مباشرة بدون نوافذ' : '📄 طباعة عبر نافذة المتصفح'}
+              {printMethod === 'agent' ? '⚡ مساعد سستمهالي المباشر (الأفضل والنهائي)' : printMethod === 'usb' ? '🔌 كابل USB المباشر' : '📄 نافذة المتصفح'}
             </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="grid grid-cols-3 gap-2 text-xs">
             <button
               type="button"
-              onClick={() => setPrintMethod('usb')}
-              className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer flex items-start gap-2.5 ${
-                printMethod === 'usb'
-                  ? 'bg-emerald-50/70 border-emerald-500 text-emerald-950 font-bold shadow-xs'
+              onClick={() => setPrintMethod('agent')}
+              className={`p-2 rounded-xl border text-right transition-all cursor-pointer flex items-start gap-2 ${
+                printMethod === 'agent'
+                  ? 'bg-emerald-50/80 border-emerald-500 text-emerald-950 font-bold shadow-xs'
                   : 'bg-white border-[#E5EAF2] text-gray-600 hover:bg-gray-50'
               }`}
             >
-              <div className={`p-1.5 rounded-lg ${printMethod === 'usb' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
-                <Usb className="w-4 h-4" />
+              <div className={`p-1.5 rounded-lg shrink-0 ${printMethod === 'agent' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                <Zap className="w-4 h-4" />
               </div>
               <div>
-                <div className="font-bold flex items-center gap-1.5">
-                  <span>طابعة USB مباشرة (الأفضل)</span>
-                  {printMethod === 'usb' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+                <div className="font-bold flex items-center gap-1">
+                  <span>مساعد سستمهالي ⚡</span>
+                  {isAgentConnected && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
                 </div>
-                <div className="text-[10px] opacity-80 font-normal mt-0.5">
-                  تطبع فوراً بضغطة زر مثل البرامج المثبتة بدون أي نوافذ
+                <div className="text-[9.5px] opacity-80 font-normal mt-0.5">
+                  طابعة هاردوير مباشرة بدون نوافذ وبدون هدر ورق
                 </div>
               </div>
             </button>
@@ -318,26 +420,179 @@ export function BarcodePrintModal({
             <button
               type="button"
               onClick={() => setPrintMethod('system')}
-              className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer flex items-start gap-2.5 ${
+              className={`p-2 rounded-xl border text-right transition-all cursor-pointer flex items-start gap-2 ${
                 printMethod === 'system'
                   ? 'bg-blue-50/70 border-blue-500 text-blue-950 font-bold shadow-xs'
                   : 'bg-white border-[#E5EAF2] text-gray-600 hover:bg-gray-50'
               }`}
             >
-              <div className={`p-1.5 rounded-lg ${printMethod === 'system' ? 'bg-[#246BFD] text-white' : 'bg-gray-100 text-gray-500'}`}>
+              <div className={`p-1.5 rounded-lg shrink-0 ${printMethod === 'system' ? 'bg-[#246BFD] text-white' : 'bg-gray-100 text-gray-500'}`}>
                 <Printer className="w-4 h-4" />
               </div>
               <div>
-                <div className="font-bold flex items-center gap-1.5">
-                  <span>طابعة المتصفح (System Print)</span>
-                  {printMethod === 'system' && <CheckCircle2 className="w-3.5 h-3.5 text-[#246BFD]" />}
+                <div className="font-bold flex items-center gap-1">
+                  <span>طابعة المتصفح</span>
+                  {printMethod === 'system' && <CheckCircle2 className="w-3 h-3 text-[#246BFD]" />}
                 </div>
-                <div className="text-[10px] opacity-80 font-normal mt-0.5">
-                  تفتح نافذة الطباعة لاختيار أي طابعة معرفة بالكمبيوتر
+                <div className="text-[9.5px] opacity-80 font-normal mt-0.5">
+                  نافذة طباعة الويندوز المعتادة
+                </div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPrintMethod('usb')}
+              className={`p-2 rounded-xl border text-right transition-all cursor-pointer flex items-start gap-2 ${
+                printMethod === 'usb'
+                  ? 'bg-purple-50/70 border-purple-500 text-purple-950 font-bold shadow-xs'
+                  : 'bg-white border-[#E5EAF2] text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <div className={`p-1.5 rounded-lg shrink-0 ${printMethod === 'usb' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                <Usb className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="font-bold flex items-center gap-1">
+                  <span>كابل USB / Serial</span>
+                  {printMethod === 'usb' && <CheckCircle2 className="w-3 h-3 text-purple-600" />}
+                </div>
+                <div className="text-[9.5px] opacity-80 font-normal mt-0.5">
+                  توصيل منفذ USB أو COM مباشرة
                 </div>
               </div>
             </button>
           </div>
+
+          {/* Sastmhaly Print Agent Panel */}
+          {printMethod === 'agent' && (
+            <div className="mt-2 animate-in fade-in zoom-in-95">
+              {isAgentConnected ? (
+                <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="font-bold text-emerald-950">مساعد طباعة سستمهالي متصل وجاهز للطباعة الفورية ⚡</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={checkAgent}
+                      disabled={isCheckingAgent}
+                      className="text-[11px] text-emerald-700 hover:text-emerald-900 flex items-center gap-1 font-semibold cursor-pointer"
+                      title="تحديث قائمة الطابعات"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isCheckingAgent ? 'animate-spin' : ''}`} />
+                      <span>تحديث</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <label className="text-[11px] text-emerald-900 font-bold shrink-0">
+                      طابعة الباركود:
+                    </label>
+                    <select
+                      value={selectedAgentPrinter}
+                      onChange={(e) => setSelectedAgentPrinter(e.target.value)}
+                      className="flex-1 bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 font-semibold focus:outline-none focus:border-emerald-600 cursor-pointer"
+                    >
+                      {agentPrinters.length > 0 ? (
+                        agentPrinters.map((p) => (
+                          <option key={p.name} value={p.name}>
+                            {p.name} {p.isDefault ? '(الافتراضية)' : ''}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">الطابعة الافتراضية للويندوز</option>
+                      )}
+                    </select>
+                  </div>
+                  <p className="text-[10px] text-emerald-700">
+                    يتم إرسال أوامر TSPL مباشرة لرأس الطابعة في 0.1 ثانية بدون أي نوافذ وبدون هدر ورق نهائياً.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl space-y-3 text-xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 font-bold text-blue-950">
+                      <div className="w-6 h-6 rounded-lg bg-[#246BFD] text-white flex items-center justify-center shrink-0">
+                        <Zap className="w-3.5 h-3.5" />
+                      </div>
+                      <span>مساعد طباعة سستمهالي (الحل المباشر والنهائي)</span>
+                    </div>
+                    <span className="bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-300 shrink-0">
+                      غير مشغل حالياً
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-gray-700 leading-relaxed">
+                    برنامج وسيط خفيف جداً يثبت لمرة واحدة على كمبيوتر المحل، يطبع الباركود مباشرة في 0.1 ثانية بدون نوافذ متصفح وبدون أي ورق أبيض إطلاقاً.
+                  </p>
+
+                  <div className="bg-white p-3 rounded-lg border border-blue-100 space-y-2.5">
+                    <div className="text-[11px] text-blue-900 font-bold">
+                      خطوات التشغيل السريع (دقيقة واحدة):
+                    </div>
+                    <ol className="text-[11px] text-gray-700 space-y-1 list-decimal list-inside mr-1 leading-relaxed">
+                      <li>
+                        اضغط على <strong>تحميل مساعد الطباعة</strong> أدناه لحفظ الملف.
+                      </li>
+                      <li>
+                        فك الضغط واضغط مرتين على <strong>start-agent.bat</strong> (أو <strong>install-autostart.bat</strong> للتشغيل التلقائي مع الويندوز).
+                      </li>
+                      <li>
+                        اضغط على زر <strong>فحص الاتصال</strong> وسيتصل فوراً بدون أي إعدادات!
+                      </li>
+                    </ol>
+
+                    <div className="flex items-center gap-2 pt-1 flex-wrap">
+                      <a
+                        href="/downloads/sastmhaly-print-agent.zip"
+                        download="sastmhaly-print-agent.zip"
+                        className="px-3.5 py-1.5 bg-[#246BFD] hover:bg-[#1A54D4] text-white rounded-lg text-xs font-bold shadow-xs inline-flex items-center gap-1.5 transition-all"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>تحميل مساعد الطباعة (ZIP)</span>
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={checkAgent}
+                        disabled={isCheckingAgent}
+                        className="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-800 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isCheckingAgent ? 'animate-spin' : ''}`} />
+                        <span>{isCheckingAgent ? 'جاري الفحص...' : 'فحص الاتصال الآن'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPrintMethod('system')}
+                        className="px-3 py-1.5 text-gray-500 hover:text-gray-800 text-xs font-semibold cursor-pointer mr-auto"
+                      >
+                        استخدام طابعة المتصفح كبديل مؤقت ←
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sastmhaly Agent Feedback Toast */}
+          {agentFeedback && (
+            <div className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+              agentFeedback.success 
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900 font-bold' 
+                : 'bg-amber-50 border-amber-300 text-amber-950'
+            }`}>
+              {agentFeedback.success ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              )}
+              <span className="font-semibold leading-relaxed">{agentFeedback.message}</span>
+            </div>
+          )}
 
           {/* USB Device Status / Pair Button */}
           {printMethod === 'usb' && (
@@ -686,19 +941,45 @@ export function BarcodePrintModal({
               إلغاء
             </button>
 
-            {printMethod === 'usb' || printMethod === 'serial' ? (
+            {printMethod === 'agent' ? (
+              isAgentConnected ? (
+                <button
+                  type="button"
+                  onClick={handlePrintAgent}
+                  disabled={isPrintingAgent}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isPrintingAgent ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Zap className="w-4 h-4" />
+                  )}
+                  <span>طباعة {copies} ملصق فوراً بمساعد سستمهالي ⚡</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handlePrintSystem}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#246BFD] hover:bg-[#1A54D4] active:scale-95 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer"
+                  title="مساعد الطباعة غير متصل حالياً، يمكنك الطباعة عبر المتصفح أو تشغيل المساعد"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>طباعة {copies} ملصق عبر المتصفح 🏷️</span>
+                </button>
+              )
+            ) : printMethod === 'usb' ? (
               <button
                 type="button"
                 onClick={handlePrintDirect}
                 disabled={isPrintingUsb}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer disabled:opacity-50"
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer disabled:opacity-50"
               >
                 {isPrintingUsb ? (
                   <RefreshCw className="w-4 h-4 animate-spin" />
                 ) : (
                   <Zap className="w-4 h-4" />
                 )}
-                <span>طباعة {copies} ملصق فوراً {printMethod === 'serial' ? 'عبر COM' : 'عبر USB'} ⚡</span>
+                <span>طباعة {copies} ملصق عبر كابل USB ⚡</span>
               </button>
             ) : (
               <button

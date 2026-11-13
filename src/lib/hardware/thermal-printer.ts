@@ -393,8 +393,23 @@ export async function printBarcodeDirectSerial(
 }
 
 /**
- * Build TSPL binary command buffer from a rendered canvas for thermal barcode label printers
- * (Xprinter XP-365B, XP-235B, Rongta, TSC, Gprinter, etc.)
+ * Build TSPL binary command buffer from a rendered canvas for thermal barcode label printers.
+ * Sends a single self-contained TSPL document that prints EXACTLY `copies` labels — zero blanks.
+ *
+ * TSPL reference:
+ *   SIZE w,h      — physical label size in mm (width × height)
+ *   GAP g,0       — gap between labels in mm
+ *   DIRECTION 0   — landscape feed (content appears left-to-right on the label as it exits)
+ *   HOME          — reset media position to prevent phantom extra feeds from Windows spooler
+ *   SET CUTTER OFF — disable auto-cut (not all printers have a cutter; harmless if absent)
+ *   CLS           — clear image buffer
+ *   BITMAP ...    — raster image data
+ *   PRINT 1,N     — print 1 label set, N copies (N = user-chosen copies)
+ *
+ * IMPORTANT: We use PRINT 1,N (not PRINT N,1) so the printer firmware handles copies
+ * internally — avoids the Windows spooler treating each copy as a new GDI page.
+ *
+ * Compatible with: Xprinter XP-365B/235B, Rongta, TSC, Gprinter, most ZPL-compatible printers.
  */
 export function createTsplBarcodeBuffer(
   widthMm: number,
@@ -410,7 +425,7 @@ export function createTsplBarcodeBuffer(
   const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imgData.data;
 
-  // In TSPL mode 0, 0 is white, 1 is black
+  // TSPL BITMAP mode 0: bit=1 → black dot, bit=0 → white dot
   const rasterData = new Uint8Array(widthBytes * heightDots);
 
   for (let y = 0; y < heightDots; y++) {
@@ -431,9 +446,27 @@ export function createTsplBarcodeBuffer(
   }
 
   const encoder = new TextEncoder();
-  const headerStr = `SIZE ${widthMm} mm, ${heightMm} mm\r\nGAP 2 mm, 0 mm\r\nDIRECTION 1\r\nCLS\r\nBITMAP 0,0,${widthBytes},${heightDots},0,`;
+
+  // Clamp copies to [1, 999] to prevent spooler overflow
+  const safeCopies = Math.max(1, Math.min(999, copies));
+
+  // TSPL header:
+  //   HOME before CLS → resets feed position (prevents blank labels from Windows GDI spooler)
+  //   DIRECTION 0     → landscape orientation (label prints left-to-right as it exits)
+  //   SET CUTTER OFF  → no auto-cut feed (prevents 1 extra blank label on cutter-equipped printers)
+  const headerStr = [
+    `SIZE ${widthMm} mm, ${heightMm} mm`,
+    `GAP 2 mm, 0 mm`,
+    `DIRECTION 0`,
+    `HOME`,
+    `SET CUTTER OFF`,
+    `CLS`,
+    `BITMAP 0,0,${widthBytes},${heightDots},0,`,
+  ].join('\r\n');
   const header = encoder.encode(headerStr);
-  const footerStr = `\r\nPRINT ${copies},1\r\n`;
+
+  // PRINT 1,N: 1 label set × N copies — printer handles copies natively, no extra GDI pages
+  const footerStr = `\r\nPRINT 1,${safeCopies}\r\n`;
   const footer = encoder.encode(footerStr);
 
   const fullBuffer = new Uint8Array(header.length + rasterData.length + footer.length);
