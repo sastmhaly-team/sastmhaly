@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # Sastmhaly Desktop Print Agent (مساعد طباعة سستمهالي)
 # Lightweight Local Print Agent for Windows (Zero dependencies, pure PowerShell)
 # Enables instant, silent raw TSPL / ESC-POS printing directly from the web app.
@@ -9,8 +9,8 @@
 #   - Zero GDI overhead → zero blank labels → pixel-perfect size every time
 # ==============================================================================
 
-$ErrorActionPreference = "Stop"
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$ErrorActionPreference = "Continue"
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 $port  = 18274
 $logPath = "$env:TEMP\SastmhalyPrintAgent.log"
@@ -126,10 +126,15 @@ public class RawPrinterHelper {
 
 try {
     Add-Type -TypeDefinition $win32Code -ErrorAction Stop
-    Write-Log "[OK] Win32 RAW Printer API جاهز."
+    Write-Log "[OK] Win32 RAW Printer API ready."
 } catch {
-    if ($_.Exception.Message -notmatch "already") {
-        Write-Log "[!] تحذير Win32: $($_.Exception.Message)"
+    $errMsg = $_.Exception.Message
+    if ($errMsg -match "already defined" -or $errMsg -match "already exists") {
+        Write-Log "[OK] Win32 API already loaded (session reuse)."
+    } else {
+        Write-Log "[WARN] Add-Type warning (non-fatal): $errMsg"
+        # Try loading without error action as fallback
+        try { Add-Type -TypeDefinition $win32Code 2>$null } catch { }
     }
 }
 
