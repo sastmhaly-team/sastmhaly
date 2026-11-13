@@ -1,98 +1,77 @@
 @echo off
-chcp 65001 >nul 2>&1
-title سستمهالي - تثبيت مساعد الطباعة
+setlocal EnableDelayedExpansion
+title Sastmhaly Print Agent - Installer
 
-REM =========================================================================
-REM  Sastmhaly Print Agent Installer
-REM  يجب تشغيل هذا الملف كـ "مسؤول" (Run as Administrator) لأول مرة فقط
-REM =========================================================================
+REM =========================================================
+REM  Sastmhaly Print Agent - Installer
+REM  Run as Administrator (Right-click -> Run as Administrator)
+REM =========================================================
 
-REM Auto-elevate to Administrator (UAC prompt appears once only)
+REM Auto-elevate to Administrator
 net session >nul 2>&1
 if %errorlevel% neq 0 (
-    echo.
-    echo [!] يحتاج هذا البرنامج صلاحيات المسؤول لتسجيل المنفذ.
-    echo     سيظهر لك نافذة "هل تسمح لهذا التطبيق..." - اضغط "نعم"
-    echo.
-    timeout /t 2 /nobreak >nul
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    echo Requesting admin rights - click YES in the popup...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs"
     exit /b
 )
 
 cd /d "%~dp0"
-set "PS1_PATH=%~dp0SastmhalyPrintAgent.ps1"
-set "STARTUP_FOLDER=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
-set "VBS_PATH=%STARTUP_FOLDER%\SastmhalyPrintAgent.vbs"
 
 echo.
 echo =========================================================
-echo   سستمهالي - تثبيت مساعد الطباعة المباشرة
+echo   Sastmhaly Print Agent Installer
 echo =========================================================
 echo.
+echo [1/4] Setting PowerShell policy...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-ExecutionPolicy RemoteSigned -Scope LocalMachine -Force; Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force" >nul 2>&1
+echo       Done.
 
-REM --- Step 1: Set PowerShell execution policy ---
-echo [1/4] ضبط صلاحيات PowerShell...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-ExecutionPolicy RemoteSigned -Scope LocalMachine -Force" >nul 2>&1
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force" >nul 2>&1
-echo       [OK] تم.
-
-REM --- Step 2: Register URL ACL for port 18274 (required for HttpListener) ---
-echo [2/4] تسجيل المنفذ 18274 في الشبكة المحلية...
+echo [2/4] Registering port 18274...
 netsh http add urlacl url=http://127.0.0.1:18274/ user=Everyone >nul 2>&1
 netsh http add urlacl url=http://localhost:18274/ user=Everyone >nul 2>&1
-echo       [OK] تم تسجيل المنفذ.
+echo       Done.
 
-REM --- Step 3: Add Windows Firewall rule (inbound) ---
-echo [3/4] اضافة قاعدة جدار الحماية...
+echo [3/4] Adding firewall rule...
 netsh advfirewall firewall delete rule name="SastmhalyPrintAgent" >nul 2>&1
-netsh advfirewall firewall add rule name="SastmhalyPrintAgent" dir=in action=allow protocol=TCP localport=18274 description="Sastmhaly Print Agent local HTTP" >nul 2>&1
-echo       [OK] تم.
+netsh advfirewall firewall add rule name="SastmhalyPrintAgent" dir=in action=allow protocol=TCP localport=18274 >nul 2>&1
+echo       Done.
 
-REM --- Step 4: Create VBS autostart launcher ---
-echo [4/4] انشاء التشغيل التلقائي مع الويندوز...
+echo [4/4] Creating autostart...
 
-REM Write VBS file using PowerShell to avoid BAT quoting nightmares
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$vbs = 'Set WshShell = CreateObject(""WScript.Shell"")' + [char]13 + [char]10 + 'WshShell.Run ""powershell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File \"\"' + '%PS1_PATH%' + '\"\"""' + ', 0, False'; Set-Content -Path '%VBS_PATH%' -Value $vbs -Encoding UTF8"
+set "PS1=%~dp0SastmhalyPrintAgent.ps1"
+set "VBS=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\SastmhalyPrintAgent.vbs"
 
-if exist "%VBS_PATH%" (
-    echo       [OK] تم انشاء التشغيل التلقائي.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ps1='%PS1%'; $vbs='%VBS%'; $content = @('Set o = CreateObject(\"WScript.Shell\")', 'o.Run \"powershell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File \"\"' + $ps1 + '\"\"\"' + ', 0, False') -join \"`r`n\"; [System.IO.File]::WriteAllText($vbs, $content, [System.Text.Encoding]::ASCII)"
+
+if exist "%VBS%" (
+    echo       Done - autostart created.
 ) else (
-    echo       [!] تعذر انشاء التشغيل التلقائي - ستحتاج لتشغيل start-agent.bat يدوياً.
+    echo       WARNING - autostart not created, run start-agent.bat manually each time.
 )
 
 echo.
-echo =========================================================
-echo [تم] اكتمل التثبيت!
-echo.
-echo جاري تشغيل المساعد الان...
-echo =========================================================
-echo.
+echo Starting agent now...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process powershell -ArgumentList '-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File \"%PS1%\"' -WindowStyle Hidden"
 
-REM --- Start agent immediately (hidden) ---
-if exist "%VBS_PATH%" (
-    start "" wscript.exe "%VBS_PATH%"
-) else (
-    start "" powershell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File "%PS1_PATH%"
-)
+echo Waiting 6 seconds...
+timeout /t 6 /nobreak >nul
 
-timeout /t 4 /nobreak >nul
-
-REM --- Verify it started ---
 netstat -ano 2>nul | findstr ":18274" >nul
 if %errorlevel% equ 0 (
-    echo [تم] المساعد يعمل الان على المنفذ 18274!
     echo.
-    echo افتح موقع سستمهالي في المتصفح واضغط زر الباركود.
-    echo ستجد المساعد متصلاً بلون اخضر.
+    echo =========================================================
+    echo   SUCCESS! Agent is running on port 18274.
+    echo   Open Sastmhaly and click any barcode button.
+    echo   You will see a GREEN connected indicator.
+    echo =========================================================
 ) else (
-    echo [!] المساعد لم يبدأ بعد في خلال 4 ثوان.
-    echo     قد يحتاج وقتاً اطول - انتظر 10 ثوان ثم اضغط تحديث في المتصفح.
     echo.
-    echo     لو لا زال لا يعمل: اضغط مرتين على "start-agent.bat"
+    echo =========================================================
+    echo   Agent not detected yet - may need a few more seconds.
+    echo   Refresh the Sastmhaly page after 10 seconds.
+    echo   Error log: %TEMP%\SastmhalyPrintAgent.log
+    echo =========================================================
 )
-
-echo.
-echo سجل الاخطاء (ان وجدت): %TEMP%\SastmhalyPrintAgent.log
 echo.
 pause
+endlocal
