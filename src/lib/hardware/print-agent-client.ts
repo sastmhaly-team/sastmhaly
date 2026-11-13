@@ -1,7 +1,10 @@
 'use client';
 
 const AGENT_PORT = 18274;
-const AGENT_BASE_URL = `http://127.0.0.1:${AGENT_PORT}`;
+// Use 'localhost' hostname (not 127.0.0.1 IP) — Chrome allows HTTP requests
+// to 'localhost' from HTTPS pages (secure context exception), but blocks
+// HTTP requests to IP addresses like 127.0.0.1 as Mixed Content.
+const AGENT_BASE_URL = `http://localhost:${AGENT_PORT}`;
 
 export interface AgentPrinter {
   name: string;
