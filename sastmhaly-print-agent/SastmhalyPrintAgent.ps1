@@ -53,9 +53,11 @@ function Register-UrlAcl($url) {
 
 $url127  = "http://127.0.0.1:$port/"
 $urlLH   = "http://localhost:$port/"
+$urlIPv6 = "http://[::1]:$port/"
 
-Register-UrlAcl $url127 | Out-Null
-Register-UrlAcl $urlLH  | Out-Null
+Register-UrlAcl $url127  | Out-Null
+Register-UrlAcl $urlLH   | Out-Null
+Register-UrlAcl $urlIPv6 | Out-Null
 
 # ---------------------------------------------------------------------------
 # Win32 P/Invoke for RAW spooler printing (bypasses GDI page model entirely)
@@ -144,6 +146,7 @@ try {
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add($url127)
 $listener.Prefixes.Add($urlLH)
+$listener.Prefixes.Add($urlIPv6)
 
 try {
     $listener.Start()

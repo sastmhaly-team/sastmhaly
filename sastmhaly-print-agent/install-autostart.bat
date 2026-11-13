@@ -40,6 +40,7 @@ echo       Done.
 echo [2/5] Registering port 18274 (URL ACL)...
 netsh http add urlacl url=http://127.0.0.1:18274/ user=Everyone >nul 2>&1
 netsh http add urlacl url=http://localhost:18274/ user=Everyone >nul 2>&1
+netsh http add urlacl url=http://[::1]:18274/ user=Everyone >nul 2>&1
 echo       Done.
 
 echo [3/5] Adding firewall rule...

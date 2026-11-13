@@ -97,14 +97,25 @@ export function BarcodePrintModal({
   };
 
   useEffect(() => {
-    if (isOpen && typeof window !== 'undefined') {
-      checkAgent();
-      getPairedUsbPrinter().then((res) => {
-        if (res.connected && res.name && !res.name.includes('13d3') && !res.name.includes('5a01')) {
-          setUsbPrinterName(res.name);
-        }
-      });
-    }
+    if (!isOpen || typeof window === 'undefined') return;
+
+    // Initial check immediately when modal opens
+    checkAgent();
+    getPairedUsbPrinter().then((res) => {
+      if (res.connected && res.name && !res.name.includes('13d3') && !res.name.includes('5a01')) {
+        setUsbPrinterName(res.name);
+      }
+    });
+
+    // Poll every 3 seconds so if the agent starts after the modal opens,
+    // or if connection was intermittent, we detect it automatically.
+    const pollInterval = setInterval(() => {
+      if (!isAgentConnected) {
+        checkAgent();
+      }
+    }, 3000);
+
+    return () => clearInterval(pollInterval);
   }, [isOpen]);
 
   if (!product) return null;
