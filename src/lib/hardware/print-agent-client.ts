@@ -135,7 +135,11 @@ export async function printRawViaAgent(
   buffer: Uint8Array,
   printerName?: string
 ): Promise<{ success: boolean; error?: string; message?: string }> {
-  const baseUrl = await getWorkingBaseUrl();
+  // Use cached working base URL if available, or detect once
+  let baseUrl = _workingBaseUrl;
+  if (!baseUrl) {
+    baseUrl = await getWorkingBaseUrl();
+  }
   if (!baseUrl) {
     return { success: false, error: 'مساعد طباعة سستمهالي غير متصل. تأكد من تشغيل البرنامج.' };
   }
@@ -143,18 +147,27 @@ export async function printRawViaAgent(
   try {
     const base64Data = uint8ArrayToBase64(buffer);
 
-    const res = await tryFetch(`${baseUrl}/print-raw`, 8000, {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds for spooler
+
+    const res = await fetch(`${baseUrl}/print-raw`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       body: JSON.stringify({
         printerName: printerName || undefined,
         base64Data,
       }),
     });
 
-    if (!res) {
-      _workingBaseUrl = null; // connection dropped — re-detect next time
-      return { success: false, error: 'انتهت مهلة إرسال البيانات لمساعد الطباعة' };
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => null);
+      return {
+        success: false,
+        error: errData?.error || `فشل أمر الطباعة (رمز الاستجابة: ${res.status})`,
+      };
     }
 
     const result = await res.json();
@@ -162,9 +175,15 @@ export async function printRawViaAgent(
   } catch (err: any) {
     _workingBaseUrl = null;
     console.error('Print Agent error:', err);
+    if (err.name === 'AbortError') {
+      return {
+        success: false,
+        error: 'استغرقت الطابعة وقتاً أطول من المتوقع. تأكد من توصيل الكابل وتشغيل الطابعة.',
+      };
+    }
     return {
       success: false,
-      error: 'فشل الاتصال بمساعد طباعة سستمهالي. تأكد من تشغيل البرنامج.',
+      error: 'تعذر الاتصال بمساعد الطباعة. تأكد من تشغيل البرنامج في الخلفية.',
     };
   }
 }

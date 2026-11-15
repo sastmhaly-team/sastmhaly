@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # Sastmhaly Desktop Print Agent (مساعد طباعة سستمهالي)
 # Lightweight Local Print Agent for Windows (Zero dependencies, pure PowerShell)
 # Enables instant, silent raw TSPL / ESC-POS printing directly from the web app.
@@ -181,6 +181,7 @@ function Send-JsonResponse($response, $data, $statusCode = 200) {
         $response.OutputStream.Write($buffer, 0, $buffer.Length)
     } catch { }
     try { $response.OutputStream.Close() } catch { }
+    try { $response.Close() } catch { }
 }
 
 # ---------------------------------------------------------------------------
@@ -204,9 +205,11 @@ while ($listener.IsListening) {
             $response.StatusCode = 204
             $response.Headers.Add("Access-Control-Allow-Origin",          "*")
             $response.Headers.Add("Access-Control-Allow-Methods",         "GET, POST, OPTIONS")
-            $response.Headers.Add("Access-Control-Allow-Headers",         "Content-Type, *")
+            $response.Headers.Add("Access-Control-Allow-Headers",         "Content-Type, Authorization, *")
             $response.Headers.Add("Access-Control-Allow-Private-Network", "true")
+            $response.ContentLength64 = 0
             try { $response.OutputStream.Close() } catch { }
+            try { $response.Close() } catch { }
             continue
         }
 
