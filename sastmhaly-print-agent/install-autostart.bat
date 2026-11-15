@@ -3,8 +3,8 @@ setlocal EnableDelayedExpansion
 title Sastmhaly Print Agent - Installer
 
 REM =========================================================
-REM  Sastmhaly Print Agent - Installer v1.3
-REM  Uses Windows Task Scheduler for 100% reliable launch
+REM  Sastmhaly Print Agent - Installer v2.0
+REM  Permanent Install & Windows Auto-Start on Boot
 REM =========================================================
 
 REM Auto-elevate to Administrator
@@ -16,86 +16,89 @@ if %errorlevel% neq 0 (
 )
 
 cd /d "%~dp0"
-set "PS1=%~dp0SastmhalyPrintAgent.ps1"
+set "SRC_DIR=%~dp0"
+set "INSTALL_DIR=%LOCALAPPDATA%\SastmhalyPrintAgent"
 
-if not exist "%PS1%" (
-    echo [ERROR] File not found: %PS1%
-    echo Make sure all agent files are in the same folder.
+if not exist "%SRC_DIR%SastmhalyPrintAgent.ps1" (
+    echo [ERROR] Cannot find SastmhalyPrintAgent.ps1
+    echo Please make sure all files are extracted.
     pause
     exit /b 1
 )
 
 echo.
 echo =========================================================
-echo   Sastmhaly Print Agent Installer v1.3
+echo   Sastmhaly Print Agent - Permanent Installer v2.0
 echo =========================================================
 echo.
-echo Agent script: %PS1%
-echo.
 
-echo [1/5] Setting PowerShell policy...
+REM --- Step 1: Install to permanent location in AppData ---
+echo [1/6] Installing agent files to: %INSTALL_DIR%
+if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%" >nul 2>&1
+copy /Y "%SRC_DIR%SastmhalyPrintAgent.ps1" "%INSTALL_DIR%\" >nul 2>&1
+copy /Y "%SRC_DIR%silent-start.vbs" "%INSTALL_DIR%\" >nul 2>&1
+echo       Done - files installed permanently.
+
+REM --- Step 2: Set PowerShell policy ---
+echo [2/6] Setting PowerShell execution policy...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-ExecutionPolicy Bypass -Scope LocalMachine -Force; Set-ExecutionPolicy Bypass -Scope CurrentUser -Force" >nul 2>&1
 echo       Done.
 
-echo [2/5] Registering port 18274 (URL ACL)...
+REM --- Step 3: Register URL ACL for port 18274 ---
+echo [3/6] Registering local port 18274...
 netsh http add urlacl url=http://127.0.0.1:18274/ user=Everyone >nul 2>&1
 netsh http add urlacl url=http://localhost:18274/ user=Everyone >nul 2>&1
-netsh http add urlacl url=http://[::1]:18274/ user=Everyone >nul 2>&1
 echo       Done.
 
-echo [3/5] Adding firewall rule...
+REM --- Step 4: Firewall rule ---
+echo [4/6] Adding Windows Firewall rule for port 18274...
 netsh advfirewall firewall delete rule name="SastmhalyPrintAgent" >nul 2>&1
-netsh advfirewall firewall add rule name="SastmhalyPrintAgent" dir=in action=allow protocol=TCP localport=18274 >nul 2>&1
+netsh advfirewall firewall add rule name="SastmhalyPrintAgent" dir=in action=allow protocol=TCP localport=18274 description="Sastmhaly Print Agent" >nul 2>&1
 echo       Done.
 
-echo [4/5] Creating scheduled task (autostart on login)...
+REM --- Step 5: Configure Windows Auto-Start on Boot ---
+echo [5/6] Setting up automatic start with Windows...
+
+REM Method A: Windows Startup Folder (runs on every user login)
+set "STARTUP_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
+if exist "%STARTUP_DIR%" (
+    copy /Y "%INSTALL_DIR%\silent-start.vbs" "%STARTUP_DIR%\SastmhalyPrintAgent.vbs" >nul 2>&1
+)
+
+REM Method B: Windows Registry Run Key (system autostart)
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "SastmhalyPrintAgent" /t REG_SZ /d "wscript.exe \"%INSTALL_DIR%\silent-start.vbs\"" /f >nul 2>&1
+
+REM Method C: Task Scheduler fallback
 schtasks /delete /tn "SastmhalyPrintAgent" /f >nul 2>&1
-schtasks /create /tn "SastmhalyPrintAgent" /tr "powershell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File \"%PS1%\"" /sc ONLOGON /ru "%USERNAME%" /rl HIGHEST /f >nul 2>&1
-if %errorlevel% equ 0 (
-    echo       Done - task created, will run on every login automatically.
-) else (
-    echo       WARNING - could not create scheduled task.
-)
+schtasks /create /tn "SastmhalyPrintAgent" /tr "wscript.exe \"%INSTALL_DIR%\silent-start.vbs\"" /sc ONLOGON /f >nul 2>&1
 
-echo [5/5] Starting agent via Task Scheduler now...
-schtasks /run /tn "SastmhalyPrintAgent" >nul 2>&1
-if %errorlevel% equ 0 (
-    echo       Task started.
-) else (
-    echo       Task run via scheduler failed, trying direct launch...
-    start "" powershell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File "%PS1%"
-)
+echo       Done - Auto-start configured (Startup Folder + Registry + Task).
 
-echo.
-echo Waiting 8 seconds for agent to initialize...
-timeout /t 8 /nobreak >nul
+REM --- Step 6: Start agent immediately in background ---
+echo [6/6] Starting print agent in background now...
+start "" wscript.exe "%INSTALL_DIR%\silent-start.vbs"
 
-echo.
+echo Waiting 5 seconds for agent to start...
+timeout /t 5 /nobreak >nul
+
 netstat -ano 2>nul | findstr ":18274" >nul
 if %errorlevel% equ 0 (
-    echo =========================================================
-    echo   SUCCESS! Agent is running on port 18274.
     echo.
-    echo   Open Sastmhaly in your browser.
-    echo   Click any barcode button - you will see GREEN indicator.
-    echo   The agent will auto-start every time you log in to Windows.
+    echo =========================================================
+    echo   [SUCCESS] Sastmhaly Print Agent is ACTIVE on port 18274!
+    echo.
+    echo   - Installed permanently in: %INSTALL_DIR%
+    echo   - Will automatically start every time Windows opens
+    echo   - No black window, runs silently in the background
+    echo.
+    echo   You can close this window now and print directly from
+    echo   the Sastmhaly website!
     echo =========================================================
 ) else (
+    echo.
     echo =========================================================
-    echo   Agent not detected on port 18274 yet.
-    echo.
-    echo   Checking error log...
-    echo.
-    if exist "%TEMP%\SastmhalyPrintAgent.log" (
-        echo --- Last 20 lines of error log ---
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Content '%TEMP%\SastmhalyPrintAgent.log' -Tail 20 -ErrorAction SilentlyContinue"
-        echo ---
-    ) else (
-        echo   No log file found - agent did not start at all.
-        echo   PS1 path: %PS1%
-    )
-    echo.
-    echo   Try running start-agent.bat to see the error directly.
+    echo   Agent starting up... please check Sastmhaly website
+    echo   in a few seconds. If not connected, run start-agent.bat
     echo =========================================================
 )
 

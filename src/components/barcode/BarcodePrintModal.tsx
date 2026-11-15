@@ -132,45 +132,45 @@ export function BarcodePrintModal({
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, widthPx, heightPx);
 
-    let currentY = Math.round(heightPx * 0.05);
+    let currentY = Math.round(heightPx * 0.06);
 
     // 1. Store Name
     if (showStoreName) {
       ctx.fillStyle = '#1f2937';
-      ctx.font = `bold ${Math.round(heightPx * 0.11)}px -apple-system, BlinkMacSystemFont, "Cairo", Arial, sans-serif`;
+      ctx.font = `bold ${Math.round(heightPx * 0.09)}px -apple-system, BlinkMacSystemFont, "Cairo", Arial, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillText(tenantName, widthPx / 2, currentY, widthPx - 16);
-      currentY += Math.round(heightPx * 0.13);
+      ctx.fillText(tenantName, widthPx / 2, currentY, widthPx - 28);
+      currentY += Math.round(heightPx * 0.115);
     }
 
     // 2. Product Name
     if (showProductName) {
       ctx.fillStyle = '#000000';
-      ctx.font = `900 ${Math.round(heightPx * 0.12)}px -apple-system, BlinkMacSystemFont, "Cairo", Arial, sans-serif`;
+      ctx.font = `bold ${Math.round(heightPx * 0.105)}px -apple-system, BlinkMacSystemFont, "Cairo", Arial, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       const prodName = product.name_ar || product.name_en || '';
-      ctx.fillText(prodName, widthPx / 2, currentY, widthPx - 16);
-      currentY += Math.round(heightPx * 0.14);
+      ctx.fillText(prodName, widthPx / 2, currentY, widthPx - 28);
+      currentY += Math.round(heightPx * 0.13);
     }
 
     // 3. Price
     if (showPrice) {
       ctx.fillStyle = '#000000';
-      ctx.font = `900 ${Math.round(heightPx * 0.14)}px -apple-system, BlinkMacSystemFont, "Cairo", Arial, sans-serif`;
+      ctx.font = `bold ${Math.round(heightPx * 0.115)}px -apple-system, BlinkMacSystemFont, "Cairo", Arial, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillText(`${product.selling_price.toFixed(2)} ${currency}`, widthPx / 2, currentY, widthPx - 16);
-      currentY += Math.round(heightPx * 0.16);
+      ctx.fillText(`${product.selling_price.toFixed(2)} ${currency}`, widthPx / 2, currentY, widthPx - 28);
+      currentY += Math.round(heightPx * 0.145);
     }
 
     // 4. Barcode Bars
     const { totalWidth, bars } = encodeCode128(product.barcode);
-    const barcodeAvailableWidth = widthPx - 24;
-    const barcodeAvailableHeight = Math.max(30, heightPx - currentY - Math.round(heightPx * 0.16));
+    const barcodeAvailableWidth = widthPx - 36;
+    const barcodeAvailableHeight = Math.max(26, Math.min(54, heightPx - currentY - Math.round(heightPx * 0.15)));
     const scaleX = barcodeAvailableWidth / totalWidth;
-    const startX = 12;
+    const startX = 18;
 
     ctx.fillStyle = '#000000';
     for (const bar of bars) {
@@ -182,11 +182,11 @@ export function BarcodePrintModal({
       );
     }
 
-    currentY += barcodeAvailableHeight + 4;
+    currentY += barcodeAvailableHeight + 3;
 
     // 5. Barcode Number
     ctx.fillStyle = '#000000';
-    ctx.font = `bold ${Math.round(heightPx * 0.10)}px monospace`;
+    ctx.font = `bold ${Math.round(heightPx * 0.085)}px monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText(product.barcode, widthPx / 2, currentY);

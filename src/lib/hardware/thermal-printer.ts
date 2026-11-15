@@ -425,8 +425,10 @@ export function createTsplBarcodeBuffer(
   const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imgData.data;
 
-  // TSPL BITMAP mode 0: bit=1 → black dot, bit=0 → white dot
-  const rasterData = new Uint8Array(widthBytes * heightDots);
+  // TSPL BITMAP mode 0: On thermal label printers, bit=0 burns black (heat applied),
+  // bit=1 leaves white (no heat).
+  // Initialize with 0xFF (all 1s = white background) and clear bits to 0 for black pixels (text, barcode).
+  const rasterData = new Uint8Array(widthBytes * heightDots).fill(0xFF);
 
   for (let y = 0; y < heightDots; y++) {
     for (let x = 0; x < canvas.width; x++) {
@@ -436,11 +438,13 @@ export function createTsplBarcodeBuffer(
       const b = data[idx + 2];
       const a = data[idx + 3];
 
+      // Any dark/black pixel in the canvas (text, barcode)
       const isBlack = a > 128 && (0.299 * r + 0.587 * g + 0.114 * b) < 165;
       if (isBlack) {
         const byteIndex = y * widthBytes + Math.floor(x / 8);
         const bitIndex = 7 - (x % 8);
-        rasterData[byteIndex] |= (1 << bitIndex);
+        // Clear bit to 0 (thermal head burns this dot black on white paper)
+        rasterData[byteIndex] &= ~(1 << bitIndex);
       }
     }
   }
@@ -451,14 +455,16 @@ export function createTsplBarcodeBuffer(
   const safeCopies = Math.max(1, Math.min(999, copies));
 
   // TSPL header:
-  //   HOME before CLS → resets feed position (prevents blank labels from Windows GDI spooler)
   //   DIRECTION 0     → landscape orientation (label prints left-to-right as it exits)
-  //   SET CUTTER OFF  → no auto-cut feed (prevents 1 extra blank label on cutter-equipped printers)
+  //   SET CUTTER OFF  → no auto-cut feed
+  //   CLS             → clear image buffer
+  //   BITMAP          → raster image data
+  // NOTE: We deliberately DO NOT include HOME here, because HOME feeds 1 extra blank label
+  // before starting the print job. Removing it ensures 0 wasted blank labels.
   const headerStr = [
     `SIZE ${widthMm} mm, ${heightMm} mm`,
     `GAP 2 mm, 0 mm`,
     `DIRECTION 0`,
-    `HOME`,
     `SET CUTTER OFF`,
     `CLS`,
     `BITMAP 0,0,${widthBytes},${heightDots},0,`,

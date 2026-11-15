@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # Sastmhaly Desktop Print Agent (مساعد طباعة سستمهالي)
 # Lightweight Local Print Agent for Windows (Zero dependencies, pure PowerShell)
 # Enables instant, silent raw TSPL / ESC-POS printing directly from the web app.
