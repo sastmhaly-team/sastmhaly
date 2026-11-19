@@ -50,10 +50,19 @@ export const ALL_MERCHANT_PAGES: SystemPage[] = [
   },
   {
     path: '/merchant/inventory',
-    nameAr: 'أرصدة المخزون والجرد',
+    nameAr: 'أرصدة المخزون والمستودع',
     nameEn: 'Inventory Balances',
-    descriptionAr: 'جرد المستودع، تسوية الكميات، ومتابعة النواقص',
+    descriptionAr: 'أرصدة المستودع، تسوية الكميات، ومتابعة النواقص',
     descriptionEn: 'Stock balances, adjustments, and low stock tracking',
+    groupAr: 'الكتالوج والمخزون',
+    groupEn: 'Catalog & Inventory'
+  },
+  {
+    path: '/merchant/stocktaking',
+    nameAr: 'الجرد المخزني وتسوية العهدة',
+    nameEn: 'Physical Stocktaking',
+    descriptionAr: 'جلسات الجرد الدوري، حصر العجز والزيادة، ومحاضر التسوية',
+    descriptionEn: 'Physical stock counts, variance audits, and reconciliation',
     groupAr: 'الكتالوج والمخزون',
     groupEn: 'Catalog & Inventory'
   },
@@ -187,6 +196,7 @@ export const ROLE_DEFAULT_PAGES: Record<string, string[]> = {
   inventory_manager: [
     '/merchant/products',
     '/merchant/inventory',
+    '/merchant/stocktaking',
     '/merchant/batches',
     '/merchant/transfers',
     '/merchant/purchasing',
@@ -206,6 +216,7 @@ export const ROLE_DEFAULT_PAGES: Record<string, string[]> = {
     '/merchant/registers',
     '/merchant/products',
     '/merchant/inventory',
+    '/merchant/stocktaking',
     '/merchant/sales',
     '/merchant/quotations',
     '/merchant/customers',

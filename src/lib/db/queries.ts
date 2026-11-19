@@ -3188,3 +3188,165 @@ export function importFullStoreBackup(tenantId: string, backup: any) {
   };
 }
 
+// ============================================================================
+// STOCKTAKING (الجرد المخزني وتسوية العهدة - OFFLINE SQLITE)
+// ============================================================================
+
+export function getStocktakingSessions(tenantId: string, branchId?: string) {
+  let query = `
+    SELECT s.*, b.name_ar as branch_name_ar, b.name_en as branch_name_en
+    FROM stocktaking_sessions s
+    LEFT JOIN branches b ON s.branch_id = b.id
+    WHERE s.tenant_id = ?
+  `;
+  const params: any[] = [tenantId];
+  if (branchId && branchId !== 'all') {
+    query += ' AND s.branch_id = ?';
+    params.push(branchId);
+  }
+  query += ' ORDER BY s.created_at DESC';
+
+  try {
+    const sessions = db.prepare(query).all(...params) as any[];
+    return sessions.map(s => {
+      const items = db.prepare('SELECT * FROM stocktaking_items WHERE session_id = ?').all(s.id);
+      return {
+        ...s,
+        branches: { name_ar: s.branch_name_ar, name_en: s.branch_name_en },
+        stocktaking_items: items
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+export function getStocktakingSession(tenantId: string, sessionId: string) {
+  try {
+    const session = db.prepare(`
+      SELECT s.*, b.name_ar as branch_name_ar, b.name_en as branch_name_en
+      FROM stocktaking_sessions s
+      LEFT JOIN branches b ON s.branch_id = b.id
+      WHERE s.id = ? AND s.tenant_id = ?
+    `).get(sessionId, tenantId) as any;
+    if (!session) return null;
+
+    const items = db.prepare(`
+      SELECT i.*, p.name_ar, p.name_en, p.sku, p.barcode, p.cost_price, p.selling_price, p.custom_unit
+      FROM stocktaking_items i
+      LEFT JOIN products p ON i.product_id = p.id
+      WHERE i.session_id = ?
+    `).all(sessionId) as any[];
+
+    return {
+      ...session,
+      branches: { name_ar: session.branch_name_ar, name_en: session.branch_name_en },
+      stocktaking_items: items.map(it => ({
+        ...it,
+        products: {
+          name_ar: it.name_ar,
+          name_en: it.name_en,
+          sku: it.sku,
+          barcode: it.barcode,
+          cost_price: it.cost_price,
+          selling_price: it.selling_price,
+          custom_unit: it.custom_unit
+        }
+      }))
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function createStocktakingSession(tenantId: string, data: {
+  branchId?: string;
+  notes?: string;
+  created_by?: string;
+  items: {
+    product_id: string;
+    expected_qty: number;
+    counted_qty: number;
+    discrepancy_qty: number;
+    cost_impact: number;
+    notes?: string;
+  }[];
+}) {
+  const sessionId = `stk_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const sessionNumber = `STK-${Date.now().toString().slice(-6)}`;
+  let branchId = data.branchId;
+  if (!branchId || branchId === 'all') {
+    const br = db.prepare('SELECT id FROM branches WHERE tenant_id = ? ORDER BY is_main DESC LIMIT 1').get(tenantId) as { id: string } | undefined;
+    branchId = br?.id || 'br_downtown';
+  }
+
+  const txn = db.transaction(() => {
+    db.prepare(`
+      INSERT INTO stocktaking_sessions (id, tenant_id, branch_id, session_number, status, notes, created_by, created_at)
+      VALUES (?, ?, ?, ?, 'in_progress', ?, ?, datetime('now'))
+    `).run(sessionId, tenantId, branchId, sessionNumber, data.notes || null, data.created_by || 'admin');
+
+    if (data.items && data.items.length > 0) {
+      const stmt = db.prepare(`
+        INSERT INTO stocktaking_items (id, session_id, product_id, expected_qty, counted_qty, discrepancy_qty, cost_impact, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const it of data.items) {
+        stmt.run(
+          `sti_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          sessionId,
+          it.product_id,
+          Number(it.expected_qty) || 0,
+          Number(it.counted_qty) || 0,
+          Number(it.discrepancy_qty) || 0,
+          Number(it.cost_impact) || 0,
+          it.notes || null
+        );
+      }
+    }
+  });
+
+  txn();
+  return getStocktakingSession(tenantId, sessionId);
+}
+
+export function applyStocktakingAdjustment(tenantId: string, sessionId: string, approvedBy: string = 'admin') {
+  const session = getStocktakingSession(tenantId, sessionId);
+  if (!session) throw new Error('Session not found');
+
+  const txn = db.transaction(() => {
+    for (const it of session.stocktaking_items || []) {
+      const diff = Number(it.discrepancy_qty) || 0;
+      const counted = Number(it.counted_qty) || 0;
+      const prodId = it.product_id;
+
+      db.prepare(`
+        INSERT INTO inventory_balances (id, tenant_id, branch_id, product_id, quantity, avg_cost, reserved_qty, last_updated)
+        VALUES (?, ?, ?, ?, ?, ?, 0, datetime('now'))
+        ON CONFLICT(branch_id, product_id) DO UPDATE SET quantity = excluded.quantity, last_updated = datetime('now')
+      `).run(`inv_${prodId}_${session.branch_id}`, tenantId, session.branch_id, prodId, counted, it.products?.cost_price || 0);
+
+      if (diff !== 0) {
+        db.prepare(`
+          INSERT INTO inventory_movements (id, tenant_id, branch_id, product_id, movement_type, quantity, unit_cost, reference_type, reference_id, notes, created_by, created_at)
+          VALUES (?, ?, ?, ?, 'adjustment', ?, ?, 'stocktaking', ?, ?, ?, datetime('now'))
+        `).run(
+          `mov_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          tenantId, session.branch_id, prodId, diff, it.products?.cost_price || 0,
+          session.session_number, `تسوية جرد مخزني - الفارق: ${diff > 0 ? '+' : ''}${diff}`, approvedBy
+        );
+      }
+    }
+
+    db.prepare('UPDATE stocktaking_sessions SET status = "completed", completed_at = datetime("now") WHERE id = ? AND tenant_id = ?').run(sessionId, tenantId);
+  });
+
+  txn();
+  return getStocktakingSession(tenantId, sessionId);
+}
+
+export function cancelStocktakingSession(tenantId: string, sessionId: string) {
+  db.prepare('UPDATE stocktaking_sessions SET status = "canceled" WHERE id = ? AND tenant_id = ?').run(sessionId, tenantId);
+  return { success: true };
+}
+

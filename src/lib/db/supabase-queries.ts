@@ -884,11 +884,18 @@ export async function createProduct(tenantId: string, data: {
   let effectiveSku = (data.sku || '').trim() || `SKU-${Date.now().toString().slice(-6)}`;
   const variantsVal = typeof data.variants === 'string' ? data.variants : (data.variants ? JSON.stringify(data.variants) : null);
 
+  // Fallback valid unit_id so it never violates products_unit_id_fkey
+  let validUnitId = data.unit_id;
+  if (!validUnitId || validUnitId === 'custom') {
+    const { data: firstUnit } = await supabase.from('units').select('id').eq('tenant_id', tenantId).limit(1).maybeSingle();
+    validUnitId = firstUnit?.id || null;
+  }
+
   const insertPayload: any = {
     id, tenant_id: tenantId, sku: effectiveSku, barcode: data.barcode,
     additional_barcodes: data.additional_barcodes || null,
     name_en: data.name_en, name_ar: data.name_ar,
-    category_id: data.category_id, unit_id: data.unit_id,
+    category_id: data.category_id, unit_id: validUnitId,
     cost_price: data.cost_price, selling_price: data.selling_price,
     wholesale_price: data.wholesale_price || null,
     tax_rate: data.tax_rate ?? 14.0,
@@ -955,6 +962,10 @@ export async function updateProduct(tenantId: string, id: string, data: Partial<
   }
   const supabase = getSupabase();
   const updatePayload: any = { ...data };
+  if (updatePayload.unit_id === 'custom') {
+    const { data: firstUnit } = await supabase.from('units').select('id').eq('tenant_id', tenantId).limit(1).maybeSingle();
+    updatePayload.unit_id = firstUnit?.id || null;
+  }
   if (updatePayload.variants && typeof updatePayload.variants !== 'string') {
     updatePayload.variants = JSON.stringify(updatePayload.variants);
   }
@@ -1380,6 +1391,7 @@ export interface CreateSaleInput {
     sku?: string; barcode?: string;
   }[];
   subtotal: number; discount_amount: number; tax_amount: number;
+  delivery_fee?: number;
   total_amount: number; paid_amount: number; change_amount: number;
   payment_method: 'cash' | 'card' | 'mobile_wallet' | 'customer_credit' | 'mixed';
   notes?: string;
@@ -1522,8 +1534,9 @@ export async function commitSaleTransaction(input: CreateSaleInput): Promise<Sal
   }
 
   const isVatEnabled = settingsRes.data ? settingsRes.data.vat_enabled === 1 : true;
+  const deliveryFee = Number(input.delivery_fee) || 0;
   const finalTaxAmount = isVatEnabled ? input.tax_amount : 0;
-  const finalTotalAmount = isVatEnabled ? input.total_amount : Math.max(0, input.subtotal - input.discount_amount);
+  const finalTotalAmount = isVatEnabled ? input.total_amount : Math.max(0, input.subtotal - input.discount_amount + deliveryFee);
 
   // 2. Insert sale header
   await supabase.from('sales').insert({
@@ -1532,6 +1545,7 @@ export async function commitSaleTransaction(input: CreateSaleInput): Promise<Sal
     cashier_id: cashierId, customer_id: customerId,
     sale_number: saleNumber, subtotal: input.subtotal,
     discount_amount: input.discount_amount, tax_amount: finalTaxAmount,
+    delivery_fee: deliveryFee,
     total_amount: finalTotalAmount, paid_amount: input.paid_amount,
     change_amount: input.change_amount, payment_method: input.payment_method,
     status: 'completed', notes: input.notes || null,
@@ -1840,16 +1854,21 @@ export async function createPurchaseOrder(tenantId: string, data: {
     branchId = firstB?.id || 'br_downtown';
   }
 
-  const cleanItems = (data.items || []).map(item => ({
-    id: uid('poi'),
-    po_id: id,
-    product_id: item.product_id,
-    quantity_ordered: Number((item as any).quantity_ordered ?? (item as any).quantity ?? 1),
-    unit_cost: Number((item as any).unit_cost ?? (item as any).cost_price ?? 0),
-    quantity_received: 0
-  }));
+  const cleanItems = (data.items || []).map(item => {
+    const qty = Number((item as any).quantity_ordered ?? (item as any).quantity ?? 1);
+    const cost = Number((item as any).unit_cost ?? (item as any).cost_price ?? 0);
+    return {
+      id: uid('poi'),
+      po_id: id,
+      product_id: item.product_id,
+      quantity_ordered: qty,
+      unit_cost: cost,
+      total_cost: Number((qty * cost).toFixed(2)),
+      quantity_received: 0
+    };
+  });
 
-  const calcTotal = cleanItems.reduce((acc, curr) => acc + (curr.quantity_ordered * curr.unit_cost), 0);
+  const calcTotal = cleanItems.reduce((acc, curr) => acc + curr.total_cost, 0);
   const totalAmount = Number.isFinite(calcTotal) ? Number(calcTotal.toFixed(2)) : 0;
 
   await supabase.from('purchase_orders').insert({
@@ -1860,6 +1879,9 @@ export async function createPurchaseOrder(tenantId: string, data: {
     po_number: poNumber,
     status: 'draft',
     total_amount: totalAmount,
+    net_amount: totalAmount,
+    tax_amount: 0.00,
+    discount_amount: 0.00,
     notes: data.notes || null,
     created_by: data.created_by || 'admin'
   }).throwOnError();
@@ -2758,20 +2780,57 @@ export async function editSaleInvoice(tenantId: string, saleId: string, data: an
     return (sqlite as any).editSaleInvoice(...arguments);
   }
   const supabase = getSupabase();
-  const { data: updated, error } = await supabase.from('sales').update({
-    customer_id: data.customer_id,
-    subtotal: data.subtotal,
-    discount_amount: data.discount_amount,
-    tax_amount: data.tax_amount,
-    delivery_fee: data.delivery_fee,
-    total_amount: data.total_amount,
-    paid_amount: data.paid_amount,
-    payment_method: data.payment_method,
-    notes: data.notes,
-    created_at: data.created_at
-  }).eq('id', saleId).eq('tenant_id', tenantId).select().single();
+
+  // If line items were provided, update sale_items
+  if (data.items && Array.isArray(data.items)) {
+    await supabase.from('sale_items').delete().eq('sale_id', saleId);
+    let subtotal = 0;
+    const newItems = data.items.map((it: any) => {
+      const qty = Number(it.quantity) || 1;
+      const price = Number(it.unit_price) || 0;
+      const lineTotal = Number(it.line_total ?? (qty * price));
+      subtotal += lineTotal;
+      return {
+        id: it.id || `si_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        sale_id: saleId,
+        product_id: it.product_id,
+        quantity: qty,
+        unit_price: price,
+        cost_price: Number(it.cost_price) || 0,
+        discount_amount: Number(it.discount_amount) || 0,
+        tax_amount: Number(it.tax_amount) || 0,
+        line_total: lineTotal
+      };
+    });
+    if (newItems.length > 0) {
+      await supabase.from('sale_items').insert(newItems);
+    }
+    if (data.subtotal === undefined) data.subtotal = subtotal;
+    if (data.total_amount === undefined) {
+      const delivery = Number(data.delivery_fee) || 0;
+      const disc = Number(data.discount_amount) || 0;
+      const tax = Number(data.tax_amount) || 0;
+      data.total_amount = Math.max(0, subtotal - disc + tax + delivery);
+    }
+  }
+
+  const updates: any = {};
+  if (data.customer_id !== undefined) updates.customer_id = data.customer_id;
+  if (data.subtotal !== undefined) updates.subtotal = data.subtotal;
+  if (data.discount_amount !== undefined) updates.discount_amount = data.discount_amount;
+  if (data.tax_amount !== undefined) updates.tax_amount = data.tax_amount;
+  if (data.delivery_fee !== undefined) updates.delivery_fee = data.delivery_fee;
+  if (data.total_amount !== undefined) updates.total_amount = data.total_amount;
+  if (data.paid_amount !== undefined) updates.paid_amount = data.paid_amount;
+  if (data.change_amount !== undefined) updates.change_amount = data.change_amount;
+  if (data.payment_method !== undefined) updates.payment_method = data.payment_method;
+  if (data.notes !== undefined) updates.notes = data.notes;
+  if (data.created_at !== undefined) updates.created_at = data.created_at;
+
+  const { error } = await supabase.from('sales').update(updates)
+    .eq('id', saleId).eq('tenant_id', tenantId);
   if (error) throw new Error(error.message);
-  return updated;
+  return getSale(tenantId, saleId);
 }
 
 export async function deleteSaleInvoice(tenantId: string, saleId: string, restock: boolean = true) {
@@ -2808,15 +2867,18 @@ export async function updatePurchaseOrder(tenantId: string, poId: string, data: 
     await supabase.from('purchase_order_items').delete().eq('po_id', poId);
     let totalAmount = 0;
     const newItems = items.map((it: any) => {
-      const lineCost = (it.quantity || it.quantity_ordered) * it.unit_cost;
+      const qty = Number(it.quantity || it.quantity_ordered) || 1;
+      const unitCost = Number(it.unit_cost) || 0;
+      const lineCost = qty * unitCost;
       totalAmount += lineCost;
       return {
         id: `poi_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         po_id: poId,
         product_id: it.product_id,
-        quantity_ordered: it.quantity || it.quantity_ordered,
-        unit_cost: it.unit_cost,
+        quantity_ordered: qty,
+        unit_cost: unitCost,
         total_cost: lineCost,
+        quantity_received: 0
       };
     });
     if (newItems.length > 0) {
@@ -2825,8 +2887,8 @@ export async function updatePurchaseOrder(tenantId: string, poId: string, data: 
     poUpdates.total_amount = totalAmount;
     poUpdates.net_amount = totalAmount;
   }
-  const { data: updated, error } = await supabase.from('purchase_orders')
-    .update(poUpdates).eq('id', poId).eq('tenant_id', tenantId).select().single();
+  const { error } = await supabase.from('purchase_orders')
+    .update(poUpdates).eq('id', poId).eq('tenant_id', tenantId);
   if (error) throw new Error(error.message);
   return getPurchaseOrder(tenantId, poId);
 }
@@ -2853,11 +2915,145 @@ export async function updateCustomerLoyaltyPoints(tenantId: string, customerId: 
   return { customerId, loyalty_points: newPoints };
 }
 
-export async function getAccountStatement(tenantId: string, entityType: 'customer' | 'supplier', entityId: string, startDate?: string, endDate?: string) {
+export async function getAccountStatement(
+  tenantId: string,
+  entityType: 'customer' | 'supplier',
+  entityId: string,
+  startDate?: string,
+  endDate?: string
+) {
   if (isOfflineMode()) {
     return (sqlite as any).getAccountStatement(...arguments);
   }
-  return (sqlite as any).getAccountStatement(...arguments);
+  const supabase = getSupabase();
+
+  if (entityType === 'customer') {
+    const { data: customer, error: custErr } = await supabase.from('customers')
+      .select('*').eq('id', entityId).eq('tenant_id', tenantId).maybeSingle();
+    if (custErr || !customer) throw new Error('Customer not found');
+
+    let salesQuery = supabase.from('sales')
+      .select('id, sale_number, total_amount, paid_amount, payment_method, notes, created_at')
+      .eq('tenant_id', tenantId).eq('customer_id', entityId)
+      .order('created_at', { ascending: true });
+
+    if (startDate) salesQuery = salesQuery.gte('created_at', `${startDate}T00:00:00`);
+    if (endDate) salesQuery = salesQuery.lte('created_at', `${endDate}T23:59:59`);
+
+    const { data: sales } = await salesQuery;
+
+    let runningBalance = Number(customer.opening_balance) || 0;
+    let totalDebit = 0;
+    let totalCredit = 0;
+
+    const transactions = (sales || []).map((s: any) => {
+      const debit = Number(s.total_amount) || 0;
+      const credit = Number(s.paid_amount) || 0;
+      totalDebit += debit;
+      totalCredit += credit;
+      runningBalance += (debit - credit);
+      return {
+        id: s.id,
+        reference_number: s.sale_number,
+        transaction_type: 'sale',
+        debit,
+        credit,
+        payment_method: s.payment_method,
+        notes: s.notes,
+        created_at: s.created_at,
+        running_balance: runningBalance
+      };
+    });
+
+    return {
+      entity: customer,
+      entityType: 'customer',
+      startDate: startDate || null,
+      endDate: endDate || null,
+      openingBalance: Number(customer.opening_balance) || 0,
+      currentBalance: Number(customer.current_balance) || runningBalance,
+      totalDebit,
+      totalCredit,
+      transactions
+    };
+  } else {
+    const { data: supplier, error: suppErr } = await supabase.from('suppliers')
+      .select('*').eq('id', entityId).eq('tenant_id', tenantId).maybeSingle();
+    if (suppErr || !supplier) throw new Error('Supplier not found');
+
+    let poQuery = supabase.from('purchase_orders')
+      .select('id, po_number, total_amount, status, notes, created_at')
+      .eq('tenant_id', tenantId).eq('supplier_id', entityId)
+      .order('created_at', { ascending: true });
+
+    if (startDate) poQuery = poQuery.gte('created_at', `${startDate}T00:00:00`);
+    if (endDate) poQuery = poQuery.lte('created_at', `${endDate}T23:59:59`);
+
+    let payQuery = supabase.from('supplier_payments')
+      .select('id, payment_number, amount, payment_method, created_at')
+      .eq('tenant_id', tenantId).eq('supplier_id', entityId)
+      .order('created_at', { ascending: true });
+
+    if (startDate) payQuery = payQuery.gte('created_at', `${startDate}T00:00:00`);
+    if (endDate) payQuery = payQuery.lte('created_at', `${endDate}T23:59:59`);
+
+    const [poRes, payRes] = await Promise.all([poQuery, payQuery]);
+    const pos = poRes.data || [];
+    const payments = payRes.data || [];
+
+    const allTxns: any[] = [
+      ...pos.map((p: any) => ({
+        id: p.id,
+        reference_number: p.po_number,
+        transaction_type: 'purchase',
+        credit: Number(p.total_amount) || 0,
+        debit: 0,
+        status: p.status,
+        notes: p.notes,
+        created_at: p.created_at
+      })),
+      ...payments.map((pay: any) => ({
+        id: pay.id,
+        reference_number: pay.payment_number,
+        transaction_type: 'payment',
+        credit: 0,
+        debit: Number(pay.amount) || 0,
+        status: pay.payment_method,
+        notes: '',
+        created_at: pay.created_at
+      }))
+    ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+    let runningBalance = Number(supplier.opening_balance) || 0;
+    let totalDebit = 0;
+    let totalCredit = 0;
+
+    const transactions = allTxns.map(t => {
+      const debit = Number(t.debit) || 0;
+      const credit = Number(t.credit) || 0;
+      totalDebit += debit;
+      totalCredit += credit;
+      runningBalance += (credit - debit);
+      return {
+        ...t,
+        debit,
+        credit,
+        running_balance: runningBalance
+      };
+    });
+
+    return {
+      entity: supplier,
+      entityType: 'supplier',
+      startDate: startDate || null,
+      endDate: endDate || null,
+      openingBalance: Number(supplier.opening_balance) || 0,
+      currentBalance: Number(supplier.current_balance) || runningBalance,
+      totalDebit,
+      totalCredit,
+      transactions
+    };
+  }
 }
 
 export async function getQuotations(tenantId: string, status?: string) {
@@ -2871,7 +3067,7 @@ export async function getQuotations(tenantId: string, status?: string) {
   }
   const { data, error } = await query.order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
-  return data;
+  return data || [];
 }
 
 export async function getQuotation(tenantId: string, id: string) {
@@ -2889,14 +3085,103 @@ export async function createQuotation(tenantId: string, data: any) {
   if (isOfflineMode()) {
     return (sqlite as any).createQuotation(...arguments);
   }
-  return (sqlite as any).createQuotation(...arguments);
+  const supabase = getSupabase();
+  const id = `quot_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const quotationNumber = data.quotation_number || `Q-${Date.now().toString().slice(-6)}`;
+
+  let branchId = data.branch_id;
+  if (!branchId || branchId === 'all') {
+    const { data: firstB } = await supabase.from('branches').select('id').eq('tenant_id', tenantId).order('is_main', { ascending: false }).limit(1).maybeSingle();
+    branchId = firstB?.id || 'br_downtown';
+  }
+
+  // Validate customer_id if provided
+  let customerId = data.customer_id || null;
+  if (customerId) {
+    const { data: custCheck } = await supabase.from('customers').select('id').eq('id', customerId).maybeSingle();
+    if (!custCheck) customerId = null;
+  }
+
+  await supabase.from('quotations').insert({
+    id,
+    tenant_id: tenantId,
+    branch_id: branchId,
+    quotation_number: quotationNumber,
+    customer_id: customerId,
+    customer_name: data.customer_name || null,
+    customer_phone: data.customer_phone || null,
+    subtotal: Number(data.subtotal) || 0,
+    discount_amount: Number(data.discount_amount) || 0,
+    tax_amount: Number(data.tax_amount) || 0,
+    delivery_fee: Number(data.delivery_fee) || 0,
+    total_amount: Number(data.total_amount) || 0,
+    status: 'draft',
+    valid_until: data.valid_until || null,
+    notes: data.notes || null,
+    created_by: data.created_by || 'merchant'
+  }).throwOnError();
+
+  if (data.items && Array.isArray(data.items)) {
+    const items = data.items.map((it: any) => ({
+      id: `qi_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      quotation_id: id,
+      product_id: it.product_id || null,
+      product_name: it.product_name,
+      quantity: Number(it.quantity) || 1,
+      unit_price: Number(it.unit_price) || 0,
+      discount_amount: Number(it.discount_amount) || 0,
+      tax_amount: Number(it.tax_amount) || 0,
+      line_total: Number(it.line_total ?? (Number(it.quantity) * Number(it.unit_price))) || 0
+    }));
+    if (items.length > 0) {
+      await supabase.from('quotation_items').insert(items).throwOnError();
+    }
+  }
+
+  return getQuotation(tenantId, id);
 }
 
 export async function updateQuotation(tenantId: string, id: string, data: any) {
   if (isOfflineMode()) {
     return (sqlite as any).updateQuotation(...arguments);
   }
-  return (sqlite as any).updateQuotation(...arguments);
+  const supabase = getSupabase();
+  const updates: any = {};
+  if (data.customer_id !== undefined) updates.customer_id = data.customer_id;
+  if (data.customer_name !== undefined) updates.customer_name = data.customer_name;
+  if (data.customer_phone !== undefined) updates.customer_phone = data.customer_phone;
+  if (data.subtotal !== undefined) updates.subtotal = data.subtotal;
+  if (data.discount_amount !== undefined) updates.discount_amount = data.discount_amount;
+  if (data.tax_amount !== undefined) updates.tax_amount = data.tax_amount;
+  if (data.delivery_fee !== undefined) updates.delivery_fee = data.delivery_fee;
+  if (data.total_amount !== undefined) updates.total_amount = data.total_amount;
+  if (data.status !== undefined) updates.status = data.status;
+  if (data.valid_until !== undefined) updates.valid_until = data.valid_until;
+  if (data.notes !== undefined) updates.notes = data.notes;
+
+  if (Object.keys(updates).length > 0) {
+    await supabase.from('quotations').update(updates).eq('id', id).eq('tenant_id', tenantId).throwOnError();
+  }
+
+  if (data.items && Array.isArray(data.items)) {
+    await supabase.from('quotation_items').delete().eq('quotation_id', id);
+    const items = data.items.map((it: any) => ({
+      id: `qi_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      quotation_id: id,
+      product_id: it.product_id || null,
+      product_name: it.product_name,
+      quantity: Number(it.quantity) || 1,
+      unit_price: Number(it.unit_price) || 0,
+      discount_amount: Number(it.discount_amount) || 0,
+      tax_amount: Number(it.tax_amount) || 0,
+      line_total: Number(it.line_total ?? (Number(it.quantity) * Number(it.unit_price))) || 0
+    }));
+    if (items.length > 0) {
+      await supabase.from('quotation_items').insert(items).throwOnError();
+    }
+  }
+
+  return getQuotation(tenantId, id);
 }
 
 export async function deleteQuotation(tenantId: string, id: string) {
@@ -2914,7 +3199,48 @@ export async function convertQuotationToSale(tenantId: string, quotationId: stri
   if (isOfflineMode()) {
     return (sqlite as any).convertQuotationToSale(...arguments);
   }
-  return (sqlite as any).convertQuotationToSale(...arguments);
+  const supabase = getSupabase();
+  const quot = await getQuotation(tenantId, quotationId);
+  if (!quot) throw new Error('Quotation not found');
+
+  const saleItems = (quot.quotation_items || []).map((it: any) => ({
+    product_id: it.product_id || 'custom',
+    quantity: Number(it.quantity),
+    unit_price: Number(it.unit_price),
+    cost_price: 0,
+    discount_amount: Number(it.discount_amount || 0),
+    tax_amount: Number(it.tax_amount || 0),
+    line_total: Number(it.line_total),
+    product_name_ar: it.product_name,
+    product_name_en: it.product_name,
+    product_name: it.product_name
+  }));
+
+  const sale = await commitSaleTransaction({
+    tenant_id: tenantId,
+    branch_id: branchId || quot.branch_id,
+    register_id: '',
+    session_id: '',
+    cashier_id: cashierId || 'admin',
+    customer_id: quot.customer_id || undefined,
+    items: saleItems,
+    subtotal: Number(quot.subtotal),
+    discount_amount: Number(quot.discount_amount || 0),
+    tax_amount: Number(quot.tax_amount || 0),
+    delivery_fee: Number(quot.delivery_fee || 0),
+    total_amount: Number(quot.total_amount),
+    paid_amount: Number(quot.total_amount),
+    change_amount: 0,
+    payment_method: 'cash',
+    notes: `تم إصدارها بناءً على عرض سعر رقم: ${quot.quotation_number}. ${quot.notes || ''}`
+  });
+
+  await supabase.from('quotations').update({
+    status: 'converted',
+    converted_sale_id: sale.id
+  }).eq('id', quotationId).eq('tenant_id', tenantId);
+
+  return { success: true, sale };
 }
 
 export async function updateExpense(tenantId: string, id: string, data: any) {
@@ -2939,11 +3265,296 @@ export async function deleteExpense(tenantId: string, id: string) {
 }
 
 export async function exportFullStoreBackup(tenantId: string) {
-  return (sqlite as any).exportFullStoreBackup(tenantId);
+  if (isOfflineMode()) {
+    return (sqlite as any).exportFullStoreBackup(tenantId);
+  }
+  const supabase = getSupabase();
+
+  const [
+    tenantRes, settingsRes, branchesRes, categoriesRes, unitsRes,
+    productsRes, balancesRes, movementsRes, customersRes, suppliersRes,
+    salesRes, returnsRes, poRes, expensesRes, quotationsRes, stocktakingRes
+  ] = await Promise.all([
+    supabase.from('tenants').select('*').eq('id', tenantId).maybeSingle(),
+    supabase.from('tenant_settings').select('*').eq('tenant_id', tenantId).maybeSingle(),
+    supabase.from('branches').select('*').eq('tenant_id', tenantId),
+    supabase.from('categories').select('*').eq('tenant_id', tenantId),
+    supabase.from('units').select('*').eq('tenant_id', tenantId),
+    supabase.from('products').select('*').eq('tenant_id', tenantId),
+    supabase.from('inventory_balances').select('*').eq('tenant_id', tenantId),
+    supabase.from('inventory_movements').select('*').eq('tenant_id', tenantId),
+    supabase.from('customers').select('*').eq('tenant_id', tenantId),
+    supabase.from('suppliers').select('*').eq('tenant_id', tenantId),
+    supabase.from('sales').select('*').eq('tenant_id', tenantId),
+    supabase.from('sale_returns').select('*').eq('tenant_id', tenantId),
+    supabase.from('purchase_orders').select('*').eq('tenant_id', tenantId),
+    supabase.from('expenses').select('*').eq('tenant_id', tenantId),
+    supabase.from('quotations').select('*').eq('tenant_id', tenantId),
+    supabase.from('stocktaking_sessions').select('*').eq('tenant_id', tenantId)
+  ]);
+
+  const sales = salesRes.data || [];
+  const saleIds = sales.map((s: any) => s.id);
+  let saleItems: any[] = [];
+  let salePayments: any[] = [];
+  if (saleIds.length > 0) {
+    const [siRes, spRes] = await Promise.all([
+      supabase.from('sale_items').select('*').in('sale_id', saleIds.slice(0, 500)),
+      supabase.from('sale_payments').select('*').in('sale_id', saleIds.slice(0, 500))
+    ]);
+    saleItems = siRes.data || [];
+    salePayments = spRes.data || [];
+  }
+
+  const pos = poRes.data || [];
+  const poIds = pos.map((p: any) => p.id);
+  let poItems: any[] = [];
+  if (poIds.length > 0) {
+    const { data: poi } = await supabase.from('purchase_order_items').select('*').in('po_id', poIds.slice(0, 500));
+    poItems = poi || [];
+  }
+
+  const quots = quotationsRes.data || [];
+  const quotIds = quots.map((q: any) => q.id);
+  let quotItems: any[] = [];
+  if (quotIds.length > 0) {
+    const { data: qi } = await supabase.from('quotation_items').select('*').in('quotation_id', quotIds.slice(0, 500));
+    quotItems = qi || [];
+  }
+
+  const stockSessions = stocktakingRes.data || [];
+  const sessionIds = stockSessions.map((s: any) => s.id);
+  let stockItems: any[] = [];
+  if (sessionIds.length > 0) {
+    const { data: sti } = await supabase.from('stocktaking_items').select('*').in('session_id', sessionIds.slice(0, 500));
+    stockItems = sti || [];
+  }
+
+  return {
+    version: '1.0',
+    exported_at: new Date().toISOString(),
+    tenant_id: tenantId,
+    tenant: tenantRes.data || null,
+    tenant_settings: settingsRes.data || null,
+    branches: branchesRes.data || [],
+    categories: categoriesRes.data || [],
+    units: unitsRes.data || [],
+    products: productsRes.data || [],
+    inventory_balances: balancesRes.data || [],
+    inventory_movements: movementsRes.data || [],
+    customers: customersRes.data || [],
+    suppliers: suppliersRes.data || [],
+    sales: sales,
+    sale_items: saleItems,
+    sale_payments: salePayments,
+    sale_returns: returnsRes.data || [],
+    purchase_orders: pos,
+    purchase_order_items: poItems,
+    expenses: expensesRes.data || [],
+    quotations: quots,
+    quotation_items: quotItems,
+    stocktaking_sessions: stockSessions,
+    stocktaking_items: stockItems
+  };
 }
 
 export async function importFullStoreBackup(tenantId: string, backup: any) {
-  return (sqlite as any).importFullStoreBackup(tenantId, backup);
+  if (isOfflineMode()) {
+    return (sqlite as any).importFullStoreBackup(tenantId, backup);
+  }
+  const supabase = getSupabase();
+  const counts: Record<string, number> = {};
+
+  const upsertTable = async (table: string, rows: any[]) => {
+    if (!rows || !Array.isArray(rows) || rows.length === 0) return 0;
+    const cleanRows = rows.map(r => ({ ...r, tenant_id: tenantId }));
+    const batchSize = 100;
+    for (let i = 0; i < cleanRows.length; i += batchSize) {
+      const slice = cleanRows.slice(i, i + batchSize);
+      await supabase.from(table).upsert(slice, { onConflict: 'id' });
+    }
+    return rows.length;
+  };
+
+  try {
+    if (backup.branches) counts.branches = await upsertTable('branches', backup.branches);
+    if (backup.categories) counts.categories = await upsertTable('categories', backup.categories);
+    if (backup.units) counts.units = await upsertTable('units', backup.units);
+    if (backup.products) counts.products = await upsertTable('products', backup.products);
+    if (backup.customers) counts.customers = await upsertTable('customers', backup.customers);
+    if (backup.suppliers) counts.suppliers = await upsertTable('suppliers', backup.suppliers);
+    if (backup.sales) counts.sales = await upsertTable('sales', backup.sales);
+    if (backup.sale_items && Array.isArray(backup.sale_items) && backup.sale_items.length > 0) {
+      counts.sale_items = await upsertTable('sale_items', backup.sale_items);
+    }
+    if (backup.purchase_orders) counts.purchase_orders = await upsertTable('purchase_orders', backup.purchase_orders);
+    if (backup.purchase_order_items && Array.isArray(backup.purchase_order_items)) {
+      counts.purchase_order_items = await upsertTable('purchase_order_items', backup.purchase_order_items);
+    }
+    if (backup.expenses) counts.expenses = await upsertTable('expenses', backup.expenses);
+    if (backup.quotations) counts.quotations = await upsertTable('quotations', backup.quotations);
+    if (backup.quotation_items && Array.isArray(backup.quotation_items)) {
+      counts.quotation_items = await upsertTable('quotation_items', backup.quotation_items);
+    }
+  } catch (e: any) {
+    console.error('Error importing backup:', e);
+    throw new Error(e.message || 'Error during backup import');
+  }
+
+  return { success: true, counts };
+}
+
+// ============================================================================
+// STOCKTAKING (الجرد المخزني وتسوية العهدة)
+// ============================================================================
+
+export async function getStocktakingSessions(tenantId: string, branchId?: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).getStocktakingSessions?.(...arguments) || [];
+  }
+  const supabase = getSupabase();
+  let query = supabase.from('stocktaking_sessions')
+    .select('*, branches(name_ar, name_en), stocktaking_items(*)')
+    .eq('tenant_id', tenantId)
+    .order('created_at', { ascending: false });
+  if (branchId && branchId !== 'all') {
+    query = query.eq('branch_id', branchId);
+  }
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function getStocktakingSession(tenantId: string, sessionId: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).getStocktakingSession?.(...arguments) || null;
+  }
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('stocktaking_sessions')
+    .select('*, branches(name_ar, name_en), stocktaking_items(*, products(name_ar, name_en, sku, barcode, cost_price, selling_price, custom_unit))')
+    .eq('id', sessionId).eq('tenant_id', tenantId).single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function createStocktakingSession(tenantId: string, data: {
+  branchId?: string;
+  notes?: string;
+  created_by?: string;
+  items: {
+    product_id: string;
+    expected_qty: number;
+    counted_qty: number;
+    discrepancy_qty: number;
+    cost_impact: number;
+    notes?: string;
+  }[];
+}) {
+  if (isOfflineMode()) {
+    return (sqlite as any).createStocktakingSession?.(...arguments);
+  }
+  const supabase = getSupabase();
+  const sessionId = `stk_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const sessionNumber = `STK-${Date.now().toString().slice(-6)}`;
+
+  let branchId = data.branchId;
+  if (!branchId || branchId === 'all') {
+    const { data: firstB } = await supabase.from('branches').select('id').eq('tenant_id', tenantId).order('is_main', { ascending: false }).limit(1).maybeSingle();
+    branchId = firstB?.id || 'br_downtown';
+  }
+
+  await supabase.from('stocktaking_sessions').insert({
+    id: sessionId,
+    tenant_id: tenantId,
+    branch_id: branchId,
+    session_number: sessionNumber,
+    status: 'in_progress',
+    notes: data.notes || null,
+    created_by: data.created_by || 'admin',
+    created_at: new Date().toISOString()
+  }).throwOnError();
+
+  if (data.items && data.items.length > 0) {
+    const items = data.items.map(it => ({
+      id: `sti_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      session_id: sessionId,
+      product_id: it.product_id,
+      expected_qty: Number(it.expected_qty) || 0,
+      counted_qty: Number(it.counted_qty) || 0,
+      discrepancy_qty: Number(it.discrepancy_qty) || 0,
+      cost_impact: Number(it.cost_impact) || 0,
+      notes: it.notes || null
+    }));
+    await supabase.from('stocktaking_items').insert(items).throwOnError();
+  }
+
+  return getStocktakingSession(tenantId, sessionId);
+}
+
+export async function applyStocktakingAdjustment(tenantId: string, sessionId: string, approvedBy: string = 'admin') {
+  if (isOfflineMode()) {
+    return (sqlite as any).applyStocktakingAdjustment?.(...arguments);
+  }
+  const supabase = getSupabase();
+  const session = await getStocktakingSession(tenantId, sessionId);
+  if (!session) throw new Error('Session not found');
+
+  const branchId = session.branch_id;
+  const items = session.stocktaking_items || [];
+
+  for (const it of items) {
+    const diff = Number(it.discrepancy_qty) || 0;
+    const counted = Number(it.counted_qty) || 0;
+    const prodId = it.product_id;
+
+    // Update inventory_balances
+    await supabase.from('inventory_balances').upsert({
+      id: `inv_${prodId}_${branchId}`,
+      tenant_id: tenantId,
+      branch_id: branchId,
+      product_id: prodId,
+      quantity: counted,
+      avg_cost: Number((it as any).products?.cost_price || 0),
+      reserved_qty: 0,
+      last_updated: new Date().toISOString()
+    }, { onConflict: 'branch_id,product_id' });
+
+    // Record inventory_movement
+    if (diff !== 0) {
+      await supabase.from('inventory_movements').insert({
+        id: `mov_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        tenant_id: tenantId,
+        branch_id: branchId,
+        product_id: prodId,
+        movement_type: 'adjustment',
+        quantity: diff,
+        unit_cost: Number((it as any).products?.cost_price || 0),
+        reference_type: 'stocktaking',
+        reference_id: session.session_number || sessionId,
+        notes: `تسوية جرد مخزني - الفارق: ${diff > 0 ? '+' : ''}${diff}. ${it.notes || ''}`.trim(),
+        created_by: approvedBy,
+        created_at: new Date().toISOString()
+      });
+    }
+  }
+
+  await supabase.from('stocktaking_sessions').update({
+    status: 'completed',
+    completed_at: new Date().toISOString()
+  }).eq('id', sessionId).eq('tenant_id', tenantId);
+
+  return getStocktakingSession(tenantId, sessionId);
+}
+
+export async function cancelStocktakingSession(tenantId: string, sessionId: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).cancelStocktakingSession?.(...arguments);
+  }
+  const supabase = getSupabase();
+  await supabase.from('stocktaking_sessions').update({
+    status: 'canceled'
+  }).eq('id', sessionId).eq('tenant_id', tenantId);
+  return { success: true };
 }
 
 

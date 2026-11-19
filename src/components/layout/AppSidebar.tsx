@@ -10,7 +10,7 @@ import {
   LayoutDashboard, ShoppingCart, Package, Layers, CalendarDays, 
   ArrowLeftRight, Truck, Users, Receipt, Landmark, Banknote,
   BookOpen, BarChart3, Building2, UserCog, Settings, Sparkles,
-  ShieldAlert, CreditCard, X, PanelLeftClose, ChevronLeft, ChevronRight, FileText
+  ShieldAlert, CreditCard, X, PanelLeftClose, ChevronLeft, ChevronRight, FileText, ClipboardCheck
 } from 'lucide-react';
 import { isPageAllowed } from '@/lib/auth/permissions';
 
@@ -48,6 +48,7 @@ export function AppSidebar() {
       items: [
         { href: '/merchant/products', icon: Package, label: t('nav_products') },
         { href: '/merchant/inventory', icon: Layers, label: t('nav_inventory') },
+        { href: '/merchant/stocktaking', icon: ClipboardCheck, label: lang === 'ar' ? 'الجرد المخزني' : 'Stocktaking' },
         { href: '/merchant/batches', icon: CalendarDays, label: t('nav_batches') },
         { href: '/merchant/transfers', icon: ArrowLeftRight, label: t('nav_transfers') },
       ]

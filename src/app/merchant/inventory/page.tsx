@@ -17,6 +17,7 @@ import {
 export default function MerchantInventoryPage() {
   const { tenant, activeBranchId, branches } = useAuth();
   const { lang, t } = useLanguage();
+  const currency = tenant?.currency || t('currency') || 'ج.م';
 
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
@@ -329,7 +330,7 @@ export default function MerchantInventoryPage() {
                         {b.avg_cost.toFixed(2)}
                       </td>
                       <td className="px-4 py-3.5 text-right rtl:text-left font-mono font-bold text-[#246BFD]">
-                        {(b.quantity * b.avg_cost).toLocaleString()} {t('currency')}
+                        {(b.quantity * b.avg_cost).toLocaleString()} {currency}
                       </td>
                       <td className="px-4 py-3.5 text-center text-[11px] text-[#687386]">
                         {b.last_updated}

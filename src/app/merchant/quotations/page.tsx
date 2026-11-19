@@ -52,6 +52,9 @@ export default function QuotationsPage() {
     }[]
   });
 
+  const [itemSearchTerm, setItemSearchTerm] = useState('');
+  const [showItemSuggestions, setShowItemSuggestions] = useState(false);
+
   const fetchQuotations = async () => {
     try {
       const res = await fetch(`/api/merchant/quotations?tenantId=${tenantId}`);
@@ -92,6 +95,17 @@ export default function QuotationsPage() {
   const formTotal = useMemo(() => {
     return Math.max(0, formSubtotal - Number(formData.discount_amount || 0) + Number(formData.delivery_fee || 0));
   }, [formSubtotal, formData.discount_amount, formData.delivery_fee]);
+
+  const matchingProducts = useMemo(() => {
+    if (!itemSearchTerm.trim()) return [];
+    const term = itemSearchTerm.toLowerCase();
+    return products.filter(p => 
+      (p.name_ar && p.name_ar.toLowerCase().includes(term)) ||
+      (p.name_en && p.name_en.toLowerCase().includes(term)) ||
+      (p.barcode && p.barcode.toLowerCase().includes(term)) ||
+      (p.sku && p.sku.toLowerCase().includes(term))
+    ).slice(0, 10);
+  }, [products, itemSearchTerm]);
 
   // Filtering
   const filteredQuotations = useMemo(() => {
@@ -639,23 +653,23 @@ export default function QuotationsPage() {
           </div>
 
           {/* Items Section */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-bold text-[#0B1730] flex items-center gap-1.5">
                 <Layers className="w-4 h-4 text-[#246BFD]" />
                 <span>{isRtl ? 'بنود وأصناف عرض السعر' : 'Quotation Line Items'}</span>
               </span>
+
               <div className="flex items-center gap-2">
-                {/* Fast select product */}
                 <select
                   onChange={(e) => {
                     const prod = products.find(p => p.id === e.target.value);
                     if (prod) handleAddItem(prod);
                     e.target.value = '';
                   }}
-                  className="px-2.5 py-1 bg-white border border-[#246BFD] text-[#246BFD] rounded-lg text-xs font-bold outline-none cursor-pointer"
+                  className="px-2.5 py-1 bg-white border border-[#CBD5E1] text-[#0B1730] rounded-lg text-xs font-bold outline-none cursor-pointer"
                 >
-                  <option value="">{isRtl ? '+ اختر صنف من المخزن' : '+ Pick from inventory'}</option>
+                  <option value="">{isRtl ? 'قائمة المنتجات...' : 'Browse products...'}</option>
                   {products.map(p => (
                     <option key={p.id} value={p.id}>{lang === 'ar' ? p.name_ar : p.name_en} ({p.selling_price} {currency})</option>
                   ))}
@@ -663,11 +677,73 @@ export default function QuotationsPage() {
                 <button
                   type="button"
                   onClick={() => handleAddItem()}
-                  className="px-3 py-1 bg-[#0B1730] hover:bg-[#172033] text-white rounded-lg text-xs font-bold"
+                  className="px-3 py-1 bg-[#0B1730] hover:bg-[#172033] text-white rounded-lg text-xs font-bold cursor-pointer"
                 >
-                  {isRtl ? '+ بند حر' : '+ Custom Line'}
+                  {isRtl ? '+ بند حر / خدمة' : '+ Custom Line'}
                 </button>
               </div>
+            </div>
+
+            {/* Fast Product Search Bar */}
+            <div className="relative">
+              <div className="relative">
+                <Search className="w-4 h-4 text-[#246BFD] absolute top-1/2 -translate-y-1/2 start-3" />
+                <input
+                  type="text"
+                  value={itemSearchTerm}
+                  onFocus={() => setShowItemSuggestions(true)}
+                  onChange={(e) => {
+                    setItemSearchTerm(e.target.value);
+                    setShowItemSuggestions(true);
+                  }}
+                  placeholder={isRtl ? 'ابحث عن صنف بالاسم أو الباركود لإضافته فوراً لعرض السعر...' : 'Type product name or barcode to add instantly...'}
+                  className="w-full ps-9 pe-8 py-2 bg-white border border-[#246BFD]/40 rounded-lg text-xs outline-none focus:border-[#246BFD] shadow-2xs"
+                />
+                {itemSearchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setItemSearchTerm('');
+                      setShowItemSuggestions(false);
+                    }}
+                    className="absolute top-1/2 -translate-y-1/2 end-2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Suggestions Dropdown */}
+              {showItemSuggestions && matchingProducts.length > 0 && (
+                <div className="absolute z-30 start-0 end-0 mt-1 bg-white border border-[#CBD5E1] rounded-xl shadow-lg max-h-60 overflow-y-auto divide-y divide-gray-100">
+                  {matchingProducts.map(p => (
+                    <div
+                      key={p.id}
+                      onClick={() => {
+                        handleAddItem(p);
+                        setItemSearchTerm('');
+                        setShowItemSuggestions(false);
+                      }}
+                      className="p-2.5 hover:bg-blue-50 flex items-center justify-between cursor-pointer transition-colors"
+                    >
+                      <div>
+                        <div className="font-bold text-[#0B1730]">{lang === 'ar' ? p.name_ar : p.name_en}</div>
+                        <div className="text-[10px] text-[#687386] font-mono">
+                          {p.barcode} {p.sku ? `| SKU: ${p.sku}` : ''}
+                        </div>
+                      </div>
+                      <div className="text-end">
+                        <span className="font-black text-[#246BFD] font-mono">
+                          {p.selling_price} {currency}
+                        </span>
+                        <span className="block text-[10px] text-gray-500">
+                          {isRtl ? 'المخزون:' : 'Stock:'} {p.current_stock ?? 0}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="border border-[#E5EAF2] rounded-xl overflow-hidden">

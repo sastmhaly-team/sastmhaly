@@ -864,7 +864,7 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
                         {lang === 'ar' ? 'سعر البيع' : 'Selling Price'}
                       </span>
                       <span className="font-black text-sm text-[#0B1730]">
-                        {p.selling_price.toFixed(2)} {t('currency')}
+                        {p.selling_price.toFixed(2)} {currency}
                       </span>
                       <span className="text-[10px] text-[#687386] ms-2">
                         ({lang === 'ar' ? 'التكلفة:' : 'Cost:'} {p.cost_price.toFixed(2)})
@@ -960,7 +960,7 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
                         {p.cost_price.toFixed(2)}
                       </td>
                       <td className="px-4 py-3.5 text-right rtl:text-left font-mono font-bold text-[#0B1730]">
-                        {p.selling_price.toFixed(2)} {t('currency')}
+                        {p.selling_price.toFixed(2)} {currency}
                       </td>
                       <td className="px-4 py-3.5 text-center">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono ${
@@ -1161,7 +1161,7 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
             </div>
 
             <div>
-              <label className="block font-semibold text-[#172033] mb-1">Purchase Cost ({t('currency')}) *</label>
+              <label className="block font-semibold text-[#172033] mb-1">Purchase Cost ({currency}) *</label>
               <input
                 type="number"
                 step="0.25"
@@ -1173,7 +1173,7 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
             </div>
 
             <div>
-              <label className="block font-semibold text-[#172033] mb-1">Selling Price ({t('currency')}) *</label>
+              <label className="block font-semibold text-[#172033] mb-1">Selling Price ({currency}) *</label>
               <input
                 type="number"
                 step="0.25"
@@ -1970,7 +1970,7 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
           onClose={() => setBarcodeModalProduct(null)}
           product={barcodeModalProduct}
           tenantName={tenant?.name}
-          currency={t('currency')}
+          currency={currency}
         />
       )}
 

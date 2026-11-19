@@ -168,7 +168,7 @@ export default function MerchantDashboardPage() {
     );
   }
 
-  const currency = t('currency') || 'ج.م';
+  const currency = tenant?.currency || t('currency') || 'ج.م';
   const topProductName = data?.topProducts && data.topProducts.length > 0 
     ? (isRtl ? data.topProducts[0].name_ar : data.topProducts[0].name_en) 
     : undefined;

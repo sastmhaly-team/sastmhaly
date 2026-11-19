@@ -46,6 +46,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
     initSession();
+
+    const handleTenantUpdated = (e: any) => {
+      if (e.detail) {
+        setTenant(prev => prev ? ({ ...prev, ...e.detail }) : e.detail);
+      }
+    };
+    window.addEventListener('sastmhaly_tenant_updated', handleTenantUpdated);
+    return () => window.removeEventListener('sastmhaly_tenant_updated', handleTenantUpdated);
   }, []);
 
   const loginAs = async (identifier: string): Promise<boolean> => {

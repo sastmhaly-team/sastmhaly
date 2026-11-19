@@ -225,6 +225,22 @@ export default function MerchantSettingsPage() {
       if (data.success) {
         setSuccessMessage(true);
         setTimeout(() => setSuccessMessage(false), 3000);
+
+        // Update local session cache with new currency & name
+        try {
+          const cachedSession = localStorage.getItem('sastmhaly_cached_session');
+          if (cachedSession) {
+            const parsed = JSON.parse(cachedSession);
+            if (parsed.tenant) {
+              parsed.tenant.currency = formData.currency;
+              parsed.tenant.name = formData.name;
+              localStorage.setItem('sastmhaly_cached_session', JSON.stringify(parsed));
+            }
+          }
+          window.dispatchEvent(new CustomEvent('sastmhaly_tenant_updated', {
+            detail: { currency: formData.currency, name: formData.name }
+          }));
+        } catch {}
       } else {
         alert(data.error || 'Failed to save settings');
       }

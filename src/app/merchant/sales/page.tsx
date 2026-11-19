@@ -63,6 +63,15 @@ export default function SalesManagementPage() {
   const [editPaymentMethod, setEditPaymentMethod] = useState('cash');
   const [editDeliveryFee, setEditDeliveryFee] = useState<number>(0);
   const [editNotes, setEditNotes] = useState('');
+  const [editItems, setEditItems] = useState<{
+    id?: string;
+    product_id: string;
+    product_name: string;
+    quantity: number;
+    unit_price: number;
+    cost_price?: number;
+    line_total: number;
+  }[]>([]);
   const [submittingEdit, setSubmittingEdit] = useState(false);
 
   // Delete Sale Invoice
@@ -342,13 +351,51 @@ export default function SalesManagementPage() {
     setEditPaymentMethod(sale.payment_method || 'cash');
     setEditDeliveryFee(Number((sale as any).delivery_fee) || 0);
     setEditNotes((sale as any).notes || '');
+    
+    // Initial items from sale if present
+    const existingItems = (sale as any).items || [];
+    setEditItems(existingItems.map((it: any) => ({
+      id: it.id,
+      product_id: it.product_id,
+      product_name: it.product_name_ar || it.product_name_en || it.product_name || it.name || 'صنف',
+      quantity: Number(it.quantity) || 1,
+      unit_price: Number(it.unit_price) || 0,
+      cost_price: Number(it.cost_price) || 0,
+      line_total: Number(it.line_total ?? (Number(it.quantity) * Number(it.unit_price))) || 0
+    })));
     setEditModalOpen(true);
+
+    // Fetch full sale with items to ensure all items are loaded
+    try {
+      const res = await fetch(`/api/merchant/sales?tenantId=${tenantId}&saleId=${sale.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.sale && Array.isArray(data.sale.items)) {
+          setSaleToEdit(data.sale);
+          setEditItems(data.sale.items.map((it: any) => ({
+            id: it.id,
+            product_id: it.product_id,
+            product_name: it.product_name_ar || it.product_name_en || it.product_name || it.name || 'صنف',
+            quantity: Number(it.quantity) || 1,
+            unit_price: Number(it.unit_price) || 0,
+            cost_price: Number(it.cost_price) || 0,
+            line_total: Number(it.line_total ?? (Number(it.quantity) * Number(it.unit_price))) || 0
+          })));
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!saleToEdit) return;
     setSubmittingEdit(true);
+
+    const calculatedSubtotal = editItems.reduce((acc, it) => acc + (it.quantity * it.unit_price), 0);
+    const finalTotal = Math.max(0, calculatedSubtotal + Number(editDeliveryFee || 0));
+
     try {
       const res = await fetch('/api/merchant/sales', {
         method: 'PUT',
@@ -360,6 +407,10 @@ export default function SalesManagementPage() {
           customer_name: editCustomerName,
           payment_method: editPaymentMethod,
           delivery_fee: Number(editDeliveryFee) || 0,
+          subtotal: calculatedSubtotal,
+          total_amount: finalTotal,
+          paid_amount: finalTotal,
+          items: editItems,
           notes: editNotes,
         }),
       });
@@ -1163,11 +1214,11 @@ export default function SalesManagementPage() {
         isOpen={editModalOpen}
         onClose={() => setEditModalOpen(false)}
         title={isRtl ? `تعديل الفاتورة رقم ${saleToEdit?.sale_number}` : `Edit Invoice #${saleToEdit?.sale_number}`}
-        size="md"
+        size="xl"
       >
         {saleToEdit && (
           <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <div>
                 <label className="block text-gray-700 font-semibold mb-1">
                   {isRtl ? 'تاريخ ووقت الفاتورة' : 'Invoice Date & Time'}
@@ -1211,7 +1262,7 @@ export default function SalesManagementPage() {
 
               <div>
                 <label className="block text-gray-700 font-semibold mb-1">
-                  {isRtl ? 'رسوم التوصيل / دليفري' : 'Delivery Fee'} ({currency})
+                  {isRtl ? 'خدمة التوصيل / دليفري' : 'Delivery Fee'} ({currency})
                 </label>
                 <input
                   type="number"
@@ -1221,6 +1272,102 @@ export default function SalesManagementPage() {
                   onChange={(e) => setEditDeliveryFee(parseFloat(e.target.value) || 0)}
                   className="w-full p-2 bg-[#F7F9FC] border border-[#CBD5E1] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD]"
                 />
+              </div>
+            </div>
+
+            {/* Line Items Table */}
+            <div className="space-y-2">
+              <label className="block text-gray-700 font-bold">
+                {isRtl ? 'بنود وأصناف الفاتورة (يمكن تعديل الكميات والأسعار والحذف):' : 'Invoice Line Items:'}
+              </label>
+              <div className="border border-[#CBD5E1] rounded-xl overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-[#F7F9FC] text-[#687386] border-b">
+                    <tr>
+                      <th className="p-2 text-start">{isRtl ? 'الصنف' : 'Item'}</th>
+                      <th className="p-2 text-center w-28">{isRtl ? 'الكمية' : 'Qty'}</th>
+                      <th className="p-2 text-center w-32">{isRtl ? `السعر (${currency})` : 'Price'}</th>
+                      <th className="p-2 text-end w-32">{isRtl ? 'الإجمالي' : 'Total'}</th>
+                      <th className="p-2 text-center w-12">#</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E5EAF2]">
+                    {editItems.map((it, idx) => (
+                      <tr key={idx} className="bg-white">
+                        <td className="p-2 font-bold text-[#0B1730]">
+                          {it.product_name}
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            min="0.01"
+                            step="any"
+                            value={it.quantity}
+                            onChange={(e) => {
+                              const qty = parseFloat(e.target.value) || 0;
+                              setEditItems(prev => {
+                                const next = [...prev];
+                                next[idx] = { ...next[idx], quantity: qty, line_total: qty * next[idx].unit_price };
+                                return next;
+                              });
+                            }}
+                            className="w-full py-1 px-2 border border-[#CBD5E1] rounded text-center font-bold outline-none focus:border-[#246BFD]"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={it.unit_price}
+                            onChange={(e) => {
+                              const pr = parseFloat(e.target.value) || 0;
+                              setEditItems(prev => {
+                                const next = [...prev];
+                                next[idx] = { ...next[idx], unit_price: pr, line_total: next[idx].quantity * pr };
+                                return next;
+                              });
+                            }}
+                            className="w-full py-1 px-2 border border-[#CBD5E1] rounded text-center font-bold outline-none focus:border-[#246BFD]"
+                          />
+                        </td>
+                        <td className="p-2 text-end font-mono font-black text-[#0B1730]">
+                          {(it.quantity * it.unit_price).toFixed(2)}
+                        </td>
+                        <td className="p-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setEditItems(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-red-500 hover:text-red-700 p-1"
+                            title={isRtl ? 'حذف هذا الصنف' : 'Delete line'}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Live Totals summary */}
+              <div className="flex justify-end gap-6 p-2 bg-[#F7F9FC] border border-[#CBD5E1] rounded-lg font-bold text-xs">
+                <div>
+                  <span className="text-gray-500">{isRtl ? 'المجموع الفرعي:' : 'Subtotal:'} </span>
+                  <span className="font-mono">{editItems.reduce((acc, it) => acc + (it.quantity * it.unit_price), 0).toFixed(2)} {currency}</span>
+                </div>
+                {Number(editDeliveryFee) > 0 && (
+                  <div>
+                    <span className="text-blue-600">{isRtl ? 'التوصيل:' : 'Delivery:'} </span>
+                    <span className="font-mono text-blue-600">{Number(editDeliveryFee).toFixed(2)} {currency}</span>
+                  </div>
+                )}
+                <div>
+                  <span className="text-gray-700">{isRtl ? 'الإجمالي النهائي:' : 'Grand Total:'} </span>
+                  <span className="font-mono text-emerald-600 text-sm">
+                    {(editItems.reduce((acc, it) => acc + (it.quantity * it.unit_price), 0) + Number(editDeliveryFee || 0)).toFixed(2)} {currency}
+                  </span>
+                </div>
               </div>
             </div>
 
