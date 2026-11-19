@@ -88,10 +88,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Single Product Creation
-    const product = await createProduct(tenantId, singleProduct);
+    const sku = singleProduct.sku?.trim() || `SKU-${Date.now().toString().slice(-6)}`;
+    const product = await createProduct(tenantId, { ...singleProduct, sku });
     return NextResponse.json({ success: true, product });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Failed to create product';
+    let msg = error instanceof Error ? error.message : 'Failed to create product';
+    if (msg.includes('uq_tenant_prod_sku')) {
+      msg = 'كود SKU مستخدم بالفعل لصنف آخر، يرجى تغييره أو تركه للتوليد التلقائي';
+    }
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

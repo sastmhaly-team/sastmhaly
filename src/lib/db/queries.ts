@@ -792,6 +792,16 @@ export function createProduct(tenantId: string, data: {
     }
   }
 
+  // 5. Ensure unique SKU
+  let effectiveSku = (data.sku || '').trim() || `SKU-${Date.now().toString().slice(-6)}`;
+  try {
+    const skuExists = db.prepare('SELECT id FROM products WHERE tenant_id = ? AND sku = ?').get(effectiveTenantId, effectiveSku);
+    if (skuExists) {
+      effectiveSku = `${effectiveSku}-${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+  } catch {}
+  const variantsVal = typeof data.variants === 'string' ? data.variants : (data.variants ? JSON.stringify(data.variants) : null);
+
   const txn = db.transaction(() => {
     db.prepare(`
       INSERT INTO products (
@@ -801,12 +811,12 @@ export function createProduct(tenantId: string, data: {
         variants, custom_unit
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 1, ?, ?)
     `).run(
-      id, effectiveTenantId, data.sku, data.barcode, data.additional_barcodes || null,
+      id, effectiveTenantId, effectiveSku, data.barcode, data.additional_barcodes || null,
       data.name_en, data.name_ar, catId, unitId,
       data.cost_price, data.selling_price, data.wholesale_price || null,
       data.tax_rate ?? 14.0, data.min_stock_alert ?? 5.0,
       data.is_weighted ? 1 : 0, data.has_batch_tracking ? 1 : 0,
-      data.variants || null, data.custom_unit || null
+      variantsVal, data.custom_unit || null
     );
 
     // Initial stock if specified

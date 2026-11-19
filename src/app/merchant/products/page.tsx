@@ -155,15 +155,44 @@ export default function MerchantProductsPage() {
     fetchProducts();
   }, [tenant, activeBranchId]);
 
+  const handleOpenCreateModal = () => {
+    const generatedSku = `SKU-${Date.now().toString().slice(-6)}`;
+    const generatedBarcode = generateRandomBarcode('622');
+    setFormData({
+      sku: generatedSku,
+      barcode: generatedBarcode,
+      additional_barcodes: '',
+      name_ar: '',
+      name_en: '',
+      category_id: categories[0]?.id || '',
+      unit_id: units[0]?.id || '',
+      cost_price: 10,
+      selling_price: 15,
+      wholesale_price: 13,
+      tax_rate: 14.0,
+      min_stock_alert: 5.0,
+      is_weighted: false,
+      has_batch_tracking: false,
+      initial_stock: 50,
+    });
+    setCreateCustomUnit('');
+    setCreateVariants([]);
+    setNewVarName('');
+    setNewVarPrice('');
+    setIsCreateOpen(true);
+  };
+
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tenant) return;
 
     try {
+      const finalSku = formData.sku?.trim() || `SKU-${Date.now().toString().slice(-6)}`;
       const payload = {
         tenant_id: tenant.id,
         branch_id: activeBranchId !== 'all' ? activeBranchId : 'br_downtown',
         ...formData,
+        sku: finalSku,
         custom_unit: createCustomUnit || undefined,
         variants: createVariants.length > 0 ? createVariants : undefined,
         cost_price: Number(formData.cost_price),
@@ -709,7 +738,7 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
           />
 
           <button
-            onClick={() => setIsCreateOpen(true)}
+            onClick={handleOpenCreateModal}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold text-white bg-[#246BFD] hover:bg-[#1A54D4] transition-all shadow-xs cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -1023,13 +1052,22 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
             </div>
 
             <div>
-              <label className="block font-semibold text-[#172033] mb-1">SKU Code *</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-semibold text-[#172033]">{lang === 'ar' ? 'رمز SKU' : 'SKU Code'}</label>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, sku: `SKU-${Date.now().toString().slice(-6)}` }))}
+                  className="inline-flex items-center gap-1 text-[11px] text-[#246BFD] hover:underline font-bold cursor-pointer"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>{lang === 'ar' ? 'توليد تلقائي' : 'Auto Generate'}</span>
+                </button>
+              </div>
               <input
                 type="text"
-                required
                 value={formData.sku}
                 onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                placeholder="SKU-100"
+                placeholder={`SKU-${Date.now().toString().slice(-6)}`}
                 className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] font-mono focus:border-[#246BFD] focus:outline-none"
               />
             </div>
@@ -1293,10 +1331,19 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
             </div>
 
             <div>
-              <label className="block font-semibold text-[#172033] mb-1">{lang === 'ar' ? 'رمز SKU *' : 'SKU Code *'}</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-semibold text-[#172033]">{lang === 'ar' ? 'رمز SKU' : 'SKU Code'}</label>
+                <button
+                  type="button"
+                  onClick={() => setEditFormData(prev => ({ ...prev, sku: `SKU-${Date.now().toString().slice(-6)}` }))}
+                  className="inline-flex items-center gap-1 text-[11px] text-[#246BFD] hover:underline font-bold cursor-pointer"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>{lang === 'ar' ? 'توليد جديد' : 'Generate'}</span>
+                </button>
+              </div>
               <input
                 type="text"
-                required
                 value={editFormData.sku}
                 onChange={(e) => setEditFormData({ ...editFormData, sku: e.target.value })}
                 className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] font-mono focus:border-[#246BFD] focus:outline-none"

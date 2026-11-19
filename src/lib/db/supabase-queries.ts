@@ -881,9 +881,11 @@ export async function createProduct(tenantId: string, data: {
   }
   const supabase = getSupabase();
   const id = `prod_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  let effectiveSku = (data.sku || '').trim() || `SKU-${Date.now().toString().slice(-6)}`;
+  const variantsVal = typeof data.variants === 'string' ? data.variants : (data.variants ? JSON.stringify(data.variants) : null);
 
-  const { error: prodError } = await supabase.from('products').insert({
-    id, tenant_id: tenantId, sku: data.sku, barcode: data.barcode,
+  const insertPayload: any = {
+    id, tenant_id: tenantId, sku: effectiveSku, barcode: data.barcode,
     additional_barcodes: data.additional_barcodes || null,
     name_en: data.name_en, name_ar: data.name_ar,
     category_id: data.category_id, unit_id: data.unit_id,
@@ -894,11 +896,30 @@ export async function createProduct(tenantId: string, data: {
     min_stock_alert: data.min_stock_alert ?? 5.0,
     is_weighted: data.is_weighted ? 1 : 0,
     has_batch_tracking: data.has_batch_tracking ? 1 : 0,
-    variants: data.variants || null,
+    variants: variantsVal,
     custom_unit: data.custom_unit || null,
     is_active: 1
-  });
-  if (prodError) throw new Error(prodError.message);
+  };
+
+  let { error: prodError } = await supabase.from('products').insert(insertPayload);
+
+  // If duplicate SKU constraint was violated, auto-resolve with unique suffix
+  if (prodError && (prodError.message.includes('uq_tenant_prod_sku') || prodError.message.includes('unique constraint'))) {
+    effectiveSku = `${effectiveSku}-${Math.floor(1000 + Math.random() * 9000)}`;
+    insertPayload.sku = effectiveSku;
+    const retry = await supabase.from('products').insert(insertPayload);
+    prodError = retry.error;
+  }
+
+  if (prodError) {
+    if (prodError.message.includes('uq_tenant_prod_sku')) {
+      throw new Error('كود SKU مستخدم بالفعل لصنف آخر، يرجى كتابة كود مختلف.');
+    }
+    if (prodError.message.includes('uq_tenant_prod_barcode')) {
+      throw new Error('الباركود مستخدم بالفعل لصنف آخر مسجل.');
+    }
+    throw new Error(prodError.message);
+  }
 
   // Initial stock if specified
   if (data.initial_stock && data.initial_stock > 0 && data.branch_id) {
@@ -933,9 +954,18 @@ export async function updateProduct(tenantId: string, id: string, data: Partial<
     return (sqlite as any).updateProduct(...arguments);
   }
   const supabase = getSupabase();
-  const { data: product, error } = await supabase.from('products').update(data)
+  const updatePayload: any = { ...data };
+  if (updatePayload.variants && typeof updatePayload.variants !== 'string') {
+    updatePayload.variants = JSON.stringify(updatePayload.variants);
+  }
+  const { data: product, error } = await supabase.from('products').update(updatePayload)
     .eq('id', id).eq('tenant_id', tenantId).select().single();
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.message.includes('uq_tenant_prod_sku')) {
+      throw new Error('كود SKU مستخدم بالفعل لصنف آخر، يرجى كتابة كود مختلف.');
+    }
+    throw new Error(error.message);
+  }
 
   if (stockOptions && stockOptions.current_stock !== undefined) {
     const targetStock = Math.max(0, Number(stockOptions.current_stock));
