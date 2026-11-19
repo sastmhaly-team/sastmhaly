@@ -833,7 +833,11 @@ export default function PosPage() {
           }
 
           const json = await res.json();
-          finalSaleData = json.sale;
+          finalSaleData = {
+            ...json.sale,
+            delivery_fee: Number(json.sale?.delivery_fee ?? deliveryFee ?? 0),
+            notes: json.sale?.notes ?? invoiceNotes
+          };
 
           // Ensure items preserve product names from cart if API response was sparse
           if (finalSaleData && Array.isArray(finalSaleData.items)) {
@@ -1693,12 +1697,23 @@ export default function PosPage() {
                   <span>{completedSale.tax_amount} {currency}</span>
                 </div>
               ) : null}
-              {completedSale?.delivery_fee && Number(completedSale.delivery_fee) > 0 ? (
-                <div className="flex justify-between items-center text-blue-700 font-semibold">
-                  <span>خدمة التوصيل:</span>
-                  <span>{Number(completedSale.delivery_fee).toFixed(2)} {currency}</span>
-                </div>
-              ) : null}
+              {(() => {
+                const directFee = Number((completedSale as any)?.delivery_fee || 0);
+                const calcFee = Math.max(
+                  0,
+                  Number(completedSale?.total_amount || 0) - (Number(completedSale?.subtotal || 0) - Number(completedSale?.discount_amount || 0) + Number(completedSale?.tax_amount || 0))
+                );
+                const fee = directFee > 0 ? directFee : (calcFee > 0.01 ? calcFee : 0);
+                if (fee > 0) {
+                  return (
+                    <div className="flex justify-between items-center text-blue-700 font-semibold">
+                      <span>خدمة التوصيل:</span>
+                      <span>{fee.toFixed(2)} {currency}</span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
               <div className="flex justify-between items-center font-bold text-xs pt-1 border-t border-black">
                 <span>الإجمالي النهائي:</span>
                 <span>{completedSale?.total_amount} {currency}</span>
@@ -1823,6 +1838,7 @@ export default function PosPage() {
         branchAddress={currentBranch?.address || 'القاهرة، مصر'}
         branchPhone={currentBranch?.phone || '01558516263'}
         isRtl={lang === 'ar'}
+        currency={currency}
       />
 
       {/* Quick Register Customer Modal (Name & Phone only) */}

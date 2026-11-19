@@ -41,7 +41,7 @@ export default function QuotationsPage() {
     valid_until: '',
     delivery_fee: 0,
     discount_amount: 0,
-    notes: 'العرض ساري لمدة 15 يوماً من تاريخ الإصدار. الأسعار شاملة لكافة الرسوم المتفق عليها.',
+    notes: '',
     items: [] as {
       product_id?: string;
       product_name: string;
@@ -344,19 +344,55 @@ export default function QuotationsPage() {
       return;
     }
     printWin.document.write(`
+      <!DOCTYPE html>
       <html dir="${isRtl ? 'rtl' : 'ltr'}">
         <head>
           <meta charset="utf-8">
-          <title>عرض سعر - ${selectedQuotation?.quotation_number}</title>
+          <title>عرض سعر - ${selectedQuotation?.quotation_number || ''}</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-            body { font-family: 'Cairo', system-ui, sans-serif; margin: 20px; color: #0f172a; }
-            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-            th, td { border: 1px solid #cbd5e1; padding: 10px; font-size: 12px; text-align: ${isRtl ? 'right' : 'left'}; }
-            th { background-color: #f1f5f9; color: #1e293b; font-weight: 700; }
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body {
+              font-family: 'Cairo', system-ui, -apple-system, sans-serif;
+              padding: 12mm 15mm;
+              color: #0f172a;
+              background: #ffffff;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            @page {
+              size: A4 portrait;
+              margin: 10mm;
+            }
+            img {
+              max-height: 52px !important;
+              max-width: 150px !important;
+              object-fit: contain !important;
+              display: block;
+            }
+            table {
+              width: 100% !important;
+              border-collapse: collapse !important;
+              margin-top: 14px !important;
+              margin-bottom: 14px !important;
+            }
+            th, td {
+              border: 1px solid #cbd5e1 !important;
+              padding: 8px 10px !important;
+              font-size: 11px !important;
+              text-align: ${isRtl ? 'right' : 'left'} !important;
+            }
+            th {
+              background-color: #f1f5f9 !important;
+              color: #1e293b !important;
+              font-weight: 700 !important;
+            }
+            .no-break {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
             @media print {
-              body { margin: 10mm; }
-              @page { size: A4; margin: 10mm; }
+              body { padding: 0; }
             }
           </style>
         </head>
@@ -364,7 +400,9 @@ export default function QuotationsPage() {
           ${printable.innerHTML}
           <script>
             window.onload = function() {
-              setTimeout(function() { window.print(); }, 400);
+              setTimeout(function() {
+                window.print();
+              }, 400);
             };
           </script>
         </body>
@@ -912,30 +950,30 @@ export default function QuotationsPage() {
           </div>
 
           {/* Printable A4 Container */}
-          <div id="printable-quotation-a4" className="bg-white p-6 border border-gray-200 rounded-xl space-y-6 text-[#0B1730]">
+          <div id="printable-quotation-a4" className="bg-white p-6 border border-gray-200 rounded-xl space-y-4 text-[#0B1730]">
             {/* Store & Header */}
-            <div className="flex justify-between items-start border-b-2 border-[#246BFD] pb-4">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #246BFD', paddingBottom: '12px', marginBottom: '14px' }}>
               <div>
                 {tenant?.logo_url ? (
-                  <img src={tenant.logo_url} alt="Logo" className="max-h-14 max-w-[160px] object-contain mb-2" />
+                  <img src={tenant.logo_url} alt="Logo" style={{ maxHeight: '48px', maxWidth: '140px', objectFit: 'contain', marginBottom: '6px' }} />
                 ) : (
-                  <div className="text-xl font-black text-[#246BFD] mb-1">{tenant?.name || 'سستمهالي'}</div>
+                  <div style={{ fontSize: '18px', fontWeight: 900, color: '#246BFD', marginBottom: '4px' }}>{tenant?.name || 'سستمهالي'}</div>
                 )}
-                <div className="text-xs font-bold text-[#0B1730]">{tenant?.name}</div>
-                <div className="text-[11px] text-gray-600">{tenant?.phone || ''}</div>
-                {tenant?.tax_id && <div className="text-[11px] text-gray-600">{isRtl ? 'الرقم الضريبي:' : 'Tax ID:'} {tenant.tax_id}</div>}
+                <div style={{ fontSize: '12px', fontWeight: 700, color: '#0B1730' }}>{tenant?.name}</div>
+                <div style={{ fontSize: '11px', color: '#64748b' }}>{tenant?.phone || ''}</div>
+                {tenant?.tax_id && <div style={{ fontSize: '11px', color: '#64748b' }}>{isRtl ? 'الرقم الضريبي:' : 'Tax ID:'} {tenant.tax_id}</div>}
               </div>
 
-              <div className="text-end">
-                <span className="inline-block px-3 py-1 bg-[#F0F5FF] text-[#246BFD] font-black text-sm rounded-lg mb-2">
+              <div style={{ textAlign: isRtl ? 'left' : 'right' }}>
+                <span style={{ display: 'inline-block', padding: '4px 10px', backgroundColor: '#F0F5FF', color: '#246BFD', fontWeight: 900, fontSize: '12px', borderRadius: '6px', marginBottom: '6px' }}>
                   {isRtl ? 'عرض سعر / PRICE QUOTATION' : 'PRICE QUOTATION'}
                 </span>
-                <div className="font-mono font-black text-sm text-[#0B1730]">{selectedQuotation?.quotation_number}</div>
-                <div className="text-[11px] text-gray-600 font-mono mt-1">
+                <div style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '13px', color: '#0B1730' }}>{selectedQuotation?.quotation_number}</div>
+                <div style={{ fontSize: '11px', color: '#64748b', fontFamily: 'monospace', marginTop: '2px' }}>
                   {isRtl ? 'تاريخ العرض:' : 'Date:'} {selectedQuotation?.created_at?.split('T')[0]}
                 </div>
                 {selectedQuotation?.valid_until && (
-                  <div className="text-[11px] text-emerald-700 font-bold font-mono">
+                  <div style={{ fontSize: '11px', color: '#047857', fontWeight: 700, fontFamily: 'monospace' }}>
                     {isRtl ? 'صالح حتى:' : 'Valid Until:'} {selectedQuotation.valid_until}
                   </div>
                 )}
@@ -943,86 +981,78 @@ export default function QuotationsPage() {
             </div>
 
             {/* Customer Details Box */}
-            <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg flex justify-between items-center">
+            <div style={{ padding: '8px 12px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <div>
-                <span className="text-[11px] text-gray-500 font-semibold block">{isRtl ? 'مقدم إلى السادة:' : 'Quotation Presented To:'}</span>
-                <span className="font-black text-sm text-[#0B1730]">{selectedQuotation?.customer_name || (isRtl ? 'عميل نقدي' : 'Valued Customer')}</span>
+                <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600, display: 'block' }}>{isRtl ? 'مقدم إلى السادة:' : 'Quotation Presented To:'}</span>
+                <span style={{ fontWeight: 800, fontSize: '13px', color: '#0B1730' }}>{selectedQuotation?.customer_name || (isRtl ? 'عميل نقدي' : 'Valued Customer')}</span>
               </div>
               {selectedQuotation?.customer_phone && (
-                <div className="text-end">
-                  <span className="text-[11px] text-gray-500 font-semibold block">{isRtl ? 'رقم الهاتف:' : 'Phone:'}</span>
-                  <span className="font-mono font-bold text-[#0B1730]">{selectedQuotation.customer_phone}</span>
+                <div style={{ textAlign: isRtl ? 'left' : 'right' }}>
+                  <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600, display: 'block' }}>{isRtl ? 'رقم الهاتف:' : 'Phone:'}</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0B1730', fontSize: '12px' }}>{selectedQuotation.customer_phone}</span>
                 </div>
               )}
             </div>
 
             {/* Table */}
-            <table className="w-full text-xs border border-gray-200">
-              <thead className="bg-gray-100 border-b border-gray-300">
-                <tr>
-                  <th className="p-2 text-center w-10">#</th>
-                  <th className="p-2 text-start">{isRtl ? 'الصنف / البيان والمواصفات' : 'Description'}</th>
-                  <th className="p-2 text-center w-20">{isRtl ? 'الكمية' : 'Qty'}</th>
-                  <th className="p-2 text-end w-28">{isRtl ? `سعر الوحدة (${currency})` : 'Unit Price'}</th>
-                  <th className="p-2 text-end w-28">{isRtl ? `الإجمالي (${currency})` : 'Total'}</th>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', marginBottom: '14px' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f1f5f9' }}>
+                  <th style={{ padding: '6px 8px', textAlign: 'center', width: '35px', border: '1px solid #cbd5e1' }}>#</th>
+                  <th style={{ padding: '6px 8px', textAlign: isRtl ? 'right' : 'left', border: '1px solid #cbd5e1' }}>{isRtl ? 'الصنف / البيان والمواصفات' : 'Description'}</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'center', width: '60px', border: '1px solid #cbd5e1' }}>{isRtl ? 'الكمية' : 'Qty'}</th>
+                  <th style={{ padding: '6px 8px', textAlign: isRtl ? 'left' : 'right', width: '90px', border: '1px solid #cbd5e1' }}>{isRtl ? `سعر الوحدة (${currency})` : 'Unit Price'}</th>
+                  <th style={{ padding: '6px 8px', textAlign: isRtl ? 'left' : 'right', width: '90px', border: '1px solid #cbd5e1' }}>{isRtl ? `الإجمالي (${currency})` : 'Total'}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody>
                 {selectedQuotation?.items?.map((it, idx) => (
                   <tr key={idx}>
-                    <td className="p-2 text-center text-gray-500">{idx + 1}</td>
-                    <td className="p-2 font-bold text-[#0B1730]">{it.product_name}</td>
-                    <td className="p-2 text-center font-mono font-bold">{it.quantity}</td>
-                    <td className="p-2 text-end font-mono">{Number(it.unit_price).toFixed(2)}</td>
-                    <td className="p-2 text-end font-mono font-black">{Number(it.line_total).toFixed(2)}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'center', color: '#64748b', border: '1px solid #e2e8f0' }}>{idx + 1}</td>
+                    <td style={{ padding: '6px 8px', fontWeight: 700, color: '#0B1730', border: '1px solid #e2e8f0' }}>{it.product_name}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, border: '1px solid #e2e8f0' }}>{it.quantity}</td>
+                    <td style={{ padding: '6px 8px', textAlign: isRtl ? 'left' : 'right', fontFamily: 'monospace', border: '1px solid #e2e8f0' }}>{Number(it.unit_price).toFixed(2)}</td>
+                    <td style={{ padding: '6px 8px', textAlign: isRtl ? 'left' : 'right', fontFamily: 'monospace', fontWeight: 800, border: '1px solid #e2e8f0' }}>{Number(it.line_total).toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
 
             {/* Totals Section */}
-            <div className="flex justify-end">
-              <div className="w-64 space-y-1.5 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">{isRtl ? 'المجموع الفرعي:' : 'Subtotal:'}</span>
-                  <span className="font-mono font-bold">{Number(selectedQuotation?.subtotal).toFixed(2)} {currency}</span>
+            <div className="no-break" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+              <div style={{ width: '240px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px 12px', fontSize: '11px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ color: '#64748b' }}>{isRtl ? 'المجموع الفرعي:' : 'Subtotal:'}</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{Number(selectedQuotation?.subtotal).toFixed(2)} {currency}</span>
                 </div>
                 {Number(selectedQuotation?.discount_amount) > 0 && (
-                  <div className="flex justify-between text-emerald-700">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#047857', marginBottom: '4px' }}>
                     <span>{isRtl ? 'الخصم:' : 'Discount:'}</span>
-                    <span className="font-mono font-bold">-{Number(selectedQuotation?.discount_amount).toFixed(2)} {currency}</span>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>-{Number(selectedQuotation?.discount_amount).toFixed(2)} {currency}</span>
                   </div>
                 )}
                 {Number(selectedQuotation?.delivery_fee) > 0 && (
-                  <div className="flex justify-between text-blue-600">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2563eb', marginBottom: '4px' }}>
                     <span>{isRtl ? 'رسوم التوصيل:' : 'Delivery Fee:'}</span>
-                    <span className="font-mono font-bold">+{Number(selectedQuotation?.delivery_fee).toFixed(2)} {currency}</span>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>+{Number(selectedQuotation?.delivery_fee).toFixed(2)} {currency}</span>
                   </div>
                 )}
-                <div className="border-t border-gray-300 pt-1.5 flex justify-between font-black text-sm">
+                <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: '6px', marginTop: '4px', display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '13px' }}>
                   <span>{isRtl ? 'الإجمالي النهائي:' : 'Total Amount:'}</span>
-                  <span className="text-[#246BFD]">{Number(selectedQuotation?.total_amount).toFixed(2)} {currency}</span>
+                  <span style={{ color: '#246BFD' }}>{Number(selectedQuotation?.total_amount).toFixed(2)} {currency}</span>
                 </div>
               </div>
             </div>
 
-            {/* Notes & Terms */}
-            {selectedQuotation?.notes && (
-              <div className="p-3 bg-amber-50/50 border border-amber-200 rounded-lg text-[11px] space-y-1">
-                <span className="font-bold text-amber-900 block">{isRtl ? 'الشروط والملاحظات:' : 'Terms & Conditions:'}</span>
-                <p className="text-gray-700 whitespace-pre-line leading-relaxed">{selectedQuotation.notes}</p>
-              </div>
-            )}
-
             {/* Signatures */}
-            <div className="grid grid-cols-2 pt-8 text-center text-xs">
-              <div>
-                <span className="font-bold block mb-12">{isRtl ? 'توقيع وختم المتجر' : 'Store Signature & Stamp'}</span>
-                <div className="w-36 border-b border-gray-400 mx-auto" />
+            <div className="no-break" style={{ display: 'flex', justifyContent: 'space-around', marginTop: '28px', textAlign: 'center', fontSize: '11px' }}>
+              <div style={{ width: '180px' }}>
+                <span style={{ fontWeight: 700, display: 'block', marginBottom: '24px' }}>{isRtl ? 'توقيع وختم المتجر' : 'Store Signature & Stamp'}</span>
+                <div style={{ width: '130px', borderBottom: '1px solid #94a3b8', margin: '0 auto' }} />
               </div>
-              <div>
-                <span className="font-bold block mb-12">{isRtl ? 'موافقة وتوقيع العميل' : 'Customer Acceptance'}</span>
-                <div className="w-36 border-b border-gray-400 mx-auto" />
+              <div style={{ width: '180px' }}>
+                <span style={{ fontWeight: 700, display: 'block', marginBottom: '24px' }}>{isRtl ? 'موافقة وتوقيع العميل' : 'Customer Acceptance'}</span>
+                <div style={{ width: '130px', borderBottom: '1px solid #94a3b8', margin: '0 auto' }} />
               </div>
             </div>
           </div>

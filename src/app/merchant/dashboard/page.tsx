@@ -455,6 +455,7 @@ export default function MerchantDashboardPage() {
         branchAddress={activeBranchObj?.address || 'القاهرة، مصر'}
         branchPhone={activeBranchObj?.phone || '01558516263'}
         isRtl={isRtl}
+        currency={tenant?.currency || (isRtl ? 'ج.م' : 'EGP')}
       />
 
     </div>

@@ -20,6 +20,7 @@ interface InvoiceShareModalProps {
   branchAddress?: string;
   branchPhone?: string;
   isRtl?: boolean;
+  currency?: string;
 }
 
 export function InvoiceShareModal({
@@ -32,6 +33,7 @@ export function InvoiceShareModal({
   branchAddress = 'القاهرة، مصر',
   branchPhone = '01558516263',
   isRtl = true,
+  currency,
 }: InvoiceShareModalProps) {
   const [loadingImage, setLoadingImage] = useState(false);
   const [imageBlob, setImageBlob] = useState<Blob | null>(null);
@@ -41,6 +43,15 @@ export function InvoiceShareModal({
   const receiptContainerRef = useRef<HTMLDivElement>(null);
 
   if (!sale) return null;
+
+  const curr = currency || (isRtl ? 'ج.م' : 'EGP');
+
+  const directFee = Number((sale as any)?.delivery_fee || 0);
+  const calcFee = Math.max(
+    0,
+    Number(sale?.total_amount || 0) - (Number(sale?.subtotal || 0) - Number(sale?.discount_amount || 0) + Number(sale?.tax_amount || 0))
+  );
+  const deliveryFee = directFee > 0 ? directFee : (calcFee > 0.01 ? calcFee : 0);
 
   const saleDate = new Date(sale.created_at).toLocaleString(isRtl ? 'ar-EG' : 'en-US', {
     dateStyle: 'medium',
@@ -59,7 +70,7 @@ export function InvoiceShareModal({
     if (sale.items && sale.items.length > 0) {
       itemsText = sale.items.map(item => {
         const name = (isRtl ? item.product_name_ar : item.product_name_en) || item.product_name_ar || item.product_name_en || (item as any).product_name || (item as any).name_ar || (item as any).name_en || (item as any).name || (item as any).product?.name_ar || (item as any).product?.name_en || 'صنف';
-        return `• *${name}* × ${item.quantity} = ${item.line_total.toFixed(2)} ${isRtl ? 'ج.م' : 'EGP'}`;
+        return `• *${name}* × ${item.quantity} = ${item.line_total.toFixed(2)} ${curr}`;
       }).join('\n');
     }
 
@@ -77,14 +88,20 @@ export function InvoiceShareModal({
       messageParts.push(`━━━━━━━━━━━━━━━━━━━`);
     }
 
-    messageParts.push(`💵 *${isRtl ? 'المجموع الفرعي:' : 'Subtotal:'}* ${sale.subtotal.toFixed(2)} ${isRtl ? 'ج.م' : 'EGP'}`);
+    messageParts.push(`💵 *${isRtl ? 'المجموع الفرعي:' : 'Subtotal:'}* ${sale.subtotal.toFixed(2)} ${curr}`);
     if (sale.discount_amount > 0) {
-      messageParts.push(`🏷️ *${isRtl ? 'الخصم:' : 'Discount:'}* -${sale.discount_amount.toFixed(2)} ${isRtl ? 'ج.م' : 'EGP'}`);
+      messageParts.push(`🏷️ *${isRtl ? 'الخصم:' : 'Discount:'}* -${sale.discount_amount.toFixed(2)} ${curr}`);
     }
     if (sale.tax_amount > 0) {
-      messageParts.push(`📊 *${isRtl ? 'الضريبة:' : 'VAT:'}* +${sale.tax_amount.toFixed(2)} ${isRtl ? 'ج.م' : 'EGP'}`);
+      messageParts.push(`📊 *${isRtl ? 'الضريبة:' : 'VAT:'}* +${sale.tax_amount.toFixed(2)} ${curr}`);
     }
-    messageParts.push(`💰 *${isRtl ? 'الإجمالي النهائي:' : 'Total Amount:'}* ${sale.total_amount.toFixed(2)} ${isRtl ? 'ج.م' : 'EGP'}`);
+    if (deliveryFee > 0) {
+      messageParts.push(`🛵 *${isRtl ? 'خدمة التوصيل:' : 'Delivery Fee:'}* +${deliveryFee.toFixed(2)} ${curr}`);
+    }
+    messageParts.push(`💰 *${isRtl ? 'الإجمالي النهائي:' : 'Total Amount:'}* ${sale.total_amount.toFixed(2)} ${curr}`);
+    if ((sale as any).notes) {
+      messageParts.push(`📝 *${isRtl ? 'ملاحظات:' : 'Notes:'}* ${(sale as any).notes}`);
+    }
     messageParts.push(`💳 *${isRtl ? 'طريقة الدفع:' : 'Payment Method:'}* ${paymentMethodText}`);
     messageParts.push(`━━━━━━━━━━━━━━━━━━━`);
 
@@ -429,35 +446,49 @@ export function InvoiceShareModal({
         <div style={{ borderTop: '1px dashed #000', paddingTop: '8px', fontSize: '12px', lineHeight: '1.6' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>المجموع الفرعي:</span>
-            <span>{sale.subtotal.toFixed(2)} ج.م</span>
+            <span>{sale.subtotal.toFixed(2)} {curr}</span>
           </div>
           {sale.discount_amount > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#059669' }}>
               <span>الخصم:</span>
-              <span>-{sale.discount_amount.toFixed(2)} ج.م</span>
+              <span>-{sale.discount_amount.toFixed(2)} {curr}</span>
             </div>
           )}
           {sale.tax_amount > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
               <span>ضريبة القيمة المضافة:</span>
-              <span>+{sale.tax_amount.toFixed(2)} ج.م</span>
+              <span>+{sale.tax_amount.toFixed(2)} {curr}</span>
+            </div>
+          )}
+          {deliveryFee > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#1d4ed8', fontWeight: 'bold' }}>
+              <span>خدمة التوصيل:</span>
+              <span>+{deliveryFee.toFixed(2)} {curr}</span>
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px', borderTop: '1px solid #000', paddingTop: '4px', marginTop: '4px' }}>
             <span>الإجمالي النهائي:</span>
-            <span>{sale.total_amount.toFixed(2)} ج.م</span>
+            <span>{sale.total_amount.toFixed(2)} {curr}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#555', marginTop: '2px' }}>
             <span>المدفوع:</span>
-            <span>{sale.paid_amount.toFixed(2)} ج.م</span>
+            <span>{sale.paid_amount.toFixed(2)} {curr}</span>
           </div>
           {sale.change_amount > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#555' }}>
               <span>الباقي:</span>
-              <span>{sale.change_amount.toFixed(2)} ج.م</span>
+              <span>{sale.change_amount.toFixed(2)} {curr}</span>
             </div>
           )}
         </div>
+
+        {/* Notes */}
+        {(sale as any).notes && (
+          <div style={{ borderTop: '1px dashed #aaa', paddingTop: '6px', marginTop: '6px', fontSize: '10px', textAlign: 'right' }}>
+            <span style={{ fontWeight: 'bold', display: 'block', color: '#444' }}>ملاحظات:</span>
+            <p style={{ margin: '2px 0', whiteSpace: 'pre-line', color: '#222' }}>{(sale as any).notes}</p>
+          </div>
+        )}
 
         {/* Footer */}
         <div style={{ textAlign: 'center', borderTop: '1px dashed #000', paddingTop: '10px', marginTop: '10px', fontSize: '11px', color: '#555' }}>

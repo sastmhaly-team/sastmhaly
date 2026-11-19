@@ -992,12 +992,23 @@ export default function SalesManagementPage() {
                       <span>{Number(selectedSale.tax_amount).toFixed(2)} {currency}</span>
                     </div>
                   ) : null}
-                  {Number((selectedSale as any).delivery_fee) > 0 && (
-                    <div className="flex justify-between items-center text-blue-700 font-semibold">
-                      <span>خدمة التوصيل:</span>
-                      <span>{Number((selectedSale as any).delivery_fee).toFixed(2)} {currency}</span>
-                    </div>
-                  )}
+                  {(() => {
+                    const directFee = Number((selectedSale as any)?.delivery_fee || 0);
+                    const calcFee = Math.max(
+                      0,
+                      Number(selectedSale?.total_amount || 0) - (Number(selectedSale?.subtotal || 0) - Number(selectedSale?.discount_amount || 0) + Number(selectedSale?.tax_amount || 0))
+                    );
+                    const fee = directFee > 0 ? directFee : (calcFee > 0.01 ? calcFee : 0);
+                    if (fee > 0) {
+                      return (
+                        <div className="flex justify-between items-center text-blue-700 font-semibold">
+                          <span>خدمة التوصيل:</span>
+                          <span>{fee.toFixed(2)} {currency}</span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                   <div className="flex justify-between items-center font-bold text-xs pt-1 border-t border-black">
                     <span>الإجمالي النهائي:</span>
                     <span>{Number(selectedSale.total_amount).toFixed(2)} {currency}</span>
@@ -1470,6 +1481,7 @@ export default function SalesManagementPage() {
         branchAddress="القاهرة، مصر"
         branchPhone="01558516263"
         isRtl={isRtl}
+        currency={currency}
       />
     </div>
   );

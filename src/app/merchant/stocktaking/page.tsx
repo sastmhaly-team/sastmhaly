@@ -908,3 +908,4 @@ export default function StocktakingPage() {
     </div>
   );
 }
+

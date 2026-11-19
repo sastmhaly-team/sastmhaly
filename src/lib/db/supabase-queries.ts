@@ -1664,6 +1664,7 @@ export async function commitSaleTransaction(input: CreateSaleInput): Promise<Sal
     subtotal: input.subtotal,
     discount_amount: input.discount_amount,
     tax_amount: finalTaxAmount,
+    delivery_fee: deliveryFee,
     total_amount: finalTotalAmount,
     paid_amount: input.paid_amount,
     change_amount: input.change_amount,
