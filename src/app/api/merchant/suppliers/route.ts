@@ -27,8 +27,8 @@ export async function POST(request: NextRequest) {
       for (let i = 0; i < body.items.length; i++) {
         const item = body.items[i];
         try {
-          if (!item.name || !item.phone) {
-            errors.push(`Row #${i + 1}: Name and phone are required (${JSON.stringify(item)})`);
+          if (!item.name) {
+            errors.push(`Row #${i + 1}: Name is required (${JSON.stringify(item)})`);
             continue;
           }
           const supCode = item.code || `SUP-${Date.now().toString().slice(-4)}${i + 1}`;
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
             code: supCode,
             name: item.name.trim(),
             contact_person: item.contact_person?.trim() || undefined,
-            phone: String(item.phone).trim(),
+            phone: item.phone ? String(item.phone).trim() : '',
             email: item.email?.trim() || undefined,
             tax_id: item.tax_id?.trim() || undefined,
             payment_terms: item.payment_terms || '30 Days Net',

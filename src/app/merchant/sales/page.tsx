@@ -13,7 +13,7 @@ import { getPendingOfflineSales } from '@/lib/offline/offline-manager';
 import { 
   Receipt, Search, Filter, Printer, RotateCcw, 
   Eye, CheckCircle2, AlertTriangle, Download, Calendar, DollarSign, MessageCircle,
-  Usb, Cable, RefreshCw
+  Usb, Cable, RefreshCw, Pencil, Trash2
 } from 'lucide-react';
 import { InvoiceShareModal } from '@/components/invoice/InvoiceShareModal';
 import { ThermalPrinterSelector } from '@/components/printer/ThermalPrinterSelector';
@@ -44,6 +44,35 @@ export default function SalesManagementPage() {
   const [refundMethod, setRefundMethod] = useState('cash');
   const [restock, setRestock] = useState(true);
   const [submittingReturn, setSubmittingReturn] = useState(false);
+  const [returnItemsList, setReturnItemsList] = useState<{
+    id: string;
+    product_id: string;
+    name: string;
+    unit_price: number;
+    max_quantity: number;
+    return_quantity: number;
+    selected: boolean;
+  }[]>([]);
+  const [isPartialReturn, setIsPartialReturn] = useState(false);
+
+  // Edit Sale Invoice
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [saleToEdit, setSaleToEdit] = useState<any>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editCustomerName, setEditCustomerName] = useState('');
+  const [editPaymentMethod, setEditPaymentMethod] = useState('cash');
+  const [editDeliveryFee, setEditDeliveryFee] = useState<number>(0);
+  const [editNotes, setEditNotes] = useState('');
+  const [submittingEdit, setSubmittingEdit] = useState(false);
+
+  // Delete Sale Invoice
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [saleToDelete, setSaleToDelete] = useState<Sale | null>(null);
+  const [deleteRestock, setDeleteRestock] = useState(true);
+  const [submittingDelete, setSubmittingDelete] = useState(false);
+
+  const currency = tenant?.currency || (isRtl ? 'ج.م' : 'EGP');
+
   const [liveTenant, setLiveTenant] = useState<{ id: string; name: string; logo_url?: string } | null>(null);
   const [receiptFooter, setReceiptFooter] = useState<string>('');
   const [visibleCount, setVisibleCount] = useState<number>(20);
@@ -223,11 +252,38 @@ export default function SalesManagementPage() {
     }
   };
 
-  const handleOpenReturn = (sale: Sale) => {
+  const handleOpenReturn = async (sale: Sale) => {
     setSaleToReturn(sale);
     setReturnReason('');
     setRefundMethod(sale.payment_method === 'customer_credit' ? 'customer_credit' : 'cash');
     setRestock(true);
+    setIsPartialReturn(false);
+
+    let items: any[] = (sale as any).items || [];
+    if (!items || items.length === 0) {
+      try {
+        const res = await fetch(`/api/merchant/sales?tenantId=${tenantId}&saleId=${sale.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.sale?.items) items = data.sale.items;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch sale items for return', err);
+      }
+    }
+
+    setReturnItemsList(
+      items.map((it: any) => ({
+        id: it.id || it.product_id,
+        product_id: it.product_id,
+        name: it.product_name_ar || it.product_name || it.name_ar || it.name || 'صنف',
+        unit_price: Number(it.unit_price) || 0,
+        max_quantity: Number(it.quantity) || 1,
+        return_quantity: Number(it.quantity) || 1,
+        selected: true,
+      }))
+    );
+
     setReturnModalOpen(true);
   };
 
@@ -236,6 +292,11 @@ export default function SalesManagementPage() {
     if (!saleToReturn) return;
     setSubmittingReturn(true);
     try {
+      const selectedItems = returnItemsList.filter(i => i.selected && i.return_quantity > 0);
+      const computedRefund = isPartialReturn && selectedItems.length > 0
+        ? selectedItems.reduce((sum, i) => sum + (i.return_quantity * i.unit_price), 0)
+        : saleToReturn.total_amount;
+
       const res = await fetch('/api/merchant/sales', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -243,11 +304,17 @@ export default function SalesManagementPage() {
           action: 'return',
           tenant_id: tenantId,
           saleId: saleToReturn.id,
-          refundAmount: saleToReturn.total_amount,
+          refundAmount: computedRefund,
           refundMethod,
           restock,
           reason: returnReason,
-          createdBy: user?.id || 'cashier'
+          createdBy: user?.id || 'cashier',
+          items: selectedItems.map(i => ({
+            product_id: i.product_id,
+            quantity: i.return_quantity,
+            unit_price: i.unit_price,
+            line_total: i.return_quantity * i.unit_price,
+          })),
         })
       });
       const data = await res.json();
@@ -265,6 +332,78 @@ export default function SalesManagementPage() {
       alert('Network error while processing return');
     } finally {
       setSubmittingReturn(false);
+    }
+  };
+
+  const handleOpenEdit = async (sale: Sale) => {
+    setSaleToEdit(sale);
+    setEditDate(sale.created_at ? new Date(sale.created_at).toISOString().slice(0, 16) : '');
+    setEditCustomerName(sale.customer_name || '');
+    setEditPaymentMethod(sale.payment_method || 'cash');
+    setEditDeliveryFee(Number((sale as any).delivery_fee) || 0);
+    setEditNotes((sale as any).notes || '');
+    setEditModalOpen(true);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!saleToEdit) return;
+    setSubmittingEdit(true);
+    try {
+      const res = await fetch('/api/merchant/sales', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          saleId: saleToEdit.id,
+          created_at: editDate ? new Date(editDate).toISOString() : undefined,
+          customer_name: editCustomerName,
+          payment_method: editPaymentMethod,
+          delivery_fee: Number(editDeliveryFee) || 0,
+          notes: editNotes,
+        }),
+      });
+      if (res.ok) {
+        setEditModalOpen(false);
+        fetchSales();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'فشل تحديث الفاتورة');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('خطأ أثناء حفظ التعديلات');
+    } finally {
+      setSubmittingEdit(false);
+    }
+  };
+
+  const handleOpenDelete = (sale: Sale) => {
+    setSaleToDelete(sale);
+    setDeleteRestock(true);
+    setDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!saleToDelete) return;
+    setSubmittingDelete(true);
+    try {
+      const res = await fetch(`/api/merchant/sales?tenantId=${tenantId}&saleId=${saleToDelete.id}&restock=${deleteRestock}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setDeleteModalOpen(false);
+        setSaleToDelete(null);
+        fetchSales();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'فشل حذف الفاتورة');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('خطأ أثناء حذف الفاتورة');
+    } finally {
+      setSubmittingDelete(false);
     }
   };
 
@@ -438,7 +577,7 @@ export default function SalesManagementPage() {
                   <div className="flex items-center justify-between pt-2 border-t border-dashed border-[#E5EAF2]">
                     <div className="flex items-baseline gap-2">
                       <span className="font-black text-sm text-[#0B1730]">
-                        {sale.total_amount.toFixed(2)} {isRtl ? 'ج.م' : 'EGP'}
+                        {sale.total_amount.toFixed(2)} {currency}
                       </span>
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-[#172033]">
                         {sale.payment_method === 'cash' ? (isRtl ? 'كاش' : 'Cash') :
@@ -471,15 +610,31 @@ export default function SalesManagementPage() {
                         <span>{isRtl ? 'عرض' : 'View'}</span>
                       </button>
 
+                      <button
+                        onClick={() => handleOpenEdit(sale)}
+                        className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
+                        title={isRtl ? 'تعديل الفاتورة' : 'Edit invoice'}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+
                       {sale.status === 'completed' && (
                         <button
                           onClick={() => handleOpenReturn(sale)}
-                          className="p-2 text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors"
+                          className="p-2 text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer"
                           title={isRtl ? 'إرجاع / استرداد' : 'Return / Refund'}
                         >
                           <RotateCcw className="w-4 h-4" />
                         </button>
                       )}
+
+                      <button
+                        onClick={() => handleOpenDelete(sale)}
+                        className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer"
+                        title={isRtl ? 'حذف الفاتورة' : 'Delete invoice'}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -532,7 +687,7 @@ export default function SalesManagementPage() {
                         </span>
                       </td>
                       <td className="py-3 px-4 font-black text-[#0B1730]">
-                        {sale.total_amount.toFixed(2)} {isRtl ? 'ج.م' : 'EGP'}
+                        {sale.total_amount.toFixed(2)} {currency}
                       </td>
                       <td className="py-3 px-4 text-center">
                         {getStatusBadge(sale.status)}
@@ -554,21 +709,37 @@ export default function SalesManagementPage() {
 
                         <button
                           onClick={() => handleViewDetail(sale.id)}
-                          className="p-1.5 text-[#246BFD] hover:bg-[#F0F9FF] rounded-lg transition-colors"
+                          className="p-1.5 text-[#246BFD] hover:bg-[#F0F9FF] rounded-lg transition-colors cursor-pointer"
                           title={isRtl ? 'عرض الفاتورة والإيصال' : 'View invoice & receipt'}
                         >
                           <Eye className="w-4 h-4" />
                         </button>
 
+                        <button
+                          onClick={() => handleOpenEdit(sale)}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                          title={isRtl ? 'تعديل الفاتورة' : 'Edit invoice'}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+
                         {sale.status === 'completed' && (
                           <button
                             onClick={() => handleOpenReturn(sale)}
-                            className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                            className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
                             title={isRtl ? 'إرجاع / استرداد' : 'Return / Refund'}
                           >
                             <RotateCcw className="w-4 h-4" />
                           </button>
                         )}
+
+                        <button
+                          onClick={() => handleOpenDelete(sale)}
+                          className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title={isRtl ? 'حذف الفاتورة' : 'Delete invoice'}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -756,35 +927,49 @@ export default function SalesManagementPage() {
                 <div className="space-y-0.5 text-[11px]">
                   <div className="flex justify-between items-center">
                     <span className="text-gray-600">المجموع الفرعي:</span>
-                    <span className="font-bold">{Number(selectedSale.subtotal).toFixed(2)} ج.م</span>
+                    <span className="font-bold">{Number(selectedSale.subtotal).toFixed(2)} {currency}</span>
                   </div>
                   {Number(selectedSale.discount_amount) > 0 ? (
                     <div className="flex justify-between items-center text-emerald-600">
                       <span>الخصم:</span>
-                      <span>-{Number(selectedSale.discount_amount).toFixed(2)} ج.م</span>
+                      <span>-{Number(selectedSale.discount_amount).toFixed(2)} {currency}</span>
                     </div>
                   ) : null}
                   {Number(selectedSale.tax_amount) > 0 ? (
                     <div className="flex justify-between items-center text-gray-600">
                       <span>ضريبة القيمة المضافة (14%):</span>
-                      <span>{Number(selectedSale.tax_amount).toFixed(2)} ج.م</span>
+                      <span>{Number(selectedSale.tax_amount).toFixed(2)} {currency}</span>
                     </div>
                   ) : null}
+                  {Number((selectedSale as any).delivery_fee) > 0 && (
+                    <div className="flex justify-between items-center text-blue-700 font-semibold">
+                      <span>خدمة التوصيل:</span>
+                      <span>{Number((selectedSale as any).delivery_fee).toFixed(2)} {currency}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center font-bold text-xs pt-1 border-t border-black">
                     <span>الإجمالي النهائي:</span>
-                    <span>{Number(selectedSale.total_amount).toFixed(2)} ج.م</span>
+                    <span>{Number(selectedSale.total_amount).toFixed(2)} {currency}</span>
                   </div>
                   <div className="flex justify-between items-center text-[10px] text-gray-600 pt-1">
                     <span>المدفوع:</span>
-                    <span>{Number(selectedSale.paid_amount || selectedSale.total_amount).toFixed(2)} ج.م</span>
+                    <span>{Number(selectedSale.paid_amount || selectedSale.total_amount).toFixed(2)} {currency}</span>
                   </div>
                   {selectedSale.change_amount ? (
                     <div className="flex justify-between items-center text-[10px]">
                       <span>الباقي:</span>
-                      <span>{Number(selectedSale.change_amount).toFixed(2)} ج.م</span>
+                      <span>{Number(selectedSale.change_amount).toFixed(2)} {currency}</span>
                     </div>
                   ) : null}
                 </div>
+
+                {/* Notes */}
+                {(selectedSale as any).notes && (
+                  <div className="pt-2 border-t border-dashed border-gray-400 text-right">
+                    <span className="font-bold text-[10px] block text-gray-700">ملاحظات:</span>
+                    <p className="whitespace-pre-line text-[10px] text-gray-800 font-sans mt-0.5">{(selectedSale as any).notes}</p>
+                  </div>
+                )}
 
                 {/* Footer */}
                 <div className="receipt-footer text-center text-[10px] pt-2 mt-2 space-y-1 border-none">
@@ -818,21 +1003,95 @@ export default function SalesManagementPage() {
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               <div>
-                <p className="font-bold">{isRtl ? 'تنبيه تدقيق المرتجعات (Scenario F)' : 'Auditable Return Workflow (Scenario F)'}</p>
+                <p className="font-bold">{isRtl ? 'إرجاع المبيعات واسترداد المبلغ' : 'Sales Return & Refund'}</p>
                 <p className="text-[11px] mt-0.5">
                   {isRtl 
-                    ? 'لا يتم حذف الفاتورة الأصلية أبداً؛ يتم إنشاء مستند إرجاع مستقل وقيد محاسبي عكسي مع استرجاع المخزون تلقائياً.'
-                    : 'The original sale is never deleted. An auditable return record and reversal journal entry are recorded.'}
+                    ? 'يمكنك إرجاع الفاتورة بالكامل أو اختيار أصناف معينة وكميات محددة لإرجاعها جزئياً مع ضبط المخزون تلقائياً.'
+                    : 'You can return the full invoice or choose specific items and quantities for a partial return.'}
                 </p>
               </div>
             </div>
+
+            {/* Full or Partial Return Selector */}
+            <div className="flex items-center gap-2 p-1 bg-[#F1F5F9] rounded-lg">
+              <button
+                type="button"
+                onClick={() => setIsPartialReturn(false)}
+                className={`flex-1 py-1.5 rounded-md font-bold text-xs transition-colors cursor-pointer ${!isPartialReturn ? 'bg-white text-[#246BFD] shadow-xs' : 'text-[#687386]'}`}
+              >
+                {isRtl ? 'إرجاع الفاتورة كاملة' : 'Full Invoice Return'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsPartialReturn(true)}
+                className={`flex-1 py-1.5 rounded-md font-bold text-xs transition-colors cursor-pointer ${isPartialReturn ? 'bg-white text-[#246BFD] shadow-xs' : 'text-[#687386]'}`}
+              >
+                {isRtl ? 'إرجاع أصناف معينة (جزئي)' : 'Partial Return (Select Items)'}
+              </button>
+            </div>
+
+            {/* If Partial Return: Items Selector */}
+            {isPartialReturn && (
+              <div className="border border-[#E5EAF2] rounded-lg overflow-hidden space-y-1 p-2 bg-[#F8FAFC]">
+                <p className="text-[11px] font-bold text-[#172033] mb-1">
+                  {isRtl ? 'حدد الأصناف والكميات المراد إرجاعها:' : 'Select items and quantities to return:'}
+                </p>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {returnItemsList.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-2 rounded bg-white border border-[#E2E8F0] text-xs">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={item.selected}
+                          onChange={(e) => {
+                            const updated = [...returnItemsList];
+                            updated[idx].selected = e.target.checked;
+                            setReturnItemsList(updated);
+                          }}
+                          className="w-4 h-4 rounded text-[#246BFD] cursor-pointer"
+                        />
+                        <div>
+                          <p className="font-semibold text-[#0B1730]">{item.name}</p>
+                          <p className="text-[10px] text-gray-500">
+                            {item.unit_price.toFixed(2)} {currency} / {isRtl ? 'القطعة' : 'unit'} (الحد الأقصى: {item.max_quantity})
+                          </p>
+                        </div>
+                      </div>
+                      {item.selected && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-gray-500">{isRtl ? 'الكمية:' : 'Qty:'}</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max={item.max_quantity}
+                            value={item.return_quantity}
+                            onChange={(e) => {
+                              const val = Math.min(item.max_quantity, Math.max(1, parseInt(e.target.value) || 1));
+                              const updated = [...returnItemsList];
+                              updated[idx].return_quantity = val;
+                              setReturnItemsList(updated);
+                            }}
+                            className="w-16 px-1.5 py-1 text-center font-bold border border-[#CBD5E1] rounded text-xs"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-gray-700 font-semibold mb-1">
                 {isRtl ? 'مبلغ الاسترداد' : 'Refund Amount'}
               </label>
               <div className="p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg font-black text-sm text-[#0B1730]">
-                {saleToReturn.total_amount.toFixed(2)} {isRtl ? 'ج.م' : 'EGP'}
+                {isPartialReturn
+                  ? returnItemsList
+                      .filter(i => i.selected && i.return_quantity > 0)
+                      .reduce((sum, i) => sum + (i.return_quantity * i.unit_price), 0)
+                      .toFixed(2)
+                  : saleToReturn.total_amount.toFixed(2)} {currency}
               </div>
             </div>
 
@@ -896,6 +1155,160 @@ export default function SalesManagementPage() {
               </button>
             </div>
           </form>
+        )}
+      </Modal>
+
+      {/* Edit Previous Invoice Modal */}
+      <Modal
+        isOpen={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        title={isRtl ? `تعديل الفاتورة رقم ${saleToEdit?.sale_number}` : `Edit Invoice #${saleToEdit?.sale_number}`}
+        size="md"
+      >
+        {saleToEdit && (
+          <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-gray-700 font-semibold mb-1">
+                  {isRtl ? 'تاريخ ووقت الفاتورة' : 'Invoice Date & Time'}
+                </label>
+                <input
+                  type="datetime-local"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className="w-full p-2 bg-[#F7F9FC] border border-[#CBD5E1] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-semibold mb-1">
+                  {isRtl ? 'اسم العميل' : 'Customer Name'}
+                </label>
+                <input
+                  type="text"
+                  value={editCustomerName}
+                  onChange={(e) => setEditCustomerName(e.target.value)}
+                  placeholder={isRtl ? 'اسم العميل' : 'Customer Name'}
+                  className="w-full p-2 bg-[#F7F9FC] border border-[#CBD5E1] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-semibold mb-1">
+                  {isRtl ? 'طريقة الدفع' : 'Payment Method'}
+                </label>
+                <select
+                  value={editPaymentMethod}
+                  onChange={(e) => setEditPaymentMethod(e.target.value)}
+                  className="w-full p-2 bg-[#F7F9FC] border border-[#CBD5E1] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD]"
+                >
+                  <option value="cash">{isRtl ? 'نقداً (كاش)' : 'Cash'}</option>
+                  <option value="card">{isRtl ? 'بطاقة بنكية' : 'Card'}</option>
+                  <option value="mobile_wallet">{isRtl ? 'محفظة إلكترونية' : 'Mobile Wallet'}</option>
+                  <option value="customer_credit">{isRtl ? 'آجل (حساب عميل)' : 'Customer Credit'}</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-semibold mb-1">
+                  {isRtl ? 'رسوم التوصيل / دليفري' : 'Delivery Fee'} ({currency})
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={editDeliveryFee}
+                  onChange={(e) => setEditDeliveryFee(parseFloat(e.target.value) || 0)}
+                  className="w-full p-2 bg-[#F7F9FC] border border-[#CBD5E1] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-gray-700 font-semibold mb-1">
+                {isRtl ? 'ملاحظات الفاتورة' : 'Invoice Notes'}
+              </label>
+              <textarea
+                rows={3}
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder={isRtl ? 'اكتب ملاحظات الفاتورة هنا (اضغط Enter لسطر جديد)...' : 'Write notes here...'}
+                className="w-full p-2 bg-[#F7F9FC] border border-[#CBD5E1] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD]"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-[#E5EAF2]">
+              <button
+                type="button"
+                onClick={() => setEditModalOpen(false)}
+                className="px-4 py-2 border border-[#E5EAF2] rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                {isRtl ? 'إلغاء' : 'Cancel'}
+              </button>
+              <button
+                type="submit"
+                disabled={submittingEdit}
+                className="px-4 py-2 bg-[#246BFD] hover:bg-[#1A54D4] text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                {submittingEdit ? (isRtl ? 'جاري الحفظ...' : 'Saving...') : (isRtl ? 'حفظ التعديلات' : 'Save Changes')}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* Delete Previous Invoice Modal */}
+      <Modal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        title={isRtl ? `حذف الفاتورة رقم ${saleToDelete?.sale_number}` : `Delete Invoice #${saleToDelete?.sale_number}`}
+        size="sm"
+      >
+        {saleToDelete && (
+          <div className="space-y-4 text-xs">
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 flex items-start gap-2">
+              <AlertTriangle className="w-5 h-5 shrink-0 text-red-600 mt-0.5" />
+              <div>
+                <p className="font-bold text-sm">{isRtl ? 'تحذير: حذف الفاتورة نهائياً' : 'Warning: Delete Invoice Permanently'}</p>
+                <p className="text-xs mt-1">
+                  {isRtl 
+                    ? `هل أنت متأكد من حذف الفاتورة رقم ${saleToDelete.sale_number} بقيمة ${saleToDelete.total_amount.toFixed(2)} ${currency}؟ هذا الإجراء لا يمكن التراجع عنه.`
+                    : `Are you sure you want to permanently delete invoice ${saleToDelete.sale_number}? This action cannot be undone.`}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 p-3 bg-[#F7F9FC] rounded-lg border border-[#E5EAF2]">
+              <input
+                type="checkbox"
+                id="deleteRestockCheck"
+                checked={deleteRestock}
+                onChange={(e) => setDeleteRestock(e.target.checked)}
+                className="w-4 h-4 text-[#246BFD] rounded"
+              />
+              <label htmlFor="deleteRestockCheck" className="text-xs font-semibold text-[#172033] cursor-pointer">
+                {isRtl ? 'إعادة الأصناف المحذوفة إلى المخزون (Restock Inventory)' : 'Restock deleted items to inventory'}
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-[#E5EAF2]">
+              <button
+                type="button"
+                onClick={() => setDeleteModalOpen(false)}
+                className="px-4 py-2 border border-[#E5EAF2] rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
+              >
+                {isRtl ? 'إلغاء' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={submittingDelete}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {submittingDelete ? (isRtl ? 'جاري الحذف...' : 'Deleting...') : (isRtl ? 'نعم، احذف الفاتورة' : 'Yes, Delete Invoice')}
+              </button>
+            </div>
+          </div>
         )}
       </Modal>
 

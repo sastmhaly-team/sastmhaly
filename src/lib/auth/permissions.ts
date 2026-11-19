@@ -105,6 +105,15 @@ export const ALL_MERCHANT_PAGES: SystemPage[] = [
     groupEn: 'Procurement & Sales'
   },
   {
+    path: '/merchant/quotations',
+    nameAr: 'عروض الأسعار',
+    nameEn: 'Price Quotations',
+    descriptionAr: 'إنشاء وطباعة عروض الأسعار وتحويلها لفواتير مبيعات',
+    descriptionEn: 'Create, print quotations and convert to sales',
+    groupAr: 'المشتريات والمبيعات',
+    groupEn: 'Procurement & Sales'
+  },
+  {
     path: '/merchant/customers',
     nameAr: 'العملاء والديون والآجل',
     nameEn: 'Customers & Credit Ledgers',
@@ -185,6 +194,7 @@ export const ROLE_DEFAULT_PAGES: Record<string, string[]> = {
   ],
   accountant: [
     '/merchant/sales',
+    '/merchant/quotations',
     '/merchant/customers',
     '/merchant/expenses',
     '/merchant/accounting',
@@ -197,6 +207,7 @@ export const ROLE_DEFAULT_PAGES: Record<string, string[]> = {
     '/merchant/products',
     '/merchant/inventory',
     '/merchant/sales',
+    '/merchant/quotations',
     '/merchant/customers',
     '/merchant/expenses',
     '/merchant/reports'

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { BarcodePrintModal } from '@/components/barcode/BarcodePrintModal';
 import { generateRandomBarcode } from '@/lib/barcode/code128';
+import JSZip from 'jszip';
 
 export default function MerchantProductsPage() {
   const { tenant, activeBranchId } = useAuth();
@@ -48,6 +49,23 @@ export default function MerchantProductsPage() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
   const [importResult, setImportResult] = useState<{ successCount: number; errorCount: number; errors: string[] } | null>(null);
+  const [excelPreviewRows, setExcelPreviewRows] = useState<any[]>([]);
+  const [importingExcel, setImportingExcel] = useState(false);
+  const [excelFileName, setExcelFileName] = useState('');
+
+  // Custom unit & variants for Add Product
+  const [createCustomUnit, setCreateCustomUnit] = useState('');
+  const [createVariants, setCreateVariants] = useState<{ name: string; price?: number }[]>([]);
+  const [newVarName, setNewVarName] = useState('');
+  const [newVarPrice, setNewVarPrice] = useState<string>('');
+
+  // Custom unit & variants for Edit Product
+  const [editCustomUnit, setEditCustomUnit] = useState('');
+  const [editVariants, setEditVariants] = useState<{ name: string; price?: number }[]>([]);
+  const [editNewVarName, setEditNewVarName] = useState('');
+  const [editNewVarPrice, setEditNewVarPrice] = useState<string>('');
+
+  const currency = tenant?.currency || t('currency');
 
   // Category management modal
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -146,6 +164,8 @@ export default function MerchantProductsPage() {
         tenant_id: tenant.id,
         branch_id: activeBranchId !== 'all' ? activeBranchId : 'br_downtown',
         ...formData,
+        custom_unit: createCustomUnit || undefined,
+        variants: createVariants.length > 0 ? createVariants : undefined,
         cost_price: Number(formData.cost_price),
         selling_price: Number(formData.selling_price),
         wholesale_price: Number(formData.wholesale_price),
@@ -164,6 +184,10 @@ export default function MerchantProductsPage() {
 
       if (res.ok) {
         setIsCreateOpen(false);
+        setCreateCustomUnit('');
+        setCreateVariants([]);
+        setNewVarName('');
+        setNewVarPrice('');
         fetchProducts();
         setFormData({
           sku: '',
@@ -193,6 +217,10 @@ export default function MerchantProductsPage() {
 
   const openEditModal = (p: Product) => {
     setEditingProductId(p.id);
+    setEditCustomUnit((p as any).custom_unit || '');
+    setEditVariants(Array.isArray((p as any).variants) ? (p as any).variants : []);
+    setEditNewVarName('');
+    setEditNewVarPrice('');
     setEditFormData({
       sku: p.sku || '',
       barcode: p.barcode || '',
@@ -224,6 +252,8 @@ export default function MerchantProductsPage() {
         id: editingProductId,
         branch_id: activeBranchId !== 'all' ? activeBranchId : undefined,
         ...editFormData,
+        custom_unit: editCustomUnit || undefined,
+        variants: editVariants.length > 0 ? editVariants : undefined,
         current_stock: Number(editFormData.current_stock),
         cost_price: Number(editFormData.cost_price),
         selling_price: Number(editFormData.selling_price),
@@ -251,6 +281,127 @@ export default function MerchantProductsPage() {
       }
     } catch {
       alert(lang === 'ar' ? 'خطأ في الاتصال بالخادم' : 'Error updating product');
+    }
+  };
+
+  // Excel / CSV File parser for Import Modal
+  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setExcelFileName(file.name);
+    setImportResult(null);
+
+    try {
+      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        const zip = await JSZip.loadAsync(file);
+        const sharedStrings: string[] = [];
+        const ssFile = zip.file('xl/sharedStrings.xml');
+        if (ssFile) {
+          const ssXml = await ssFile.async('text');
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(ssXml, 'application/xml');
+          const siElements = xmlDoc.getElementsByTagName('si');
+          for (let i = 0; i < siElements.length; i++) {
+            sharedStrings.push(siElements[i].textContent || '');
+          }
+        }
+
+        const sheetFile = zip.file('xl/worksheets/sheet1.xml') || zip.file('xl/worksheets/sheet.xml');
+        if (!sheetFile) {
+          alert('Could not find sheet in Excel file');
+          return;
+        }
+        const sheetXml = await sheetFile.async('text');
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(sheetXml, 'application/xml');
+        const rowElements = xmlDoc.getElementsByTagName('row');
+        const parsedItems: any[] = [];
+
+        for (let r = 1; r < rowElements.length; r++) { // skip header
+          const row = rowElements[r];
+          const cells = row.getElementsByTagName('c');
+          const rowVals: string[] = [];
+          for (let c = 0; c < cells.length; c++) {
+            const cell = cells[c];
+            const type = cell.getAttribute('t');
+            const v = cell.getElementsByTagName('v')[0]?.textContent || '';
+            const val = type === 's' ? (sharedStrings[parseInt(v, 10)] ?? v) : v;
+            rowVals.push(val);
+          }
+          if (rowVals.length >= 2) {
+            parsedItems.push({
+              sku: rowVals[0] || `SKU-${Date.now()}-${r}`,
+              barcode: rowVals[1] || `${Date.now()}${r}`,
+              name_ar: rowVals[2] || rowVals[3] || 'صنف جديد',
+              name_en: rowVals[3] || rowVals[2] || 'New Item',
+              cost_price: parseFloat(rowVals[4]) || 10,
+              selling_price: parseFloat(rowVals[5]) || 15,
+              min_stock_alert: parseFloat(rowVals[6]) || 5,
+              initial_stock: parseFloat(rowVals[7]) || 20,
+              category_id: categories[0]?.id || 'cat_grocery',
+              unit_id: units[0]?.id || 'unit_piece',
+              branch_id: activeBranchId !== 'all' ? activeBranchId : 'br_downtown',
+            });
+          }
+        }
+        setExcelPreviewRows(parsedItems);
+      } else {
+        const text = await file.text();
+        setImportText(text);
+        const lines = text.trim().split('\n');
+        const parsedItems: any[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const parts = lines[i].split(',').map(s => s.trim().replace(/^"|"$/g, ''));
+          if (parts.length >= 4) {
+            parsedItems.push({
+              sku: parts[0] || `SKU-${Date.now()}-${i}`,
+              barcode: parts[1] || `${Date.now()}${i}`,
+              name_ar: parts[3] || parts[2] || 'صنف جديد',
+              name_en: parts[2] || parts[3] || 'New Item',
+              cost_price: parseFloat(parts[4]) || 10,
+              selling_price: parseFloat(parts[5]) || 15,
+              min_stock_alert: parseFloat(parts[6]) || 5,
+              initial_stock: 20,
+              category_id: categories[0]?.id || 'cat_grocery',
+              unit_id: units[0]?.id || 'unit_piece',
+              branch_id: activeBranchId !== 'all' ? activeBranchId : 'br_downtown',
+            });
+          }
+        }
+        setExcelPreviewRows(parsedItems);
+      }
+    } catch (err) {
+      console.error('Error parsing excel file', err);
+      alert('فشل قراءة ملف الإكسيل. تأكد من سلامة الملف.');
+    }
+  };
+
+  const handleExecuteExcelImport = async () => {
+    if (excelPreviewRows.length === 0 || !tenant) return;
+    setImportingExcel(true);
+    try {
+      const res = await fetch('/api/merchant/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenant.id,
+          bulk: true,
+          items: excelPreviewRows,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setImportResult(data);
+        setExcelPreviewRows([]);
+        fetchProducts();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'فشل الاستيراد');
+      }
+    } catch (err) {
+      alert('خطأ أثناء رفع البيانات');
+    } finally {
+      setImportingExcel(false);
     }
   };
 
@@ -859,26 +1010,14 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
       >
         <form onSubmit={handleCreateProduct} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div>
-              <label className="block font-semibold text-[#172033] mb-1">Product Name (Arabic) *</label>
+            <div className="sm:col-span-2">
+              <label className="block font-semibold text-[#172033] mb-1">اسم المنتج / Product Name *</label>
               <input
                 type="text"
                 required
                 value={formData.name_ar}
-                onChange={(e) => setFormData({ ...formData, name_ar: e.target.value })}
-                placeholder="حليب جهينة 1 لتر"
-                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] focus:border-[#246BFD] focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold text-[#172033] mb-1">Product Name (English) *</label>
-              <input
-                type="text"
-                required
-                value={formData.name_en}
-                onChange={(e) => setFormData({ ...formData, name_en: e.target.value })}
-                placeholder="Juhayna Milk 1L"
+                onChange={(e) => setFormData({ ...formData, name_ar: e.target.value, name_en: e.target.value })}
+                placeholder="حليب جهينة 1 لتر / Juhayna Milk 1L"
                 className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] focus:border-[#246BFD] focus:outline-none"
               />
             </div>
@@ -959,16 +1098,28 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
             </div>
 
             <div>
-              <label className="block font-semibold text-[#172033] mb-1">Unit of Measure *</label>
-              <select
-                value={formData.unit_id}
-                onChange={(e) => setFormData({ ...formData, unit_id: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] font-semibold focus:border-[#246BFD] focus:outline-none cursor-pointer"
-              >
-                {units.map(u => (
-                  <option key={u.id} value={u.id}>{lang === 'ar' ? u.name_ar : u.name_en}</option>
-                ))}
-              </select>
+              <label className="block font-semibold text-[#172033] mb-1">
+                {lang === 'ar' ? 'وحدة القياس *' : 'Unit of Measure *'}
+              </label>
+              <div className="space-y-1.5">
+                <select
+                  value={formData.unit_id}
+                  onChange={(e) => setFormData({ ...formData, unit_id: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] font-semibold focus:border-[#246BFD] focus:outline-none cursor-pointer"
+                >
+                  {units.map(u => (
+                    <option key={u.id} value={u.id}>{lang === 'ar' ? u.name_ar : u.name_en}</option>
+                  ))}
+                  <option value="custom">{lang === 'ar' ? 'وحدة مخصصة (كتابة يدوية)' : 'Custom Unit'}</option>
+                </select>
+                <input
+                  type="text"
+                  value={createCustomUnit}
+                  onChange={(e) => setCreateCustomUnit(e.target.value)}
+                  placeholder={lang === 'ar' ? 'أو اكتب وحدتك الخاصة (مثال: كيس، متر، لتر، كرتونة، دستة، طقم، شيكارة...)' : 'Or type custom unit (e.g. Bag, Meter, Liter, Box, Pack...)'}
+                  className="w-full px-3 py-1.5 rounded-lg border border-[#CBD5E1] text-xs focus:border-[#246BFD] focus:outline-none"
+                />
+              </div>
             </div>
 
             <div>
@@ -1038,6 +1189,68 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
             </label>
           </div>
 
+          {/* Variants Management */}
+          <div className="p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl space-y-2 text-xs">
+            <div>
+              <span className="font-bold text-xs text-[#0B1730] block">
+                {lang === 'ar' ? 'تنوعات الصنف (ألوان، مقاسات، أحجام، أوزان)' : 'Product Variants (Colors, Sizes, Options)'}
+              </span>
+              <span className="text-[11px] text-[#687386]">
+                {lang === 'ar' ? 'عند النقر على هذا الصنف في شاشة البيع، يظهر اختيار لاختيار التنوع وسعره تلقائياً' : 'In POS, clicking this product prompts to choose a variant'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={newVarName}
+                onChange={(e) => setNewVarName(e.target.value)}
+                placeholder={lang === 'ar' ? 'اسم التنوع (مثلاً: أحمر، كحلي، XL، مقاس 42، 1 لتر...)' : 'Variant name (e.g. Red, XL, 1L...)'}
+                className="flex-1 px-3 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-xs outline-none focus:border-[#246BFD]"
+              />
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                value={newVarPrice}
+                onChange={(e) => setNewVarPrice(e.target.value)}
+                placeholder={lang === 'ar' ? `السعر (اختياري)` : 'Price (opt)'}
+                className="w-28 px-3 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-xs outline-none focus:border-[#246BFD]"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (newVarName.trim()) {
+                    setCreateVariants(prev => [...prev, { name: newVarName.trim(), price: newVarPrice !== '' ? Number(newVarPrice) : undefined }]);
+                    setNewVarName('');
+                    setNewVarPrice('');
+                  }
+                }}
+                className="px-3 py-1.5 bg-[#246BFD] hover:bg-[#1A54D4] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+              >
+                {lang === 'ar' ? '+ إضافة تنوع' : '+ Add Variant'}
+              </button>
+            </div>
+
+            {createVariants.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {createVariants.map((v, idx) => (
+                  <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-xs font-semibold">
+                    <span>{v.name}</span>
+                    {v.price !== undefined && <span className="font-mono text-[10px] text-blue-600">({v.price} {currency})</span>}
+                    <button
+                      type="button"
+                      onClick={() => setCreateVariants(prev => prev.filter((_, i) => i !== idx))}
+                      className="text-blue-500 hover:text-red-500 font-bold ml-1 cursor-pointer"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="pt-3 border-t border-[#E5EAF2] flex justify-end gap-2">
             <button
               type="button"
@@ -1068,24 +1281,13 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
       >
         <form onSubmit={handleUpdateProduct} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div>
-              <label className="block font-semibold text-[#172033] mb-1">{lang === 'ar' ? 'اسم الصنف (عربي) *' : 'Product Name (Arabic) *'}</label>
+            <div className="sm:col-span-2">
+              <label className="block font-semibold text-[#172033] mb-1">اسم المنتج / Product Name *</label>
               <input
                 type="text"
                 required
                 value={editFormData.name_ar}
-                onChange={(e) => setEditFormData({ ...editFormData, name_ar: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] focus:border-[#246BFD] focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold text-[#172033] mb-1">{lang === 'ar' ? 'اسم الصنف (إنجليزي) *' : 'Product Name (English) *'}</label>
-              <input
-                type="text"
-                required
-                value={editFormData.name_en}
-                onChange={(e) => setEditFormData({ ...editFormData, name_en: e.target.value })}
+                onChange={(e) => setEditFormData({ ...editFormData, name_ar: e.target.value, name_en: e.target.value })}
                 className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] focus:border-[#246BFD] focus:outline-none"
               />
             </div>
@@ -1165,15 +1367,25 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
 
             <div>
               <label className="block font-semibold text-[#172033] mb-1">{lang === 'ar' ? 'وحدة القياس *' : 'Unit of Measure *'}</label>
-              <select
-                value={editFormData.unit_id}
-                onChange={(e) => setEditFormData({ ...editFormData, unit_id: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] font-semibold focus:border-[#246BFD] focus:outline-none cursor-pointer"
-              >
-                {units.map(u => (
-                  <option key={u.id} value={u.id}>{lang === 'ar' ? u.name_ar : u.name_en}</option>
-                ))}
-              </select>
+              <div className="space-y-1.5">
+                <select
+                  value={editFormData.unit_id}
+                  onChange={(e) => setEditFormData({ ...editFormData, unit_id: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-[#E5EAF2] font-semibold focus:border-[#246BFD] focus:outline-none cursor-pointer"
+                >
+                  {units.map(u => (
+                    <option key={u.id} value={u.id}>{lang === 'ar' ? u.name_ar : u.name_en}</option>
+                  ))}
+                  <option value="custom">{lang === 'ar' ? 'وحدة مخصصة (كتابة يدوية)' : 'Custom Unit'}</option>
+                </select>
+                <input
+                  type="text"
+                  value={editCustomUnit}
+                  onChange={(e) => setEditCustomUnit(e.target.value)}
+                  placeholder={lang === 'ar' ? 'أو اكتب وحدتك الخاصة (مثال: كيس، متر، لتر، كرتونة، دستة، طقم، شيكارة...)' : 'Or type custom unit (e.g. Bag, Meter, Liter, Box, Pack...)'}
+                  className="w-full px-3 py-1.5 rounded-lg border border-[#CBD5E1] text-xs focus:border-[#246BFD] focus:outline-none"
+                />
+              </div>
             </div>
 
             <div>
@@ -1268,6 +1480,68 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
             </label>
           </div>
 
+          {/* Variants Management */}
+          <div className="p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl space-y-2 text-xs">
+            <div>
+              <span className="font-bold text-xs text-[#0B1730] block">
+                {lang === 'ar' ? 'تنوعات الصنف (ألوان، مقاسات، أحجام، أوزان)' : 'Product Variants (Colors, Sizes, Options)'}
+              </span>
+              <span className="text-[11px] text-[#687386]">
+                {lang === 'ar' ? 'عند النقر على هذا الصنف في شاشة البيع، يظهر اختيار لاختيار التنوع وسعره تلقائياً' : 'In POS, clicking this product prompts to choose a variant'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={editNewVarName}
+                onChange={(e) => setEditNewVarName(e.target.value)}
+                placeholder={lang === 'ar' ? 'اسم التنوع (مثلاً: أحمر، كحلي، XL، مقاس 42، 1 لتر...)' : 'Variant name (e.g. Red, XL, 1L...)'}
+                className="flex-1 px-3 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-xs outline-none focus:border-[#246BFD]"
+              />
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                value={editNewVarPrice}
+                onChange={(e) => setEditNewVarPrice(e.target.value)}
+                placeholder={lang === 'ar' ? `السعر (اختياري)` : 'Price (opt)'}
+                className="w-28 px-3 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-xs outline-none focus:border-[#246BFD]"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (editNewVarName.trim()) {
+                    setEditVariants(prev => [...prev, { name: editNewVarName.trim(), price: editNewVarPrice !== '' ? Number(editNewVarPrice) : undefined }]);
+                    setEditNewVarName('');
+                    setEditNewVarPrice('');
+                  }
+                }}
+                className="px-3 py-1.5 bg-[#246BFD] hover:bg-[#1A54D4] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+              >
+                {lang === 'ar' ? '+ إضافة تنوع' : '+ Add Variant'}
+              </button>
+            </div>
+
+            {editVariants.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {editVariants.map((v, idx) => (
+                  <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-xs font-semibold">
+                    <span>{v.name}</span>
+                    {v.price !== undefined && <span className="font-mono text-[10px] text-blue-600">({v.price} {currency})</span>}
+                    <button
+                      type="button"
+                      onClick={() => setEditVariants(prev => prev.filter((_, i) => i !== idx))}
+                      className="text-blue-500 hover:text-red-500 font-bold ml-1 cursor-pointer"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="pt-3 border-t border-[#E5EAF2] flex justify-end gap-2">
             <button
               type="button"
@@ -1289,35 +1563,144 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
         </form>
       </Modal>
 
-      {/* Bulk CSV Import Modal */}
+      {/* Bulk Excel & CSV Import Modal */}
       <Modal
         isOpen={isImportOpen}
         onClose={() => {
           setIsImportOpen(false);
           setImportResult(null);
+          setExcelPreviewRows([]);
+          setExcelFileName('');
         }}
-        title={lang === 'ar' ? 'استيراد أصناف جماعي من ملف CSV' : 'Bulk Product CSV Import'}
-        maxWidth="lg"
+        title={lang === 'ar' ? 'استيراد أصناف من ملف إكسيل (Excel / CSV)' : 'Bulk Product Import (Excel / CSV)'}
+        maxWidth="xl"
       >
         <div className="space-y-4 text-xs">
-          <p className="text-[#687386]">
-            Paste your CSV rows below or edit the sample template. Headers must match:
-            <code className="block mt-1 font-mono text-[11px] bg-gray-100 p-1.5 rounded">
-              sku,barcode,name_en,name_ar,cost_price,selling_price,min_stock
-            </code>
-          </p>
+          {/* File Upload Box */}
+          <div className="p-4 border-2 border-dashed border-[#CBD5E1] hover:border-[#246BFD] rounded-xl text-center space-y-2 bg-[#F8FAFC] transition-colors">
+            <Upload className="w-8 h-8 text-[#246BFD] mx-auto opacity-80" />
+            <div>
+              <p className="font-bold text-sm text-[#0B1730]">
+                {lang === 'ar' ? 'اختر أو اسحب ملف Excel (.xlsx / .xls) أو CSV هنا' : 'Upload Excel (.xlsx / .xls) or CSV file'}
+              </p>
+              <p className="text-[11px] text-[#687386] mt-0.5">
+                {lang === 'ar' ? 'يدعم قراءة ملفات إكسيل مباشرة واستخراج الأصناف والأسعار تلقائياً' : 'Parses products, prices, and barcodes directly from Excel'}
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-2 pt-1">
+              <label className="px-4 py-2 bg-[#246BFD] hover:bg-[#1A54D4] text-white rounded-lg font-bold cursor-pointer transition-colors shadow-xs">
+                <span>{lang === 'ar' ? 'تصفح الملفات' : 'Browse File'}</span>
+                <input
+                  type="file"
+                  accept=".xlsx, .xls, .csv"
+                  onChange={handleExcelUpload}
+                  className="hidden"
+                />
+              </label>
 
-          <textarea
-            rows={8}
-            value={importText}
-            onChange={(e) => setImportText(e.target.value)}
-            className="w-full p-3 rounded-lg border border-[#CBD5E1] font-mono text-xs focus:border-[#246BFD] focus:outline-none"
-          />
+              <button
+                type="button"
+                onClick={() => {
+                  const sampleCsv = `sku,barcode,name_ar,name_en,cost_price,selling_price,min_stock,initial_stock\nSKU-1001,622115501001,جبنة بيضاء 500 جم,Feta Cheese 500g,25,32,10,50\nSKU-1002,622115501002,حليب كامل الدسم 1 لتر,Full Cream Milk 1L,35,42,15,60`;
+                  const blob = new Blob([sampleCsv], { type: 'text/csv;charset=utf-8;' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'sastmhaly_products_template.csv';
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="px-3 py-2 border border-[#CBD5E1] bg-white hover:bg-gray-50 text-[#172033] rounded-lg font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? 'تحميل نموذج تجريبي (Template)' : 'Download Template'}</span>
+              </button>
+            </div>
+            {excelFileName && (
+              <p className="text-xs font-semibold text-emerald-700 bg-emerald-50 py-1 px-3 rounded inline-block mt-2">
+                ✓ تم اختيار الملف: <span className="font-mono">{excelFileName}</span> ({excelPreviewRows.length} صنف تم قراءته)
+              </p>
+            )}
+          </div>
+
+          {/* Preview Table of Excel Rows */}
+          {excelPreviewRows.length > 0 && (
+            <div className="border border-[#E5EAF2] rounded-xl overflow-hidden space-y-2 p-3 bg-white">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-[#0B1730]">
+                  {lang === 'ar' ? `معاينة البيانات المستخرجة (${excelPreviewRows.length} صنف)` : `Parsed Products (${excelPreviewRows.length})`}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleExecuteExcelImport}
+                  disabled={importingExcel}
+                  className="px-4 py-1.5 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg font-bold shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  {importingExcel ? (lang === 'ar' ? 'جاري الاستيراد...' : 'Importing...') : (lang === 'ar' ? `تأكيد استيراد ${excelPreviewRows.length} صنف ⚡` : 'Confirm Import')}
+                </button>
+              </div>
+
+              <div className="max-h-48 overflow-y-auto border border-gray-100 rounded-lg">
+                <table className="w-full text-right text-[11px] border-collapse">
+                  <thead className="bg-gray-50 border-b border-gray-200 text-gray-700">
+                    <tr>
+                      <th className="p-2">#</th>
+                      <th className="p-2">الاسم عربي</th>
+                      <th className="p-2">الاسم إنجليزي</th>
+                      <th className="p-2">الباركود</th>
+                      <th className="p-2 text-left">التكلفة</th>
+                      <th className="p-2 text-left">سعر البيع</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {excelPreviewRows.slice(0, 10).map((row, i) => (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="p-2 text-gray-400">{i + 1}</td>
+                        <td className="p-2 font-semibold text-gray-900">{row.name_ar}</td>
+                        <td className="p-2 text-gray-600">{row.name_en}</td>
+                        <td className="p-2 font-mono text-gray-700">{row.barcode}</td>
+                        <td className="p-2 text-left font-mono">{row.cost_price}</td>
+                        <td className="p-2 text-left font-bold font-mono text-blue-600">{row.selling_price}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {excelPreviewRows.length > 10 && (
+                <p className="text-[10px] text-gray-500 text-center">
+                  عرض أول 10 أصناف من أصل {excelPreviewRows.length} صنف جاهز للاستيراد
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Manual CSV Textarea Option */}
+          <details className="text-gray-600">
+            <summary className="cursor-pointer font-bold text-xs text-[#246BFD] hover:underline mb-2">
+              {lang === 'ar' ? 'أو لصق سطور CSV يدوياً (خيارات متقدمة)' : 'Or paste raw CSV text'}
+            </summary>
+            <textarea
+              rows={5}
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              placeholder="sku,barcode,name_en,name_ar,cost_price,selling_price,min_stock"
+              className="w-full p-2.5 rounded-lg border border-[#CBD5E1] font-mono text-xs focus:border-[#246BFD] focus:outline-none"
+            />
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={handleBulkImport}
+                className="px-3 py-1.5 bg-[#246BFD] hover:bg-[#1A54D4] text-white rounded-lg font-bold text-xs"
+              >
+                {lang === 'ar' ? 'استيراد النص الملصوق' : 'Import Pasted CSV'}
+              </button>
+            </div>
+          </details>
 
           {importResult && (
             <div className={`p-3 rounded-lg ${importResult.errorCount === 0 ? 'bg-[#ECFDF5] text-[#10B981]' : 'bg-[#FFFBEB] text-[#B45309]'}`}>
               <p className="font-bold">
-                ✓ Successfully imported {importResult.successCount} items!
+                ✓ {lang === 'ar' ? `تم استيراد ${importResult.successCount} صنف بنجاح!` : `Successfully imported ${importResult.successCount} items!`}
               </p>
               {importResult.errors.length > 0 && (
                 <div className="mt-1 space-y-0.5 text-[11px]">
@@ -1329,20 +1712,17 @@ SKU-503,6221077004455,Molto Croissant Chocolate,مولتو كرواسون شوك
             </div>
           )}
 
-          <div className="pt-2 flex justify-end gap-2">
+          <div className="pt-2 flex justify-end gap-2 border-t border-[#E5EAF2]">
             <button
               type="button"
-              onClick={() => setIsImportOpen(false)}
+              onClick={() => {
+                setIsImportOpen(false);
+                setExcelPreviewRows([]);
+                setExcelFileName('');
+              }}
               className="px-4 py-2 rounded-lg border border-[#E5EAF2] font-bold text-[#687386]"
             >
               {t('cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={handleBulkImport}
-              className="px-4 py-2 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white font-bold"
-            >
-              {lang === 'ar' ? 'تنفيذ الاستيراد' : 'Execute Import'}
             </button>
           </div>
         </div>

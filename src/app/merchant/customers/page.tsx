@@ -13,13 +13,15 @@ import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { saveOfflineCustomer } from '@/lib/offline/offline-manager';
 import { 
   Users, Plus, Search, Download, 
-  CreditCard, Phone, Sparkles, AlertTriangle, Edit3, PlusCircle
+  CreditCard, Phone, Sparkles, AlertTriangle, Edit3, PlusCircle,
+  Printer, Calendar, FileText
 } from 'lucide-react';
 
 export default function CustomersManagementPage() {
-  const { user } = useAuth();
+  const { user, tenant } = useAuth();
   const { t, isRtl } = useLanguage();
-  const tenantId = user?.tenant_id || 'tenant_albaraka';
+  const tenantId = user?.tenant_id || tenant?.id || 'tenant_albaraka';
+  const currency = tenant?.currency || (isRtl ? 'ج.م' : 'EGP');
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +63,93 @@ export default function CustomersManagementPage() {
   const [creditLimitModalOpen, setCreditLimitModalOpen] = useState(false);
   const [newCreditLimit, setNewCreditLimit] = useState('');
   const [submittingCreditLimit, setSubmittingCreditLimit] = useState(false);
+
+  // Loyalty Points Modal (تعديل نقاط الولاء)
+  const [pointsModalOpen, setPointsModalOpen] = useState(false);
+  const [pointsAction, setPointsAction] = useState<'add' | 'deduct'>('add');
+  const [pointsAmount, setPointsAmount] = useState('');
+  const [pointsReason, setPointsReason] = useState('');
+  const [submittingPoints, setSubmittingPoints] = useState(false);
+
+  // Statement Modal State (كشف حساب العميل)
+  const [statementModalOpen, setStatementModalOpen] = useState(false);
+  const [statementCustomer, setStatementCustomer] = useState<Customer | null>(null);
+  const [statementMode, setStatementMode] = useState<'all' | 'custom'>('all');
+  const [statementFromDate, setStatementFromDate] = useState('');
+  const [statementToDate, setStatementToDate] = useState('');
+  const [statementData, setStatementData] = useState<any>(null);
+  const [loadingStatement, setLoadingStatement] = useState(false);
+
+  const fetchStatement = async (customerId: string, from?: string, to?: string) => {
+    setLoadingStatement(true);
+    try {
+      let url = `/api/merchant/statements?tenantId=${tenantId}&type=customer&id=${customerId}`;
+      if (from) url += `&startDate=${from}`;
+      if (to) url += `&endDate=${to}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.success) {
+        setStatementData(data.statement);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingStatement(false);
+    }
+  };
+
+  const handleOpenStatement = (cust: Customer) => {
+    setStatementCustomer(cust);
+    setStatementMode('all');
+    setStatementFromDate('');
+    setStatementToDate('');
+    setStatementData(null);
+    setStatementModalOpen(true);
+    fetchStatement(cust.id);
+  };
+
+  const handleOpenPointsModal = (cust: Customer) => {
+    setSelectedCustomer(cust);
+    setPointsAction('add');
+    setPointsAmount('');
+    setPointsReason('');
+    setPointsModalOpen(true);
+  };
+
+  const handleSavePoints = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustomer) return;
+    const amount = Number(pointsAmount);
+    if (isNaN(amount) || amount <= 0) {
+      alert(isRtl ? 'يرجى إدخال عدد نقاط صحيح أكبر من صفر' : 'Please enter valid points greater than zero');
+      return;
+    }
+    const delta = pointsAction === 'add' ? amount : -amount;
+    setSubmittingPoints(true);
+    try {
+      const res = await fetch('/api/merchant/customers/points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          customerId: selectedCustomer.id,
+          pointsDelta: delta,
+          reason: pointsReason || (pointsAction === 'add' ? 'إضافة نقاط يدوياً' : 'خصم نقاط يدوياً')
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPointsModalOpen(false);
+        fetchCustomers();
+      } else {
+        alert(data.error || 'Failed to update points');
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSubmittingPoints(false);
+    }
+  };
 
   const fetchCustomers = async () => {
     try {
@@ -391,21 +480,45 @@ export default function CustomersManagementPage() {
                       {customer.phone}
                     </td>
                     <td className="py-3 px-4 text-[#687386]">
-                      {customer.credit_limit.toFixed(2)} {isRtl ? 'ج.م' : 'EGP'}
+                      {customer.credit_limit.toFixed(2)} {currency}
                     </td>
                     <td className="py-3 px-4 font-black">
                       <span className={customer.current_balance > 0 ? 'text-amber-600' : 'text-emerald-600'}>
-                        {customer.current_balance.toFixed(2)} {isRtl ? 'ج.م' : 'EGP'}
+                        {customer.current_balance.toFixed(2)} {currency}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-center">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                      <button
+                        onClick={() => handleOpenPointsModal(customer)}
+                        title={isRtl ? 'تعديل نقاط الولاء (إضافة أو خصم)' : 'Manage Loyalty Points'}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 cursor-pointer transition-colors"
+                      >
                         <Sparkles className="w-3 h-3 text-purple-500" />
                         <span>{customer.loyalty_points}</span>
-                      </span>
+                      </button>
                     </td>
                     <td className="py-3 px-4 text-end">
                       <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                        {/* Statement (كشف حساب) */}
+                        <button
+                          onClick={() => handleOpenStatement(customer)}
+                          title={isRtl ? 'عرض وطباعة كشف الحساب' : 'Account Statement'}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#F0F5FF] hover:bg-[#D0E2FF] border border-[#BAE6FD] text-[#246BFD] rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>{isRtl ? 'كشف حساب' : 'Statement'}</span>
+                        </button>
+
+                        {/* Loyalty Points */}
+                        <button
+                          onClick={() => handleOpenPointsModal(customer)}
+                          title={isRtl ? 'تعديل نقاط الولاء' : 'Loyalty Points'}
+                          className="inline-flex items-center gap-1 px-2 py-1.5 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-800 rounded-lg text-xs font-semibold cursor-pointer"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                          <span>{isRtl ? 'النقاط' : 'Points'}</span>
+                        </button>
+
                         {/* Edit Credit Limit */}
                         <button
                           onClick={() => {
@@ -414,7 +527,7 @@ export default function CustomersManagementPage() {
                             setCreditLimitModalOpen(true);
                           }}
                           title={isRtl ? 'تعديل الحد الائتماني' : 'Change Credit Limit'}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#F7F9FC] hover:bg-gray-100 border border-[#E5EAF2] text-[#172033] rounded-lg text-xs font-semibold transition-colors"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#F7F9FC] hover:bg-gray-100 border border-[#E5EAF2] text-[#172033] rounded-lg text-xs font-semibold transition-colors cursor-pointer"
                         >
                           <Edit3 className="w-3.5 h-3.5 text-[#246BFD]" />
                           <span>{isRtl ? 'الحد الائتماني' : 'Credit Limit'}</span>
@@ -428,7 +541,7 @@ export default function CustomersManagementPage() {
                             setDebtModalOpen(true);
                           }}
                           title={isRtl ? 'تسجيل دين إضافي على العميل' : 'Add Debt'}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-lg text-xs font-semibold transition-colors"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
                         >
                           <PlusCircle className="w-3.5 h-3.5 text-amber-600" />
                           <span>{isRtl ? '+ تسجيل دين' : '+ Add Debt'}</span>
@@ -442,7 +555,7 @@ export default function CustomersManagementPage() {
                               setCollectAmount(String(customer.current_balance));
                               setCollectModalOpen(true);
                             }}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
                           >
                             <CreditCard className="w-3.5 h-3.5" />
                             <span>{isRtl ? 'تحصيل دفعة' : 'Collect'}</span>
@@ -759,6 +872,293 @@ export default function CustomersManagementPage() {
             </div>
           </form>
         )}
+      </Modal>
+
+      {/* Loyalty Points Modal (تعديل نقاط الولاء) */}
+      <Modal
+        isOpen={pointsModalOpen}
+        onClose={() => setPointsModalOpen(false)}
+        title={isRtl ? `تعديل نقاط الولاء: ${selectedCustomer?.name || ''}` : `Manage Loyalty Points: ${selectedCustomer?.name || ''}`}
+        size="md"
+      >
+        <form onSubmit={handleSavePoints} className="space-y-4 text-xs">
+          <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl flex items-center justify-between">
+            <span className="font-semibold text-purple-900">{isRtl ? 'الرصيد الحالي للنقاط:' : 'Current Points Balance:'}</span>
+            <span className="text-base font-black text-purple-700">{selectedCustomer?.loyalty_points || 0} {isRtl ? 'نقطة' : 'pts'}</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setPointsAction('add')}
+              className={`p-2.5 rounded-lg font-bold border transition-colors ${
+                pointsAction === 'add' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-700 border-gray-200'
+              }`}
+            >
+              {isRtl ? '+ إضافة نقاط للعميل' : '+ Add Points'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPointsAction('deduct')}
+              className={`p-2.5 rounded-lg font-bold border transition-colors ${
+                pointsAction === 'deduct' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-700 border-gray-200'
+              }`}
+            >
+              {isRtl ? '- خصم نقاط من العميل' : '- Deduct Points'}
+            </button>
+          </div>
+
+          <div>
+            <label className="block text-gray-700 font-semibold mb-1">
+              {isRtl ? 'عدد النقاط *' : 'Points Amount *'}
+            </label>
+            <input
+              type="number"
+              min="1"
+              required
+              autoFocus
+              value={pointsAmount}
+              onChange={(e) => setPointsAmount(e.target.value)}
+              placeholder="50"
+              className="w-full p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD] font-bold text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="block text-gray-700 font-semibold mb-1">
+              {isRtl ? 'سبب الحركة / ملاحظات' : 'Reason / Notes'}
+            </label>
+            <input
+              type="text"
+              value={pointsReason}
+              onChange={(e) => setPointsReason(e.target.value)}
+              placeholder={isRtl ? 'مكافأة ولاء، تسوية، هدية مناسبة...' : 'Loyalty bonus, settlement...'}
+              className="w-full p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD]"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t">
+            <button
+              type="button"
+              onClick={() => setPointsModalOpen(false)}
+              className="px-4 py-2 border border-[#E5EAF2] rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50"
+            >
+              {isRtl ? 'إلغاء' : 'Cancel'}
+            </button>
+            <button
+              type="submit"
+              disabled={submittingPoints}
+              className={`px-4 py-2 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50 ${
+                pointsAction === 'add' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'
+              }`}
+            >
+              {submittingPoints ? (isRtl ? 'جاري الحفظ...' : 'Saving...') : (pointsAction === 'add' ? (isRtl ? 'تأكيد إضافة النقاط' : 'Confirm Add') : (isRtl ? 'تأكيد خصم النقاط' : 'Confirm Deduct'))}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Account Statement Modal (كشف حساب العميل) */}
+      <Modal
+        isOpen={statementModalOpen}
+        onClose={() => setStatementModalOpen(false)}
+        title={isRtl ? `كشف حساب عميل: ${statementCustomer?.name || ''}` : `Customer Statement: ${statementCustomer?.name || ''}`}
+        size="xl"
+      >
+        <div className="space-y-4 text-xs">
+          {/* Filter Bar */}
+          <div className="p-3 bg-[#F7F9FC] border border-[#E5EAF2] rounded-xl flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setStatementMode('all');
+                  if (statementCustomer) fetchStatement(statementCustomer.id);
+                }}
+                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-colors ${
+                  statementMode === 'all' ? 'bg-[#246BFD] text-white' : 'bg-white border border-[#E5EAF2] text-[#687386]'
+                }`}
+              >
+                {isRtl ? 'كشف حساب كامل (كافة الفواتير)' : 'Full Statement (All)'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatementMode('custom')}
+                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-colors ${
+                  statementMode === 'custom' ? 'bg-[#246BFD] text-white' : 'bg-white border border-[#E5EAF2] text-[#687386]'
+                }`}
+              >
+                {isRtl ? 'من فترة إلى فترة' : 'Custom Date Range'}
+              </button>
+            </div>
+
+            {statementMode === 'custom' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={statementFromDate}
+                  onChange={(e) => setStatementFromDate(e.target.value)}
+                  className="px-2.5 py-1.5 bg-white border border-[#E5EAF2] rounded-lg text-xs"
+                />
+                <span className="text-[#687386]">{isRtl ? 'إلى' : 'to'}</span>
+                <input
+                  type="date"
+                  value={statementToDate}
+                  onChange={(e) => setStatementToDate(e.target.value)}
+                  className="px-2.5 py-1.5 bg-white border border-[#E5EAF2] rounded-lg text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (statementCustomer) fetchStatement(statementCustomer.id, statementFromDate, statementToDate);
+                  }}
+                  className="px-3 py-1.5 bg-[#0B1730] text-white rounded-lg font-bold hover:bg-[#172033]"
+                >
+                  {isRtl ? 'تطبيق' : 'Apply'}
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                const printable = document.getElementById('customer-statement-print');
+                if (printable) {
+                  const printWin = window.open('', '_blank');
+                  if (printWin) {
+                    printWin.document.write(`
+                      <html dir="${isRtl ? 'rtl' : 'ltr'}">
+                        <head>
+                          <title>كشف حساب ${statementCustomer?.name}</title>
+                          <style>
+                            body { font-family: system-ui, sans-serif; padding: 20px; font-size: 12px; }
+                            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+                            th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: ${isRtl ? 'right' : 'left'}; }
+                            th { background: #f1f5f9; }
+                            .header { margin-bottom: 20px; border-bottom: 2px solid #246BFD; padding-bottom: 10px; }
+                          </style>
+                        </head>
+                        <body>
+                          ${printable.innerHTML}
+                          <script>window.onload = function() { setTimeout(function() { window.print(); }, 300); };</script>
+                        </body>
+                      </html>
+                    `);
+                    printWin.document.close();
+                  }
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#246BFD] hover:bg-[#1A54D4] text-white font-bold rounded-lg shadow-xs cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>{isRtl ? 'طباعة كشف الحساب' : 'Print Statement'}</span>
+            </button>
+          </div>
+
+          {loadingStatement ? (
+            <div className="py-12 flex flex-col items-center justify-center text-[#687386]">
+              <div className="w-6 h-6 border-2 border-[#246BFD] border-t-transparent rounded-full animate-spin mb-2" />
+              <span>{isRtl ? 'جاري استخراج كشف الحساب...' : 'Generating statement...'}</span>
+            </div>
+          ) : statementData ? (
+            <div id="customer-statement-print" className="space-y-4 bg-white p-3 border border-[#E5EAF2] rounded-xl">
+              {/* Summary Header */}
+              <div className="header flex justify-between items-start border-b pb-3">
+                <div>
+                  <h3 className="text-base font-black text-[#0B1730]">{statementCustomer?.name}</h3>
+                  <p className="text-[11px] text-[#687386]">كود العميل: {statementCustomer?.code} | الهاتف: {statementCustomer?.phone || '-'}</p>
+                  <p className="text-[11px] text-[#687386]">
+                    الفترة: {statementMode === 'all' ? (isRtl ? 'كافة المعاملات حتى اليوم' : 'All transactions') : `${statementFromDate || 'البداية'} إلى ${statementToDate || 'اليوم'}`}
+                  </p>
+                </div>
+                <div className="text-end">
+                  <div className="text-[11px] text-[#687386]">{isRtl ? 'الرصيد المتبقي على العميل (دين)' : 'Remaining Customer Debt'}</div>
+                  <div className={`text-lg font-black ${statementData.currentBalance > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                    {statementData.currentBalance?.toFixed(2)} {currency}
+                  </div>
+                </div>
+              </div>
+
+              {/* Transactions Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-[#F7F9FC] text-[#687386] border-b">
+                    <tr>
+                      <th className="p-2 text-start">#</th>
+                      <th className="p-2 text-start">{isRtl ? 'التاريخ' : 'Date'}</th>
+                      <th className="p-2 text-start">{isRtl ? 'النوع' : 'Type'}</th>
+                      <th className="p-2 text-start">{isRtl ? 'رقم الفاتورة / الإذن' : 'Reference'}</th>
+                      <th className="p-2 text-end">{isRtl ? 'مبيعات ومديونية (+)' : 'Sales (+)'}</th>
+                      <th className="p-2 text-end">{isRtl ? 'مدفوعات ومسدد (-)' : 'Paid (-)'}</th>
+                      <th className="p-2 text-end">{isRtl ? 'الرصيد التراكمي' : 'Running Balance'}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E5EAF2]">
+                    <tr className="bg-amber-50/50 font-bold">
+                      <td colSpan={6} className="p-2 text-start text-[#B45309]">
+                        {isRtl ? 'الرصيد الافتتاحي السابق' : 'Opening Balance'}
+                      </td>
+                      <td className="p-2 text-end font-mono">
+                        {(statementData.openingBalance || 0).toFixed(2)} {currency}
+                      </td>
+                    </tr>
+                    {statementData.transactions?.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-4 text-center text-[#687386]">
+                          {isRtl ? 'لا توجد حركات مسجلة خلال هذه الفترة' : 'No movements in this period'}
+                        </td>
+                      </tr>
+                    ) : (
+                      statementData.transactions?.map((t: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="p-2 text-[#687386]">{idx + 1}</td>
+                          <td className="p-2 text-[#0B1730] font-mono">{t.created_at?.split('T')[0] || t.created_at}</td>
+                          <td className="p-2 font-semibold">
+                            <span className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">{isRtl ? 'فاتورة مبيعات' : 'Sale'}</span>
+                          </td>
+                          <td className="p-2 font-mono text-[#0B1730]">{t.reference_number}</td>
+                          <td className="p-2 text-end font-mono font-bold text-amber-600">
+                            {t.debit > 0 ? `${t.debit.toFixed(2)}` : '-'}
+                          </td>
+                          <td className="p-2 text-end font-mono font-bold text-emerald-600">
+                            {t.credit > 0 ? `${t.credit.toFixed(2)}` : '-'}
+                          </td>
+                          <td className="p-2 text-end font-mono font-black text-[#0B1730]">
+                            {t.running_balance?.toFixed(2)} {currency}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  <tfoot className="bg-[#F7F9FC] font-bold border-t-2">
+                    <tr>
+                      <td colSpan={4} className="p-2 text-start">{isRtl ? 'إجمالي الحركات' : 'Totals'}</td>
+                      <td className="p-2 text-end text-amber-600 font-mono font-black">
+                        {statementData.totalDebit?.toFixed(2)} {currency}
+                      </td>
+                      <td className="p-2 text-end text-emerald-600 font-mono font-black">
+                        {statementData.totalCredit?.toFixed(2)} {currency}
+                      </td>
+                      <td className="p-2 text-end font-mono font-black">
+                        {statementData.currentBalance?.toFixed(2)} {currency}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex justify-end pt-2 border-t">
+            <button
+              type="button"
+              onClick={() => setStatementModalOpen(false)}
+              className="px-4 py-2 border border-[#E5EAF2] rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50"
+            >
+              {isRtl ? 'إغلاق' : 'Close'}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getExpenses, createExpense, getBranches } from '@/lib/db/supabase-queries';
+import { getExpenses, createExpense, updateExpense, deleteExpense, getBranches } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -71,6 +71,42 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, expense });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Expense operation failed';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { tenant_id, id, ...updateData } = body;
+    const tenantId = tenant_id || 'tenant_albaraka';
+
+    if (!id) {
+      return NextResponse.json({ error: 'Expense ID is required' }, { status: 400 });
+    }
+
+    const updated = await updateExpense(tenantId, id, updateData);
+    return NextResponse.json({ success: true, expense: updated });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Failed to update expense';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const tenantId = searchParams.get('tenantId') || 'tenant_albaraka';
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'Expense ID is required' }, { status: 400 });
+    }
+
+    const result = await deleteExpense(tenantId, id);
+    return NextResponse.json(result);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Failed to delete expense';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

@@ -50,6 +50,36 @@ export default function PosPage() {
   const [activeWeightedProduct, setActiveWeightedProduct] = useState<Product | null>(null);
   const [inputWeight, setInputWeight] = useState<string>('1.000');
   
+  // Store live settings and tenant details
+  const [liveTenant, setLiveTenant] = useState<{ id: string; name: string; logo_url?: string; currency?: string } | null>(null);
+  const [vatEnabled, setVatEnabled] = useState<boolean>(true);
+  const [receiptFooter, setReceiptFooter] = useState<string>('شكراً لتعاملكم معنا');
+
+  // Dynamic Currency & Order Additions
+  const [liveCurrency, setLiveCurrency] = useState<string>('');
+  const currency = liveCurrency || liveTenant?.currency || tenant?.currency || (lang === 'ar' ? 'ج.م' : 'EGP');
+  const [deliveryFee, setDeliveryFee] = useState<number>(0);
+  const [invoiceNotes, setInvoiceNotes] = useState<string>('');
+
+  const parseVariants = (raw: any): { name: string; price?: number }[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        return raw.split(',').map((s: string) => s.trim()).filter(Boolean).map((name: string) => ({ name }));
+      }
+    }
+    return [];
+  };
+
+  // Product Variants Modal
+  const [isVariantModalOpen, setIsVariantModalOpen] = useState(false);
+  const [variantProduct, setVariantProduct] = useState<Product | null>(null);
+  const [productVariantsList, setProductVariantsList] = useState<{ name: string; price?: number }[]>([]);
+
   // Checkout & Payment State
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile_wallet' | 'customer_credit' | 'mixed'>('cash');
   const [tenderedAmount, setTenderedAmount] = useState<number>(0);
@@ -80,10 +110,6 @@ export default function PosPage() {
   const [availableCategories, setAvailableCategories] = useState<{ id: string; name_ar: string; name_en: string }[]>([]);
   const [availableUnits, setAvailableUnits] = useState<{ id: string; name_ar: string; name_en: string }[]>([]);
 
-  // Store live settings and tenant details
-  const [vatEnabled, setVatEnabled] = useState<boolean>(true);
-  const [receiptFooter, setReceiptFooter] = useState<string>('شكراً لتعاملكم معنا');
-  const [liveTenant, setLiveTenant] = useState<{ id: string; name: string; logo_url?: string } | null>(null);
 
   // Printer configuration and state
   const [printerConfig, setPrinterConfig] = useState<PrinterConfig>({ mode: 'system', name: 'طابعة النظام' });
@@ -91,6 +117,19 @@ export default function PosPage() {
 
   useEffect(() => {
     setPrinterConfig(getSavedPrinterConfig());
+    const onTenantUpdate = () => {
+      try {
+        const cached = localStorage.getItem('sastmhaly_cached_session');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed.tenant?.currency) {
+            setLiveCurrency(parsed.tenant.currency);
+          }
+        }
+      } catch {}
+    };
+    window.addEventListener('tenant_updated', onTenantUpdate);
+    return () => window.removeEventListener('tenant_updated', onTenantUpdate);
   }, []);
 
   const handlePrintReceipt = async () => {
@@ -476,8 +515,13 @@ export default function PosPage() {
     );
 
     if (matched) {
+      const vList = parseVariants(matched.variants);
       if (matched.is_weighted) {
         promptWeight(matched);
+      } else if (vList.length > 0) {
+        setVariantProduct(matched);
+        setProductVariantsList(vList);
+        setIsVariantModalOpen(true);
       } else {
         addToCart(matched, 1);
       }
@@ -492,8 +536,13 @@ export default function PosPage() {
         if (res.ok) {
           const data = await res.json();
           if (data.product) {
+            const vList = parseVariants(data.product.variants);
             if (data.product.is_weighted) {
               promptWeight(data.product);
+            } else if (vList.length > 0) {
+              setVariantProduct(data.product);
+              setProductVariantsList(vList);
+              setIsVariantModalOpen(true);
             } else {
               addToCart(data.product, 1);
             }
@@ -583,11 +632,18 @@ export default function PosPage() {
     setActiveWeightedProduct(null);
   };
 
-  const addToCart = (product: Product, qty: number = 1) => {
+  const addToCart = (product: Product, qty: number = 1, variantName?: string, variantPrice?: number) => {
     // POS permits selling even if stock is 0 or negative (البيع بالسالب)
     posAudio.playBeep();
+    const effectivePrice = variantPrice !== undefined ? variantPrice : product.selling_price;
+    const effectiveName = variantName ? `${product.name_ar} (${variantName})` : product.name_ar;
+    const effectiveProduct = variantName 
+      ? { ...product, name_ar: effectiveName, name_en: `${product.name_en} (${variantName})`, selling_price: effectivePrice } 
+      : product;
+    const targetKey = variantName ? `${product.id}_${variantName}` : product.id;
+
     setCart(prev => {
-      const existingIndex = prev.findIndex(item => item.product.id === product.id);
+      const existingIndex = prev.findIndex(item => (item.product as any).cartKey === targetKey || item.product.id === targetKey);
       if (existingIndex > -1) {
         const next = [...prev];
         const newQty = next[existingIndex].quantity + qty;
@@ -600,9 +656,9 @@ export default function PosPage() {
         return [
           ...prev,
           {
-            product,
+            product: { ...effectiveProduct, cartKey: targetKey } as any,
             quantity: qty,
-            unit_price: product.selling_price,
+            unit_price: effectivePrice,
             cost_price: product.cost_price,
             discount: 0,
             tax_rate: product.tax_rate,
@@ -658,7 +714,7 @@ export default function PosPage() {
         return acc + (itemTotal * ((item.tax_rate ?? 14) / 100));
       }, 0)
     : 0;
-  const grandTotal = Math.max(0, subtotal - saleDiscount + totalTax);
+  const grandTotal = Math.max(0, subtotal - saleDiscount + totalTax + Number(deliveryFee || 0));
 
   const handleOpenCheckout = () => {
     setTenderedAmount(grandTotal);
@@ -724,6 +780,8 @@ export default function PosPage() {
         }),
         subtotal,
         discount_amount: saleDiscount,
+        delivery_fee: Number(deliveryFee) || 0,
+        notes: invoiceNotes || undefined,
         tax_amount: vatEnabled ? totalTax : 0,
         total_amount: grandTotal,
         paid_amount: tenderedAmount,
@@ -738,6 +796,8 @@ export default function PosPage() {
         const offSale = saveOfflineSale(payload);
         finalSaleData = {
           ...offSale,
+          delivery_fee: Number(deliveryFee) || 0,
+          notes: invoiceNotes || '',
           created_at: offSale.offline_at,
           branch_name: currentBranch.name_ar || currentBranch.name_en,
           cashier_name: user?.full_name || user?.username,
@@ -853,6 +913,8 @@ export default function PosPage() {
       setIsCheckoutOpen(false);
       setIsReceiptOpen(true);
       clearCart();
+      setDeliveryFee(0);
+      setInvoiceNotes('');
 
       // Immediately invalidate dashboard & sales cache so the new sale is reflected instantly
       try {
@@ -987,8 +1049,13 @@ export default function PosPage() {
             <div
               key={product.id}
               onClick={() => {
+                const vList = parseVariants(product.variants);
                 if (product.is_weighted) {
                   promptWeight(product);
+                } else if (vList.length > 0) {
+                  setVariantProduct(product);
+                  setProductVariantsList(vList);
+                  setIsVariantModalOpen(true);
                 } else {
                   addToCart(product, 1);
                 }
@@ -998,12 +1065,19 @@ export default function PosPage() {
               <div>
                 <div className="flex items-center justify-between text-[10px] text-[#687386] mb-1">
                   <span className="font-mono">{product.sku}</span>
-                  {product.is_weighted === 1 && (
-                    <span className="px-1.5 py-0.5 rounded bg-[#FEF3C7] text-[#D97706] font-bold flex items-center gap-0.5">
-                      <Scale className="w-2.5 h-2.5" />
-                      KG
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {product.is_weighted === 1 && (
+                      <span className="px-1.5 py-0.5 rounded bg-[#FEF3C7] text-[#D97706] font-bold flex items-center gap-0.5">
+                        <Scale className="w-2.5 h-2.5" />
+                        KG
+                      </span>
+                    )}
+                    {product.variants && product.variants.length > 0 && (
+                      <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 font-bold text-[9px]">
+                        {lang === 'ar' ? 'تنوعات' : 'Variants'}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <h4 className="text-xs font-bold text-[#0B1730] line-clamp-2 leading-tight group-hover:text-[#246BFD]">
                   {lang === 'ar' ? product.name_ar : product.name_en}
@@ -1012,7 +1086,7 @@ export default function PosPage() {
 
               <div className="mt-3 pt-2 border-t border-[#E5EAF2] flex items-center justify-between">
                 <span className="text-xs font-extrabold text-[#0B1730]">
-                  {product.selling_price} <span className="text-[10px] font-normal text-[#687386]">{t('currency')}</span>
+                  {product.selling_price} <span className="text-[10px] font-normal text-[#687386]">{currency}</span>
                 </span>
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                   (product.current_stock ?? 0) <= 0
@@ -1144,7 +1218,7 @@ export default function PosPage() {
                       )}
                     </div>
                     <p className="text-[11px] text-[#687386]">
-                      {item.unit_price} {t('currency')} × {item.quantity}
+                      {item.unit_price} {currency} × {item.quantity}
                     </p>
                   </div>
 
@@ -1190,17 +1264,17 @@ export default function PosPage() {
           <div className="space-y-1.5 text-xs">
             <div className="flex justify-between text-[#687386]">
               <span>{t('pos_subtotal')}:</span>
-              <span className="font-mono">{subtotal.toFixed(2)} {t('currency')}</span>
+              <span className="font-mono">{subtotal.toFixed(2)} {currency}</span>
             </div>
             {totalTax > 0 && (
               <div className="flex justify-between text-[#687386]">
                 <span>{t('pos_tax')} (14% VAT):</span>
-                <span className="font-mono">{totalTax.toFixed(2)} {t('currency')}</span>
+                <span className="font-mono">{totalTax.toFixed(2)} {currency}</span>
               </div>
             )}
             <div className="flex justify-between text-base font-extrabold text-[#0B1730] pt-1.5 border-t border-[#E5EAF2]">
               <span>{t('pos_grand_total')}:</span>
-              <span className="text-[#246BFD]">{grandTotal.toFixed(2)} {t('currency')}</span>
+              <span className="text-[#246BFD]">{grandTotal.toFixed(2)} {currency}</span>
             </div>
           </div>
 
@@ -1252,7 +1326,7 @@ export default function PosPage() {
               {lang === 'ar' ? activeWeightedProduct?.name_ar : activeWeightedProduct?.name_en}
             </h4>
             <p className="text-xs text-[#687386] mt-0.5">
-              Price: {activeWeightedProduct?.selling_price} {t('currency')}/KG
+              Price: {activeWeightedProduct?.selling_price} {currency}/KG
             </p>
           </div>
 
@@ -1313,7 +1387,7 @@ export default function PosPage() {
           <div className="p-4 rounded-xl bg-[#F0F9FF] border border-[#BAE6FD] text-center">
             <span className="text-xs text-[#0284C7] font-semibold uppercase">{t('pos_grand_total')}</span>
             <h3 className="text-3xl font-extrabold text-[#0B1730] mt-1">
-              {grandTotal.toFixed(2)} <span className="text-sm font-normal text-[#687386]">{t('currency')}</span>
+              {grandTotal.toFixed(2)} <span className="text-sm font-normal text-[#687386]">{currency}</span>
             </h3>
           </div>
 
@@ -1384,7 +1458,7 @@ export default function PosPage() {
                     onClick={() => setTenderedAmount(Math.ceil(val))}
                     className="py-1.5 rounded-md border border-[#E5EAF2] bg-[#F7F9FC] text-xs font-bold hover:bg-white cursor-pointer"
                   >
-                    {idx === 0 ? 'Exact' : `${val} ${t('currency')}`}
+                    {idx === 0 ? 'Exact' : `${val} ${currency}`}
                   </button>
                 ))}
               </div>
@@ -1393,7 +1467,7 @@ export default function PosPage() {
                 <div className="p-3 rounded-lg bg-[#ECFDF5] border border-[#A7F3D0] flex items-center justify-between">
                   <span className="text-xs font-bold text-[#10B981]">{t('pos_change_due')}:</span>
                   <span className="text-lg font-mono font-extrabold text-[#10B981]">
-                    {(tenderedAmount - grandTotal).toFixed(2)} {t('currency')}
+                    {(tenderedAmount - grandTotal).toFixed(2)} {currency}
                   </span>
                 </div>
               )}
@@ -1405,6 +1479,36 @@ export default function PosPage() {
               {lang === 'ar' ? 'يرجى اختيار عميل مسجل لتسجيل المبيعات الآجلة على حسابه.' : 'Please select a registered customer to apply credit sale.'}
             </div>
           )}
+
+          {/* Delivery Fee & Notes */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+            <div>
+              <label className="block text-xs font-semibold text-[#172033] mb-1">
+                {lang === 'ar' ? 'خدمة التوصيل / دليفري' : 'Delivery Fee'} ({currency})
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={deliveryFee || ''}
+                onChange={(e) => setDeliveryFee(parseFloat(e.target.value) || 0)}
+                placeholder="0"
+                className="w-full py-2 px-3 text-sm font-semibold rounded-lg border border-[#CBD5E1] text-[#0B1730] focus:border-[#246BFD] focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-[#172033] mb-1">
+                {lang === 'ar' ? 'ملاحظات الفاتورة' : 'Invoice Notes'}
+              </label>
+              <textarea
+                rows={2}
+                value={invoiceNotes}
+                onChange={(e) => setInvoiceNotes(e.target.value)}
+                placeholder={lang === 'ar' ? 'اكتب ملاحظات الفاتورة هنا (اضغط Enter لسطر جديد)...' : 'Write notes here (press Enter for newline)...'}
+                className="w-full py-1.5 px-3 text-xs rounded-lg border border-[#CBD5E1] text-[#0B1730] focus:border-[#246BFD] focus:outline-none resize-none"
+              />
+            </div>
+          </div>
 
           <div className="pt-3 border-t border-[#E5EAF2] flex items-center justify-between gap-2">
             <button
@@ -1461,7 +1565,7 @@ export default function PosPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-[#246BFD]">{h.total.toFixed(2)} {t('currency')}</span>
+                  <span className="text-xs font-bold text-[#246BFD]">{h.total.toFixed(2)} {currency}</span>
                   <button
                     onClick={() => handleResumeSale(h)}
                     className="px-3 py-1.5 rounded-lg bg-[#246BFD] text-white text-xs font-bold hover:bg-[#1A54D4]"
@@ -1575,35 +1679,49 @@ export default function PosPage() {
             <div className="space-y-0.5 text-[11px]">
               <div className="flex justify-between items-center">
                 <span className="text-gray-600">المجموع الفرعي:</span>
-                <span className="font-bold">{completedSale?.subtotal} ج.م</span>
+                <span className="font-bold">{completedSale?.subtotal} {currency}</span>
               </div>
               {completedSale?.discount_amount ? (
                 <div className="flex justify-between items-center text-emerald-600">
                   <span>الخصم:</span>
-                  <span>-{completedSale.discount_amount} ج.م</span>
+                  <span>-{completedSale.discount_amount} {currency}</span>
                 </div>
               ) : null}
               {vatEnabled && completedSale && Number(completedSale.tax_amount) > 0 ? (
                 <div className="flex justify-between items-center text-gray-600">
                   <span>ضريبة القيمة المضافة (14%):</span>
-                  <span>{completedSale.tax_amount} ج.م</span>
+                  <span>{completedSale.tax_amount} {currency}</span>
+                </div>
+              ) : null}
+              {completedSale?.delivery_fee && Number(completedSale.delivery_fee) > 0 ? (
+                <div className="flex justify-between items-center text-blue-700 font-semibold">
+                  <span>خدمة التوصيل:</span>
+                  <span>{Number(completedSale.delivery_fee).toFixed(2)} {currency}</span>
                 </div>
               ) : null}
               <div className="flex justify-between items-center font-bold text-xs pt-1 border-t border-black">
                 <span>الإجمالي النهائي:</span>
-                <span>{completedSale?.total_amount} ج.م</span>
+                <span>{completedSale?.total_amount} {currency}</span>
               </div>
               <div className="flex justify-between items-center text-[10px] text-gray-600 pt-1">
                 <span>المدفوع:</span>
-                <span>{completedSale?.paid_amount} ج.م</span>
+                <span>{completedSale?.paid_amount} {currency}</span>
               </div>
               {completedSale?.change_amount ? (
                 <div className="flex justify-between items-center text-[10px]">
                   <span>الباقي:</span>
-                  <span>{completedSale.change_amount} ج.م</span>
+                  <span>{completedSale.change_amount} {currency}</span>
                 </div>
               ) : null}
             </div>
+
+            {/* Invoice Notes */}
+            {completedSale?.notes && (
+              <div className="pt-2 border-t border-dashed border-gray-400 text-right">
+                <span className="font-bold text-[10px] block text-gray-700">ملاحظات:</span>
+                <p className="whitespace-pre-line text-[10px] text-gray-800 font-sans mt-0.5">{completedSale.notes}</p>
+              </div>
+            )}
 
             {/* Footer */}
             <div className="receipt-footer text-center text-[10px] pt-2 mt-2 space-y-1 border-none">
@@ -2091,6 +2209,68 @@ export default function PosPage() {
                 <p className="text-[11px] text-gray-400">{lang === 'ar' ? 'تأكد من كتابة الاسم أو رقم الهاتف بشكل صحيح' : 'Check spelling or phone number'}</p>
               </div>
             )}
+          </div>
+        </div>
+      </Modal>
+
+      {/* Product Variants Selector Modal */}
+      <Modal
+        isOpen={isVariantModalOpen}
+        onClose={() => {
+          setIsVariantModalOpen(false);
+          setVariantProduct(null);
+        }}
+        title={lang === 'ar' ? `اختر من تنوعات: ${variantProduct?.name_ar || ''}` : `Select Variant: ${variantProduct?.name_en || ''}`}
+        maxWidth="md"
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-[#687386]">
+            {lang === 'ar' ? 'حدد التنوع المطلوب لإضافته للفاتورة (الحجم، اللون، أو المقاس):' : 'Select desired variant (size, color, etc.):'}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {productVariantsList.map((variant, idx) => {
+              const vPrice = variant.price !== undefined && variant.price !== null && Number(variant.price) > 0 
+                ? Number(variant.price) 
+                : Number(variantProduct?.selling_price || 0);
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    if (variantProduct) {
+                      addToCart(variantProduct, 1, variant.name, vPrice);
+                      setIsVariantModalOpen(false);
+                      setVariantProduct(null);
+                    }
+                  }}
+                  className="p-3 rounded-xl border border-[#E5EAF2] hover:border-[#246BFD] hover:bg-[#F0F9FF] text-right rtl:text-right flex items-center justify-between transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="w-7 h-7 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
+                      {idx + 1}
+                    </span>
+                    <span className="font-bold text-sm text-[#0B1730] group-hover:text-[#246BFD]">
+                      {variant.name}
+                    </span>
+                  </div>
+                  <span className="font-mono font-bold text-sm text-[#246BFD]">
+                    {vPrice.toFixed(2)} {currency}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="pt-3 border-t border-[#E5EAF2] flex justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setIsVariantModalOpen(false);
+                setVariantProduct(null);
+              }}
+              className="px-4 py-2 rounded-lg border border-[#E5EAF2] text-xs font-bold text-[#687386]"
+            >
+              {t('cancel')}
+            </button>
           </div>
         </div>
       </Modal>

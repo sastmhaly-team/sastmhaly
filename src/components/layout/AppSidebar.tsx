@@ -10,7 +10,7 @@ import {
   LayoutDashboard, ShoppingCart, Package, Layers, CalendarDays, 
   ArrowLeftRight, Truck, Users, Receipt, Landmark, Banknote,
   BookOpen, BarChart3, Building2, UserCog, Settings, Sparkles,
-  ShieldAlert, CreditCard, X, PanelLeftClose, ChevronLeft, ChevronRight
+  ShieldAlert, CreditCard, X, PanelLeftClose, ChevronLeft, ChevronRight, FileText
 } from 'lucide-react';
 import { isPageAllowed } from '@/lib/auth/permissions';
 
@@ -59,6 +59,7 @@ export function AppSidebar() {
         { href: '/merchant/purchasing', icon: Truck, label: t('nav_purchases') },
         { href: '/merchant/suppliers', icon: Building2, label: t('nav_suppliers') },
         { href: '/merchant/sales', icon: Receipt, label: t('nav_sales') },
+        { href: '/merchant/quotations', icon: FileText, label: lang === 'ar' ? 'عروض الأسعار' : 'Quotations' },
         { href: '/merchant/customers', icon: Users, label: t('nav_customers') },
       ]
     },

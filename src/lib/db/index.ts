@@ -92,6 +92,14 @@ function getDatabase(): Database.Database {
       // Column already exists
     }
 
+    // Auto-migrate merchant feature upgrade columns
+    try { db.exec('ALTER TABLE products ADD COLUMN variants TEXT;'); } catch {}
+    try { db.exec('ALTER TABLE products ADD COLUMN custom_unit TEXT;'); } catch {}
+    try { db.exec('ALTER TABLE sales ADD COLUMN delivery_fee REAL DEFAULT 0.0;'); } catch {}
+    try { db.exec('ALTER TABLE tenant_settings ADD COLUMN loyalty_enabled INTEGER DEFAULT 1;'); } catch {}
+    try { db.exec('ALTER TABLE tenant_settings ADD COLUMN loyalty_spend_rate REAL DEFAULT 1.0;'); } catch {}
+    try { db.exec('ALTER TABLE tenant_settings ADD COLUMN loyalty_redeem_rate REAL DEFAULT 0.1;'); } catch {}
+
     // Ensure Super Admin & Initial Plan always exist upon initialization
     try {
       const adminExists = db.prepare('SELECT id FROM users WHERE phone = ? OR username = ?').get('01211583961', '01211583961');

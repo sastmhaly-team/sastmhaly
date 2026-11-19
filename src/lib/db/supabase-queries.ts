@@ -874,6 +874,7 @@ export async function createProduct(tenantId: string, data: {
   cost_price: number; selling_price: number; wholesale_price?: number;
   tax_rate?: number; min_stock_alert?: number; is_weighted?: number;
   has_batch_tracking?: number; initial_stock?: number; branch_id?: string;
+  variants?: string; custom_unit?: string;
 }): Promise<Product> {
   if (isOfflineMode()) {
     return (sqlite as any).createProduct(...arguments);
@@ -893,6 +894,8 @@ export async function createProduct(tenantId: string, data: {
     min_stock_alert: data.min_stock_alert ?? 5.0,
     is_weighted: data.is_weighted ? 1 : 0,
     has_batch_tracking: data.has_batch_tracking ? 1 : 0,
+    variants: data.variants || null,
+    custom_unit: data.custom_unit || null,
     is_active: 1
   });
   if (prodError) throw new Error(prodError.message);
@@ -924,7 +927,7 @@ export async function updateProduct(tenantId: string, id: string, data: Partial<
   category_id: string; unit_id: string; cost_price: number; selling_price: number;
   wholesale_price: number; min_selling_price: number; tax_rate: number;
   min_stock_alert: number; is_weighted: number; has_batch_tracking: number;
-  is_active: number; image_url: string;
+  is_active: number; image_url: string; variants: string; custom_unit: string;
 }>, stockOptions?: { current_stock?: number; branch_id?: string }): Promise<Product> {
   if (isOfflineMode()) {
     return (sqlite as any).updateProduct(...arguments);
@@ -2280,9 +2283,10 @@ export async function getTenantSettings(tenantId: string) {
 
 export async function updateTenantSettings(tenantId: string, data: {
   name?: string; phone?: string; email?: string; tax_id?: string; logo_url?: string;
-  default_tax_rate?: number; vat_enabled?: number; receipt_header?: string;
+  currency?: string; default_tax_rate?: number; vat_enabled?: number; receipt_header?: string;
   receipt_footer?: string; receipt_width?: '58mm' | '80mm'; scale_barcode_prefix?: string;
   valuation_method?: 'FIFO' | 'WAC'; expiry_warning_days?: number;
+  loyalty_enabled?: number; loyalty_spend_rate?: number; loyalty_redeem_rate?: number;
 }) {
   if (isOfflineMode()) {
     return (sqlite as any).updateTenantSettings(...arguments);
@@ -2294,6 +2298,7 @@ export async function updateTenantSettings(tenantId: string, data: {
   if (data.email !== undefined) tenantUpdates.email = data.email;
   if (data.tax_id !== undefined) tenantUpdates.tax_id = data.tax_id;
   if (data.logo_url !== undefined) tenantUpdates.logo_url = data.logo_url;
+  if (data.currency !== undefined) tenantUpdates.currency = data.currency;
 
   if (Object.keys(tenantUpdates).length > 0) {
     tenantUpdates.updated_at = new Date().toISOString();
@@ -2309,6 +2314,9 @@ export async function updateTenantSettings(tenantId: string, data: {
   if (data.scale_barcode_prefix !== undefined) settingsUpdates.scale_barcode_prefix = data.scale_barcode_prefix;
   if (data.valuation_method !== undefined) settingsUpdates.valuation_method = data.valuation_method;
   if (data.expiry_warning_days !== undefined) settingsUpdates.expiry_warning_days = data.expiry_warning_days;
+  if (data.loyalty_enabled !== undefined) settingsUpdates.loyalty_enabled = data.loyalty_enabled;
+  if (data.loyalty_spend_rate !== undefined) settingsUpdates.loyalty_spend_rate = data.loyalty_spend_rate;
+  if (data.loyalty_redeem_rate !== undefined) settingsUpdates.loyalty_redeem_rate = data.loyalty_redeem_rate;
 
   if (Object.keys(settingsUpdates).length > 0) {
     await supabase.from('tenant_settings').update(settingsUpdates).eq('tenant_id', tenantId);
@@ -2710,4 +2718,202 @@ export async function markPayrollPaid(
 
   return record as PayrollRecord;
 }
+
+// ============================================================================
+// MERCHANT FEATURES UPGRADE (MIRRORED FOR OFFLINE SQLITE & SUPABASE CLOUD)
+// ============================================================================
+
+export async function editSaleInvoice(tenantId: string, saleId: string, data: any) {
+  if (isOfflineMode()) {
+    return (sqlite as any).editSaleInvoice(...arguments);
+  }
+  const supabase = getSupabase();
+  const { data: updated, error } = await supabase.from('sales').update({
+    customer_id: data.customer_id,
+    subtotal: data.subtotal,
+    discount_amount: data.discount_amount,
+    tax_amount: data.tax_amount,
+    delivery_fee: data.delivery_fee,
+    total_amount: data.total_amount,
+    paid_amount: data.paid_amount,
+    payment_method: data.payment_method,
+    notes: data.notes,
+    created_at: data.created_at
+  }).eq('id', saleId).eq('tenant_id', tenantId).select().single();
+  if (error) throw new Error(error.message);
+  return updated;
+}
+
+export async function deleteSaleInvoice(tenantId: string, saleId: string, restock: boolean = true) {
+  if (isOfflineMode()) {
+    return (sqlite as any).deleteSaleInvoice(...arguments);
+  }
+  const supabase = getSupabase();
+  await supabase.from('sale_payments').delete().eq('sale_id', saleId);
+  await supabase.from('sale_items').delete().eq('sale_id', saleId);
+  const { error } = await supabase.from('sales').delete().eq('id', saleId).eq('tenant_id', tenantId);
+  if (error) throw new Error(error.message);
+  return { success: true };
+}
+
+export async function getPurchaseOrder(tenantId: string, poId: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).getPurchaseOrder(...arguments);
+  }
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('purchase_orders')
+    .select('*, suppliers(name, phone), branches(name_ar), purchase_order_items(*, products(name_ar, name_en, barcode))')
+    .eq('id', poId).eq('tenant_id', tenantId).single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function updatePurchaseOrder(tenantId: string, poId: string, data: any) {
+  if (isOfflineMode()) {
+    return (sqlite as any).updatePurchaseOrder(...arguments);
+  }
+  const supabase = getSupabase();
+  const { items, ...poUpdates } = data;
+  if (items && Array.isArray(items)) {
+    await supabase.from('purchase_order_items').delete().eq('po_id', poId);
+    let totalAmount = 0;
+    const newItems = items.map((it: any) => {
+      const lineCost = (it.quantity || it.quantity_ordered) * it.unit_cost;
+      totalAmount += lineCost;
+      return {
+        id: `poi_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        po_id: poId,
+        product_id: it.product_id,
+        quantity_ordered: it.quantity || it.quantity_ordered,
+        unit_cost: it.unit_cost,
+        total_cost: lineCost,
+      };
+    });
+    if (newItems.length > 0) {
+      await supabase.from('purchase_order_items').insert(newItems);
+    }
+    poUpdates.total_amount = totalAmount;
+    poUpdates.net_amount = totalAmount;
+  }
+  const { data: updated, error } = await supabase.from('purchase_orders')
+    .update(poUpdates).eq('id', poId).eq('tenant_id', tenantId).select().single();
+  if (error) throw new Error(error.message);
+  return getPurchaseOrder(tenantId, poId);
+}
+
+export async function deletePurchaseOrder(tenantId: string, poId: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).deletePurchaseOrder(...arguments);
+  }
+  const supabase = getSupabase();
+  await supabase.from('purchase_order_items').delete().eq('po_id', poId);
+  const { error } = await supabase.from('purchase_orders').delete().eq('id', poId).eq('tenant_id', tenantId);
+  if (error) throw new Error(error.message);
+  return { success: true };
+}
+
+export async function updateCustomerLoyaltyPoints(tenantId: string, customerId: string, pointsDelta: number, reason?: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).updateCustomerLoyaltyPoints(...arguments);
+  }
+  const supabase = getSupabase();
+  const { data: cust } = await supabase.from('customers').select('loyalty_points').eq('id', customerId).single();
+  const newPoints = Math.max(0, (cust?.loyalty_points || 0) + pointsDelta);
+  await supabase.from('customers').update({ loyalty_points: newPoints }).eq('id', customerId).eq('tenant_id', tenantId);
+  return { customerId, loyalty_points: newPoints };
+}
+
+export async function getAccountStatement(tenantId: string, entityType: 'customer' | 'supplier', entityId: string, startDate?: string, endDate?: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).getAccountStatement(...arguments);
+  }
+  return (sqlite as any).getAccountStatement(...arguments);
+}
+
+export async function getQuotations(tenantId: string, status?: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).getQuotations(...arguments);
+  }
+  const supabase = getSupabase();
+  let query = supabase.from('quotations').select('*, quotation_items(*)').eq('tenant_id', tenantId);
+  if (status && status !== 'all') {
+    query = query.eq('status', status);
+  }
+  const { data, error } = await query.order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function getQuotation(tenantId: string, id: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).getQuotation(...arguments);
+  }
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('quotations')
+    .select('*, quotation_items(*), branches(name_ar)').eq('id', id).eq('tenant_id', tenantId).single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function createQuotation(tenantId: string, data: any) {
+  if (isOfflineMode()) {
+    return (sqlite as any).createQuotation(...arguments);
+  }
+  return (sqlite as any).createQuotation(...arguments);
+}
+
+export async function updateQuotation(tenantId: string, id: string, data: any) {
+  if (isOfflineMode()) {
+    return (sqlite as any).updateQuotation(...arguments);
+  }
+  return (sqlite as any).updateQuotation(...arguments);
+}
+
+export async function deleteQuotation(tenantId: string, id: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).deleteQuotation(...arguments);
+  }
+  const supabase = getSupabase();
+  await supabase.from('quotation_items').delete().eq('quotation_id', id);
+  const { error } = await supabase.from('quotations').delete().eq('id', id).eq('tenant_id', tenantId);
+  if (error) throw new Error(error.message);
+  return { success: true };
+}
+
+export async function convertQuotationToSale(tenantId: string, quotationId: string, cashierId?: string, branchId?: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).convertQuotationToSale(...arguments);
+  }
+  return (sqlite as any).convertQuotationToSale(...arguments);
+}
+
+export async function updateExpense(tenantId: string, id: string, data: any) {
+  if (isOfflineMode()) {
+    return (sqlite as any).updateExpense(...arguments);
+  }
+  const supabase = getSupabase();
+  const { data: updated, error } = await supabase.from('expenses')
+    .update(data).eq('id', id).eq('tenant_id', tenantId).select().single();
+  if (error) throw new Error(error.message);
+  return updated;
+}
+
+export async function deleteExpense(tenantId: string, id: string) {
+  if (isOfflineMode()) {
+    return (sqlite as any).deleteExpense(...arguments);
+  }
+  const supabase = getSupabase();
+  const { error } = await supabase.from('expenses').delete().eq('id', id).eq('tenant_id', tenantId);
+  if (error) throw new Error(error.message);
+  return { success: true };
+}
+
+export async function exportFullStoreBackup(tenantId: string) {
+  return (sqlite as any).exportFullStoreBackup(tenantId);
+}
+
+export async function importFullStoreBackup(tenantId: string, backup: any) {
+  return (sqlite as any).importFullStoreBackup(tenantId, backup);
+}
+
 

@@ -8,7 +8,7 @@ import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Settings, Save, CheckCircle2, Building2, 
   Receipt, Scale, Percent, AlertCircle, Sparkles,
-  UploadCloud, Loader2, ImageIcon
+  UploadCloud, Loader2, ImageIcon, Database, HardDrive, Award, Download, Coins
 } from 'lucide-react';
 
 export default function MerchantSettingsPage() {
@@ -21,6 +21,10 @@ export default function MerchantSettingsPage() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [successMessage, setSuccessMessage] = useState(false);
 
+  const [exportingBackup, setExportingBackup] = useState(false);
+  const [restoringBackup, setRestoringBackup] = useState(false);
+  const [backupRestoreResult, setBackupRestoreResult] = useState<string | null>(null);
+
   // Form fields
   const [formData, setFormData] = useState({
     name: '',
@@ -28,6 +32,7 @@ export default function MerchantSettingsPage() {
     email: '',
     tax_id: '',
     logo_url: '',
+    currency: 'ج.م',
     default_tax_rate: 14.0,
     vat_enabled: 1,
     receipt_header: '',
@@ -35,7 +40,10 @@ export default function MerchantSettingsPage() {
     receipt_width: '80mm' as '80mm' | '58mm',
     scale_barcode_prefix: '21',
     valuation_method: 'WAC' as 'FIFO' | 'WAC',
-    expiry_warning_days: 30
+    expiry_warning_days: 30,
+    loyalty_enabled: 0,
+    loyalty_spend_rate: 1.0,
+    loyalty_redeem_rate: 10.0,
   });
 
   const fetchSettings = async () => {
@@ -49,6 +57,7 @@ export default function MerchantSettingsPage() {
           email: cached.tenant.email || '',
           tax_id: cached.tenant.tax_id || '',
           logo_url: cached.tenant.logo_url || '',
+          currency: cached.tenant.currency || cached.settings.currency || 'ج.م',
           default_tax_rate: cached.settings.default_tax_rate ?? 14.0,
           vat_enabled: cached.settings.vat_enabled ?? 1,
           receipt_header: cached.settings.receipt_header || '',
@@ -56,7 +65,10 @@ export default function MerchantSettingsPage() {
           receipt_width: cached.settings.receipt_width || '80mm',
           scale_barcode_prefix: cached.settings.scale_barcode_prefix || '21',
           valuation_method: cached.settings.valuation_method || 'WAC',
-          expiry_warning_days: cached.settings.expiry_warning_days || 30
+          expiry_warning_days: cached.settings.expiry_warning_days || 30,
+          loyalty_enabled: cached.settings.loyalty_enabled ?? 0,
+          loyalty_spend_rate: cached.settings.loyalty_spend_rate ?? 1.0,
+          loyalty_redeem_rate: cached.settings.loyalty_redeem_rate ?? 10.0,
         });
         setLoading(false);
       } else if (!formData.name) {
@@ -71,6 +83,7 @@ export default function MerchantSettingsPage() {
             email: data.tenant.email || '',
             tax_id: data.tenant.tax_id || '',
             logo_url: data.tenant.logo_url || '',
+            currency: data.tenant.currency || data.settings.currency || 'ج.م',
             default_tax_rate: data.settings.default_tax_rate ?? 14.0,
             vat_enabled: data.settings.vat_enabled ?? 1,
             receipt_header: data.settings.receipt_header || '',
@@ -78,7 +91,10 @@ export default function MerchantSettingsPage() {
             receipt_width: data.settings.receipt_width || '80mm',
             scale_barcode_prefix: data.settings.scale_barcode_prefix || '21',
             valuation_method: data.settings.valuation_method || 'WAC',
-            expiry_warning_days: data.settings.expiry_warning_days || 30
+            expiry_warning_days: data.settings.expiry_warning_days || 30,
+            loyalty_enabled: data.settings.loyalty_enabled ?? 0,
+            loyalty_spend_rate: data.settings.loyalty_spend_rate ?? 1.0,
+            loyalty_redeem_rate: data.settings.loyalty_redeem_rate ?? 10.0,
           });
           setLoading(false);
         }
@@ -87,6 +103,66 @@ export default function MerchantSettingsPage() {
       console.error(e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExportBackup = async () => {
+    setExportingBackup(true);
+    try {
+      const res = await fetch(`/api/merchant/backup?tenantId=${tenantId}`);
+      if (res.ok) {
+        const data = await res.json();
+        const jsonStr = JSON.stringify(data, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `sastmhaly_backup_${tenantId}_${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        alert(isRtl ? 'فشل تصدير النسخة الاحتياطية' : 'Failed to export backup');
+      }
+    } catch (err) {
+      alert(isRtl ? 'خطأ أثناء تصدير البيانات' : 'Error exporting backup');
+    } finally {
+      setExportingBackup(false);
+    }
+  };
+
+  const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!confirm(isRtl ? 'هل أنت متأكد من استعادة النسخة الاحتياطية؟ سيتم استرجاع بيانات متجرك بالكامل.' : 'Are you sure you want to restore all store data?')) return;
+
+    setRestoringBackup(true);
+    setBackupRestoreResult(null);
+    try {
+      const text = await file.text();
+      const parsedData = JSON.parse(text);
+      const res = await fetch('/api/merchant/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          data: parsedData,
+        }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        const counts = result.counts || {};
+        setBackupRestoreResult(isRtl 
+          ? `✓ تمت استعادة النسخة الاحتياطية بنجاح! تم استرجاع: ${counts.products || 0} صنف، ${counts.sales || 0} فاتورة، ${counts.customers || 0} عميل.` 
+          : '✓ Backup restored successfully!');
+        fetchSettings();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'فشلت استعادة النسخة الاحتياطية');
+      }
+    } catch (err) {
+      alert(isRtl ? 'خطأ أثناء قراءة ملف النسخة الاحتياطية. تأكد أنه ملف JSON سليم.' : 'Invalid backup JSON file');
+    } finally {
+      setRestoringBackup(false);
     }
   };
 
@@ -138,6 +214,9 @@ export default function MerchantSettingsPage() {
           tenant_id: tenantId,
           ...formData,
           vat_enabled: formData.vat_enabled ? 1 : 0,
+          loyalty_enabled: formData.loyalty_enabled ? 1 : 0,
+          loyalty_spend_rate: Number(formData.loyalty_spend_rate) || 1,
+          loyalty_redeem_rate: Number(formData.loyalty_redeem_rate) || 10,
           default_tax_rate: Number(formData.default_tax_rate),
           expiry_warning_days: Number(formData.expiry_warning_days)
         })
@@ -382,12 +461,141 @@ export default function MerchantSettingsPage() {
               </label>
               <input
                 type="text"
-                disabled
-                value={isRtl ? 'الجنيه المصري (EGP / ج.م)' : 'Egyptian Pound (EGP)'}
-                className="w-full p-2.5 bg-gray-100 border border-[#E5EAF2] rounded-lg text-xs font-bold text-gray-600 cursor-not-allowed"
+                value={formData.currency}
+                onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+                placeholder="ج.م"
+                className="w-full p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD]"
               />
             </div>
           </div>
+        </div>
+
+        {/* Loyalty Points System */}
+        <div className="bg-white p-5 rounded-xl border border-[#E5EAF2] shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-[#E5EAF2]">
+            <div className="flex items-center gap-2">
+              <Award className="w-4 h-4 text-[#246BFD]" />
+              <h2 className="font-bold text-sm text-[#0B1730]">
+                {isRtl ? 'نظام نقاط الولاء' : 'Loyalty Points System'}
+              </h2>
+            </div>
+            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
+              formData.loyalty_enabled 
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                : 'bg-gray-100 text-gray-600 border-gray-200'
+            }`}>
+              {formData.loyalty_enabled ? (isRtl ? 'مفعّل' : 'Enabled') : (isRtl ? 'معطّل' : 'Disabled')}
+            </span>
+          </div>
+          
+          <div className="flex items-center justify-between p-4 bg-[#F7F9FC] rounded-xl border border-[#E5EAF2]">
+            <div className="space-y-0.5">
+              <label className="font-bold text-xs text-[#0B1730]">
+                {isRtl ? 'تفعيل نظام النقاط في نقاط البيع والعملاء' : 'Enable loyalty points in POS & customers'}
+              </label>
+              <p className="text-[11px] text-[#687386]">
+                {isRtl ? 'العملاء يكتسبون نقاطاً عند كل عملية شراء ويمكنهم استبدالها خصماً' : 'Customers earn points on purchases and can redeem them for discounts'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFormData(prev => ({ ...prev, loyalty_enabled: prev.loyalty_enabled ? 0 : 1 }))}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                formData.loyalty_enabled ? 'bg-[#246BFD]' : 'bg-gray-300'
+              }`}
+            >
+              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                formData.loyalty_enabled ? 'translate-x-5 rtl:-translate-x-5' : 'translate-x-0'
+              }`} />
+            </button>
+          </div>
+
+          {formData.loyalty_enabled ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+              <div>
+                <label className="block text-gray-700 font-semibold mb-1">
+                  {isRtl ? `كم نقطة يكتسب العميل لكل 1 ${formData.currency || 'ج.م'} ينفقها؟` : `Points earned per 1 ${formData.currency || 'unit'} spent`}
+                </label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={formData.loyalty_spend_rate}
+                  onChange={(e) => setFormData({ ...formData, loyalty_spend_rate: Number(e.target.value) })}
+                  className="w-full p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD]"
+                />
+                <span className="text-[10px] text-gray-500 mt-1 block">
+                  {isRtl ? `مثال: القيمة 1 تعني 1 نقطة لكل 1 ${formData.currency}` : `e.g. 1 = 1 point per ${formData.currency || 'unit'}`}
+                </span>
+              </div>
+              <div>
+                <label className="block text-gray-700 font-semibold mb-1">
+                  {isRtl ? `كم نقطة تعادل 1 ${formData.currency || 'ج.م'} عند الاسترداد؟` : `Points needed to redeem 1 ${formData.currency || 'unit'}`}
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={formData.loyalty_redeem_rate}
+                  onChange={(e) => setFormData({ ...formData, loyalty_redeem_rate: Number(e.target.value) })}
+                  className="w-full p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD]"
+                />
+                <span className="text-[10px] text-gray-500 mt-1 block">
+                  {isRtl ? `مثال: القيمة 10 تعني 10 نقاط = 1 ${formData.currency}` : `e.g. 10 = 10 points = 1 ${formData.currency || 'unit'}`}
+                </span>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Backup & Restore */}
+        <div className="bg-white p-5 rounded-xl border border-[#E5EAF2] shadow-xs space-y-4">
+          <div className="flex items-center gap-2 pb-3 border-b border-[#E5EAF2]">
+            <HardDrive className="w-4 h-4 text-[#246BFD]" />
+            <h2 className="font-bold text-sm text-[#0B1730]">
+              {isRtl ? 'النسخ الاحتياطي واستعادة البيانات' : 'Backup & Data Restore'}
+            </h2>
+          </div>
+          <p className="text-[11px] text-[#687386]">
+            {isRtl 
+              ? 'صدّر نسخة احتياطية كاملة من بيانات المتجر (المنتجات، الفواتير، العملاء، الموردين) واستوردها عند الحاجة.'
+              : 'Export a full store backup (products, invoices, customers, suppliers) and restore it anytime.'}
+          </p>
+          
+          {backupRestoreResult && (
+            <div className={`p-3 rounded-lg text-xs font-semibold ${
+              backupRestoreResult.includes('✅') ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200'
+            }`}>
+              {backupRestoreResult}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handleExportBackup}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[#0B1730] hover:bg-[#172033] text-white rounded-lg text-xs font-bold shadow-xs transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              {isRtl ? 'تصدير نسخة احتياطية (JSON)' : 'Export Backup (JSON)'}
+            </button>
+
+            <label className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors cursor-pointer">
+              <HardDrive className="w-4 h-4" />
+              {isRtl ? 'استيراد واستعادة نسخة احتياطية' : 'Import & Restore Backup'}
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImportBackup}
+                className="hidden"
+              />
+            </label>
+          </div>
+          <p className="text-[10px] text-gray-500">
+            {isRtl 
+              ? '⚠️ تحذير: استيراد النسخة الاحتياطية سيستبدل جميع البيانات الحالية.'
+              : '⚠️ Warning: Importing a backup will overwrite all current data.'}
+          </p>
         </div>
 
         {/* Receipt & Thermal Printer Settings */}

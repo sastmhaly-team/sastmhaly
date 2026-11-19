@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSales, getSale, processSaleReturn, getTenantSettings } from '@/lib/db/supabase-queries';
+import { getSales, getSale, processSaleReturn, editSaleInvoice, deleteSaleInvoice, getTenantSettings } from '@/lib/db/supabase-queries';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -46,6 +46,43 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Sale operation failed';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { tenant_id, saleId, ...updateData } = body;
+    const tenantId = tenant_id || 'tenant_albaraka';
+
+    if (!saleId) {
+      return NextResponse.json({ error: 'Sale ID is required' }, { status: 400 });
+    }
+
+    const updated = await editSaleInvoice(tenantId, saleId, updateData);
+    return NextResponse.json({ success: true, sale: updated });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Failed to update sale invoice';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const tenantId = searchParams.get('tenantId') || 'tenant_albaraka';
+    const saleId = searchParams.get('saleId');
+    const restock = searchParams.get('restock') !== 'false';
+
+    if (!saleId) {
+      return NextResponse.json({ error: 'Sale ID is required' }, { status: 400 });
+    }
+
+    const result = await deleteSaleInvoice(tenantId, saleId, restock);
+    return NextResponse.json(result);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Failed to delete sale invoice';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

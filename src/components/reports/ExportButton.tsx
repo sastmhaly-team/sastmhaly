@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Download, Calendar, Layers, CheckCircle2, FileSpreadsheet, X, Clock } from 'lucide-react';
+import { Download, Calendar, Layers, CheckCircle2, FileSpreadsheet, X, Clock, Printer, FileText } from 'lucide-react';
 import { generateCsv, downloadCsv, ExportColumn } from '@/lib/export/csv';
 import { useLanguage } from '@/lib/i18n/context';
 import { Modal } from '@/components/ui/Modal';
@@ -144,6 +144,125 @@ export function ExportButton<T extends Record<string, any>>({
     setIsOpen(false);
   };
 
+  const handleExportPdf = () => {
+    if (!filteredData || filteredData.length === 0) {
+      alert(isRtl ? 'لا توجد بيانات مطابقة لتصديرها' : 'No matching data to export');
+      return;
+    }
+
+    let finalColumns: { header: string; getValue: (row: T) => any }[] = [];
+    if (columns && columns.length > 0) {
+      finalColumns = columns.map(c => ({
+        header: c.header,
+        getValue: (row: T) => typeof c.key === 'function' ? c.key(row) : row[c.key as string]
+      }));
+    } else if (headers && headers.length > 0) {
+      finalColumns = headers.map(h => ({
+        header: h.header || (isRtl ? (h.labelAr || h.labelEn || h.key) : (h.labelEn || h.labelAr || h.key)),
+        getValue: (row: T) => row[h.key]
+      }));
+    } else {
+      const sample = filteredData[0];
+      finalColumns = Object.keys(sample).map(key => ({
+        header: key,
+        getValue: (row: T) => row[key]
+      }));
+    }
+
+    const printWin = window.open('', '_blank');
+    if (!printWin) {
+      alert(isRtl ? 'يرجى السماح بالنوافذ المنبثقة للطباعة والتصدير كـ PDF' : 'Please allow popups to export as PDF');
+      return;
+    }
+
+    const title = filename.replace(/_/g, ' ');
+    const rowsHtml = filteredData.map((row, idx) => `
+      <tr style="border-bottom: 1px solid #e2e8f0; background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+        <td style="padding: 6px 8px; text-align: center; font-size: 11px; color: #64748b;">${idx + 1}</td>
+        ${finalColumns.map(col => {
+          const val = col.getValue(row);
+          return `<td style="padding: 6px 8px; font-size: 11px; text-align: ${isRtl ? 'right' : 'left'};">${val !== undefined && val !== null ? val : '-'}</td>`;
+        }).join('')}
+      </tr>
+    `).join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html dir="${isRtl ? 'rtl' : 'ltr'}">
+      <head>
+        <meta charset="utf-8">
+        <title>${title} - PDF</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+          body {
+            font-family: 'Cairo', system-ui, -apple-system, sans-serif;
+            margin: 20px;
+            color: #0f172a;
+          }
+          .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #246BFD;
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+          }
+          .title { font-size: 18px; font-weight: 800; color: #246BFD; }
+          .meta { font-size: 11px; color: #64748b; margin-top: 2px; }
+          table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          th {
+            background-color: #f1f5f9;
+            color: #334155;
+            font-weight: 700;
+            padding: 8px;
+            border-bottom: 2px solid #cbd5e1;
+            text-align: ${isRtl ? 'right' : 'left'};
+          }
+          @media print {
+            body { margin: 0; }
+            @page { size: auto; margin: 10mm; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <div class="title">${title}</div>
+            <div class="meta">${isRtl ? 'نظام سستمهالي لإدارة المتاجر والمبيعات' : 'Sastmhaly Store Management System'}</div>
+          </div>
+          <div style="text-align: ${isRtl ? 'left' : 'right'};">
+            <div class="meta">${isRtl ? 'تاريخ التصدير:' : 'Export Date:'} ${new Date().toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')}</div>
+            <div class="meta">${isRtl ? 'عدد السجلات:' : 'Total Records:'} ${filteredData.length}</div>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 40px; text-align: center;">#</th>
+              ${finalColumns.map(c => `<th>${c.header}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 400);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWin.document.open();
+    printWin.document.write(html);
+    printWin.document.close();
+    setIsOpen(false);
+  };
+
   return (
     <>
       <button
@@ -152,13 +271,13 @@ export function ExportButton<T extends Record<string, any>>({
         className={className || "inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#E5EAF2] bg-white text-xs font-semibold text-[#172033] hover:bg-[#F7F9FC] transition-colors cursor-pointer shadow-2xs"}
       >
         <Download className="w-4 h-4 text-[#246BFD]" />
-        <span>{label || (isRtl ? 'تصدير (Excel / CSV)' : 'Export (Excel / CSV)')}</span>
+        <span>{label || (isRtl ? 'تصدير (Excel / PDF)' : 'Export (Excel / PDF)')}</span>
       </button>
 
       <Modal
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
-        title={isRtl ? 'تصدير البيانات إلى Excel / CSV' : 'Export Data to Excel / CSV'}
+        title={isRtl ? 'تصدير البيانات (Excel / CSV / PDF)' : 'Export Data (Excel / CSV / PDF)'}
         size="md"
       >
         <div className="space-y-5 text-xs">
@@ -335,11 +454,20 @@ export function ExportButton<T extends Record<string, any>>({
             <button
               type="button"
               disabled={filteredData.length === 0}
+              onClick={handleExportPdf}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#246BFD] hover:bg-[#1A54D4] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold transition-colors shadow-xs cursor-pointer"
+            >
+              <Printer className="w-4 h-4" />
+              <span>{isRtl ? 'طباعة / تصدير PDF' : 'Print / Export PDF'}</span>
+            </button>
+            <button
+              type="button"
+              disabled={filteredData.length === 0}
               onClick={handleExport}
-              className="inline-flex items-center gap-1.5 px-5 py-2 bg-[#10B981] hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold transition-colors shadow-xs cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#10B981] hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold transition-colors shadow-xs cursor-pointer"
             >
               <Download className="w-4 h-4" />
-              <span>{isRtl ? 'تأكيد التصدير الآن (CSV)' : 'Confirm & Export CSV'}</span>
+              <span>{isRtl ? 'تصدير Excel / CSV' : 'Export Excel / CSV'}</span>
             </button>
           </div>
 

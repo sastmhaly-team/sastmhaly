@@ -12,13 +12,15 @@ import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
 import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Banknote, Plus, Search, Filter, Download, 
-  DollarSign, TrendingDown, Building, Wallet, Landmark
+  DollarSign, TrendingDown, Building, Wallet, Landmark,
+  Edit3, Trash2
 } from 'lucide-react';
 
 export default function ExpensesManagementPage() {
-  const { user, activeBranchId } = useAuth();
+  const { user, tenant, activeBranchId } = useAuth();
   const { t, isRtl } = useLanguage();
-  const tenantId = user?.tenant_id || 'tenant_albaraka';
+  const tenantId = user?.tenant_id || tenant?.id || 'tenant_albaraka';
+  const currency = tenant?.currency || (isRtl ? 'ج.م' : 'EGP');
   const effectiveBranchId = activeBranchId && activeBranchId !== 'all' ? activeBranchId : user?.branch_id;
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -45,6 +47,84 @@ export default function ExpensesManagementPage() {
     description: ''
   });
   const [submittingExpense, setSubmittingExpense] = useState(false);
+
+  // Edit Expense Modal
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    category: '',
+    amount: '',
+    payment_source: 'cash_drawer' as 'cash_drawer' | 'bank_account' | 'petty_cash',
+    payee: '',
+    description: '',
+    branch_id: ''
+  });
+  const [submittingEdit, setSubmittingEdit] = useState(false);
+
+  const handleOpenEdit = (exp: Expense) => {
+    setEditingExpense(exp);
+    setEditFormData({
+      category: exp.category,
+      amount: String(exp.amount),
+      payment_source: exp.payment_source,
+      payee: exp.payee || '',
+      description: exp.description || '',
+      branch_id: exp.branch_id
+    });
+    setEditModalOpen(true);
+  };
+
+  const handleUpdateExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingExpense) return;
+    setSubmittingEdit(true);
+    try {
+      const res = await fetch('/api/merchant/expenses', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          id: editingExpense.id,
+          category: editFormData.category,
+          amount: Number(editFormData.amount),
+          payment_source: editFormData.payment_source,
+          payee: editFormData.payee || null,
+          description: editFormData.description,
+          branch_id: editFormData.branch_id
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEditModalOpen(false);
+        fetchData();
+      } else {
+        alert(data.error || 'Failed to update expense');
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSubmittingEdit(false);
+    }
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    if (!confirm(isRtl ? 'هل أنت متأكد من حذف هذا المصروف نهائياً؟' : 'Are you sure you want to delete this expense?')) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/merchant/expenses?tenantId=${tenantId}&id=${id}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchData();
+      } else {
+        alert(data.error || 'Failed to delete expense');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -322,7 +402,8 @@ export default function ExpensesManagementPage() {
                   <th className="py-3 px-4 text-start">{isRtl ? 'الفرع' : 'Branch'}</th>
                   <th className="py-3 px-4 text-start">{isRtl ? 'الجهة المستلمة' : 'Payee'}</th>
                   <th className="py-3 px-4 text-start">{isRtl ? 'البيان' : 'Description'}</th>
-                  <th className="py-3 px-4 text-end">{isRtl ? 'التاريخ' : 'Date'}</th>
+                  <th className="py-3 px-4 text-start">{isRtl ? 'التاريخ' : 'Date'}</th>
+                  <th className="py-3 px-4 text-end">{isRtl ? 'الإجراءات' : 'Actions'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E5EAF2]">
@@ -334,7 +415,7 @@ export default function ExpensesManagementPage() {
                       </span>
                     </td>
                     <td className="py-3 px-4 font-black text-red-600">
-                      {exp.amount.toFixed(2)} {isRtl ? 'ج.م' : 'EGP'}
+                      {exp.amount.toFixed(2)} {currency}
                     </td>
                     <td className="py-3 px-4 text-[#172033]">
                       {exp.payment_source === 'cash_drawer' ? (isRtl ? 'درج الكاشير' : 'Cash Drawer') :
@@ -349,8 +430,26 @@ export default function ExpensesManagementPage() {
                     <td className="py-3 px-4 text-[#687386] max-w-xs truncate">
                       {exp.description}
                     </td>
-                    <td className="py-3 px-4 text-end text-[#687386]">
+                    <td className="py-3 px-4 text-[#687386]">
                       {new Date(exp.created_at).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')}
+                    </td>
+                    <td className="py-3 px-4 text-end">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => handleOpenEdit(exp)}
+                          title={isRtl ? 'تعديل المصروف' : 'Edit Expense'}
+                          className="p-1.5 rounded-lg text-[#246BFD] hover:bg-blue-50 border border-transparent hover:border-blue-100 transition-colors cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteExpense(exp.id)}
+                          title={isRtl ? 'حذف المصروف' : 'Delete Expense'}
+                          className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -487,6 +586,108 @@ export default function ExpensesManagementPage() {
               className="px-4 py-2 bg-[#246BFD] hover:bg-blue-600 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
             >
               {submittingExpense ? (isRtl ? 'جاري الحفظ...' : 'Saving...') : (isRtl ? 'اعتماد المصروف' : 'Save Expense')}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Expense Modal (تعديل المصروف) */}
+      <Modal
+        isOpen={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        title={isRtl ? 'تعديل المصروف' : 'Edit Expense'}
+        size="md"
+      >
+        <form onSubmit={handleUpdateExpense} className="space-y-4 text-xs">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-gray-700 font-semibold mb-1">
+                {isRtl ? 'التصنيف *' : 'Category *'}
+              </label>
+              <select
+                value={editFormData.category}
+                onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
+                className="w-full p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD]"
+              >
+                <option value="Rent">{isRtl ? 'إيجار' : 'Rent'}</option>
+                <option value="Salaries">{isRtl ? 'مرتبات وأجور' : 'Salaries'}</option>
+                <option value="Utilities">{isRtl ? 'فواتير ومرافق' : 'Utilities'}</option>
+                <option value="Supplies">{isRtl ? 'مستلزمات تشغيل' : 'Supplies'}</option>
+                <option value="Maintenance">{isRtl ? 'صيانة ونظافة' : 'Maintenance'}</option>
+                <option value="Marketing">{isRtl ? 'دعاية وإعلان' : 'Marketing'}</option>
+                <option value="Other">{isRtl ? 'أخرى' : 'Other'}</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-gray-700 font-semibold mb-1">
+                {isRtl ? `المبلغ (${currency}) *` : `Amount (${currency}) *`}
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0.01"
+                required
+                value={editFormData.amount}
+                onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
+                className="w-full p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD] font-bold text-sm"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-gray-700 font-semibold mb-1">
+                {isRtl ? 'مصدر الصرف' : 'Source'}
+              </label>
+              <select
+                value={editFormData.payment_source}
+                onChange={(e) => setEditFormData({ ...editFormData, payment_source: e.target.value as any })}
+                className="w-full p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD]"
+              >
+                <option value="cash_drawer">{isRtl ? 'درج الكاشير (خزينة)' : 'Cash Drawer'}</option>
+                <option value="bank_account">{isRtl ? 'حساب بنكي' : 'Bank Account'}</option>
+                <option value="petty_cash">{isRtl ? 'عهدة نثرية' : 'Petty Cash'}</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-gray-700 font-semibold mb-1">
+                {isRtl ? 'الجهة المستلمة' : 'Payee'}
+              </label>
+              <input
+                type="text"
+                value={editFormData.payee}
+                onChange={(e) => setEditFormData({ ...editFormData, payee: e.target.value })}
+                className="w-full p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-gray-700 font-semibold mb-1">
+              {isRtl ? 'البيان والتفاصيل *' : 'Description *'}
+            </label>
+            <textarea
+              required
+              value={editFormData.description}
+              onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+              className="w-full p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD] h-20"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-[#E5EAF2]">
+            <button
+              type="button"
+              onClick={() => setEditModalOpen(false)}
+              className="px-4 py-2 border border-[#E5EAF2] rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50"
+            >
+              {isRtl ? 'إلغاء' : 'Cancel'}
+            </button>
+            <button
+              type="submit"
+              disabled={submittingEdit}
+              className="px-4 py-2 bg-[#246BFD] hover:bg-blue-600 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+            >
+              {submittingEdit ? (isRtl ? 'جاري الحفظ...' : 'Saving...') : (isRtl ? 'حفظ التعديلات' : 'Save Changes')}
             </button>
           </div>
         </form>

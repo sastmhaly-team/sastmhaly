@@ -48,6 +48,9 @@ export interface TenantSettings {
   allow_negative_stock: number;
   expiry_warning_days: number;
   auto_reorder_enabled: number;
+  loyalty_enabled?: number;
+  loyalty_spend_rate?: number;
+  loyalty_redeem_rate?: number;
 }
 
 export interface SubscriptionPlan {
@@ -218,6 +221,8 @@ export interface Product {
   image_url?: string;
   is_active: number;
   created_at: string;
+  variants?: string;
+  custom_unit?: string;
   // Joins
   category_name_en?: string;
   category_name_ar?: string;
@@ -382,6 +387,7 @@ export interface Customer {
   tax_id?: string;
   credit_limit: number;
   current_balance: number;
+  opening_balance?: number;
   loyalty_points: number;
   created_at: string;
 }
@@ -459,6 +465,7 @@ export interface Sale {
   subtotal: number;
   discount_amount: number;
   tax_amount: number;
+  delivery_fee?: number;
   total_amount: number;
   paid_amount: number;
   change_amount: number;
@@ -616,4 +623,39 @@ export interface PosHeldSale {
   subtotal: number;
   total: number;
   notes?: string;
+}
+
+export interface Quotation {
+  id: string;
+  tenant_id: string;
+  branch_id: string;
+  quotation_number: string;
+  customer_id?: string;
+  customer_name?: string;
+  customer_phone?: string;
+  subtotal: number;
+  discount_amount: number;
+  tax_amount: number;
+  delivery_fee: number;
+  total_amount: number;
+  status: 'draft' | 'sent' | 'accepted' | 'rejected' | 'converted';
+  converted_sale_id?: string;
+  valid_until?: string;
+  notes?: string;
+  created_by: string;
+  created_at: string;
+  branch_name?: string;
+  items?: QuotationItem[];
+}
+
+export interface QuotationItem {
+  id: string;
+  quotation_id: string;
+  product_id?: string;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+  discount_amount: number;
+  tax_amount: number;
+  line_total: number;
 }

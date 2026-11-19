@@ -12,13 +12,15 @@ import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
 import { fetchWithCache, getCachedData } from '@/lib/cache/client-cache';
 import { 
   Building2, Plus, Search, Download, 
-  CreditCard, Phone, Mail, FileText, CheckCircle2
+  CreditCard, Phone, Mail, FileText, CheckCircle2,
+  Printer, Calendar, Layers, RefreshCw
 } from 'lucide-react';
 
 export default function SuppliersManagementPage() {
-  const { user } = useAuth();
+  const { user, tenant } = useAuth();
   const { t, isRtl } = useLanguage();
-  const tenantId = user?.tenant_id || 'tenant_albaraka';
+  const tenantId = user?.tenant_id || tenant?.id || 'tenant_albaraka';
+  const currency = tenant?.currency || (isRtl ? 'ج.م' : 'EGP');
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,6 +54,43 @@ export default function SuppliersManagementPage() {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [submittingPayment, setSubmittingPayment] = useState(false);
 
+  // Statement Modal State
+  const [statementModalOpen, setStatementModalOpen] = useState(false);
+  const [statementSupplier, setStatementSupplier] = useState<Supplier | null>(null);
+  const [statementMode, setStatementMode] = useState<'all' | 'custom'>('all');
+  const [statementFromDate, setStatementFromDate] = useState('');
+  const [statementToDate, setStatementToDate] = useState('');
+  const [statementData, setStatementData] = useState<any>(null);
+  const [loadingStatement, setLoadingStatement] = useState(false);
+
+  const fetchStatement = async (supplierId: string, from?: string, to?: string) => {
+    setLoadingStatement(true);
+    try {
+      let url = `/api/merchant/statements?tenantId=${tenantId}&type=supplier&id=${supplierId}`;
+      if (from) url += `&startDate=${from}`;
+      if (to) url += `&endDate=${to}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.success) {
+        setStatementData(data.statement);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingStatement(false);
+    }
+  };
+
+  const handleOpenStatement = (sup: Supplier) => {
+    setStatementSupplier(sup);
+    setStatementMode('all');
+    setStatementFromDate('');
+    setStatementToDate('');
+    setStatementData(null);
+    setStatementModalOpen(true);
+    fetchStatement(sup.id);
+  };
+
   const fetchSuppliers = async () => {
     try {
       const url = `/api/merchant/suppliers?tenantId=${tenantId}`;
@@ -80,11 +119,7 @@ export default function SuppliersManagementPage() {
 
   const handleCreateSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanedPhone = newSupplier.phone.replace(/\D/g, '').trim();
-    if (cleanedPhone.length !== 11) {
-      alert(isRtl ? 'رقم الهاتف يجب أن يتكون من 11 رقماً بالضبط' : 'Phone number must be exactly 11 digits');
-      return;
-    }
+    const cleanedPhone = newSupplier.phone.trim();
     setSubmittingSupplier(true);
     try {
       const res = await fetch('/api/merchant/suppliers', {
@@ -94,7 +129,7 @@ export default function SuppliersManagementPage() {
           tenant_id: tenantId,
           ...newSupplier,
           phone: cleanedPhone,
-          opening_balance: Number(newSupplier.opening_balance)
+          opening_balance: Number(newSupplier.opening_balance) || 0
         })
       });
       const data = await res.json();
@@ -171,7 +206,7 @@ export default function SuppliersManagementPage() {
 
   const supplierImportColumns = [
     { key: 'name', labelAr: 'اسم المورد / الشركة', labelEn: 'Supplier Name', required: true, example: 'شركة الأهرام للتجارة' },
-    { key: 'phone', labelAr: 'رقم الهاتف', labelEn: 'Phone Number', required: true, example: '01099887766' },
+    { key: 'phone', labelAr: 'رقم الهاتف', labelEn: 'Phone Number', example: '01099887766' },
     { key: 'contact_person', labelAr: 'المسؤول / مندوب المبيعات', labelEn: 'Contact Person', example: 'أ / حسام الدين' },
     { key: 'email', labelAr: 'البريد الإلكتروني', labelEn: 'Email', example: 'ahram@supply.com' },
     { key: 'tax_id', labelAr: 'السجل / البطاقة الضريبية', labelEn: 'Tax ID', example: '554-332-119' },
@@ -295,21 +330,30 @@ export default function SuppliersManagementPage() {
                     </td>
                     <td className="py-3 px-4 font-black">
                       <span className={supplier.current_balance > 0 ? 'text-red-600' : 'text-emerald-600'}>
-                        {supplier.current_balance.toFixed(2)} {isRtl ? 'ج.م' : 'EGP'}
+                        {supplier.current_balance.toFixed(2)} {currency}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-end">
-                      <button
-                        onClick={() => {
-                          setSelectedSupplier(supplier);
-                          setPaymentAmount(supplier.current_balance > 0 ? String(supplier.current_balance) : '');
-                          setPayModalOpen(true);
-                        }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0B1730] hover:bg-[#172033] text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
-                      >
-                        <CreditCard className="w-3.5 h-3.5 text-[#246BFD]" />
-                        <span>{isRtl ? 'سداد دفعة' : 'Pay Supplier'}</span>
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => handleOpenStatement(supplier)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#F0F5FF] text-[#246BFD] hover:bg-[#D0E2FF] rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>{isRtl ? 'كشف حساب' : 'Statement'}</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedSupplier(supplier);
+                            setPaymentAmount(supplier.current_balance > 0 ? String(supplier.current_balance) : '');
+                            setPayModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0B1730] hover:bg-[#172033] text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                        >
+                          <CreditCard className="w-3.5 h-3.5 text-[#246BFD]" />
+                          <span>{isRtl ? 'سداد دفعة' : 'Pay'}</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -370,12 +414,11 @@ export default function SuppliersManagementPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-gray-700 font-semibold mb-1">
-                {isRtl ? 'رقم الهاتف *' : 'Phone *'}
+                {isRtl ? 'رقم الهاتف (اختياري)' : 'Phone (Optional)'}
               </label>
               <input
-                type="tel"
-                required
-                placeholder="010XXXXXXXX"
+                type="text"
+                placeholder={isRtl ? '+20... أو أي رقم' : '+... or phone'}
                 value={newSupplier.phone}
                 onChange={(e) => setNewSupplier({ ...newSupplier, phone: e.target.value })}
                 className="w-full p-2.5 bg-[#F7F9FC] border border-[#E5EAF2] rounded-lg text-xs outline-none focus:bg-white focus:border-[#246BFD]"
@@ -508,6 +551,213 @@ export default function SuppliersManagementPage() {
             </div>
           </form>
         )}
+      </Modal>
+
+      {/* Account Statement Modal (كشف حساب المورد) */}
+      <Modal
+        isOpen={statementModalOpen}
+        onClose={() => setStatementModalOpen(false)}
+        title={isRtl ? `كشف حساب مورد: ${statementSupplier?.name || ''}` : `Supplier Statement: ${statementSupplier?.name || ''}`}
+        size="xl"
+      >
+        <div className="space-y-4 text-xs">
+          {/* Filter Bar */}
+          <div className="p-3 bg-[#F7F9FC] border border-[#E5EAF2] rounded-xl flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setStatementMode('all');
+                  if (statementSupplier) fetchStatement(statementSupplier.id);
+                }}
+                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-colors ${
+                  statementMode === 'all' ? 'bg-[#246BFD] text-white' : 'bg-white border border-[#E5EAF2] text-[#687386]'
+                }`}
+              >
+                {isRtl ? 'كشف حساب كامل (كافة المعاملات)' : 'Full Statement (All)'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatementMode('custom')}
+                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-colors ${
+                  statementMode === 'custom' ? 'bg-[#246BFD] text-white' : 'bg-white border border-[#E5EAF2] text-[#687386]'
+                }`}
+              >
+                {isRtl ? 'من فترة إلى فترة' : 'Custom Date Range'}
+              </button>
+            </div>
+
+            {statementMode === 'custom' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={statementFromDate}
+                  onChange={(e) => setStatementFromDate(e.target.value)}
+                  className="px-2.5 py-1.5 bg-white border border-[#E5EAF2] rounded-lg text-xs"
+                />
+                <span className="text-[#687386]">{isRtl ? 'إلى' : 'to'}</span>
+                <input
+                  type="date"
+                  value={statementToDate}
+                  onChange={(e) => setStatementToDate(e.target.value)}
+                  className="px-2.5 py-1.5 bg-white border border-[#E5EAF2] rounded-lg text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (statementSupplier) fetchStatement(statementSupplier.id, statementFromDate, statementToDate);
+                  }}
+                  className="px-3 py-1.5 bg-[#0B1730] text-white rounded-lg font-bold hover:bg-[#172033]"
+                >
+                  {isRtl ? 'تطبيق' : 'Apply'}
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                const printable = document.getElementById('supplier-statement-print');
+                if (printable) {
+                  const printWin = window.open('', '_blank');
+                  if (printWin) {
+                    printWin.document.write(`
+                      <html dir="${isRtl ? 'rtl' : 'ltr'}">
+                        <head>
+                          <title>كشف حساب ${statementSupplier?.name}</title>
+                          <style>
+                            body { font-family: system-ui, sans-serif; padding: 20px; font-size: 12px; }
+                            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+                            th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: ${isRtl ? 'right' : 'left'}; }
+                            th { background: #f1f5f9; }
+                            .header { margin-bottom: 20px; border-bottom: 2px solid #246BFD; padding-bottom: 10px; }
+                          </style>
+                        </head>
+                        <body>
+                          ${printable.innerHTML}
+                          <script>window.onload = function() { setTimeout(function() { window.print(); }, 300); };</script>
+                        </body>
+                      </html>
+                    `);
+                    printWin.document.close();
+                  }
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#246BFD] hover:bg-[#1A54D4] text-white font-bold rounded-lg shadow-xs cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>{isRtl ? 'طباعة كشف الحساب' : 'Print Statement'}</span>
+            </button>
+          </div>
+
+          {loadingStatement ? (
+            <div className="py-12 flex flex-col items-center justify-center text-[#687386]">
+              <div className="w-6 h-6 border-2 border-[#246BFD] border-t-transparent rounded-full animate-spin mb-2" />
+              <span>{isRtl ? 'جاري استخراج كشف الحساب...' : 'Generating statement...'}</span>
+            </div>
+          ) : statementData ? (
+            <div id="supplier-statement-print" className="space-y-4 bg-white p-3 border border-[#E5EAF2] rounded-xl">
+              {/* Summary Header */}
+              <div className="header flex justify-between items-start border-b pb-3">
+                <div>
+                  <h3 className="text-base font-black text-[#0B1730]">{statementSupplier?.name}</h3>
+                  <p className="text-[11px] text-[#687386]">كود المورد: {statementSupplier?.code} | الهاتف: {statementSupplier?.phone || '-'}</p>
+                  <p className="text-[11px] text-[#687386]">
+                    الفترة: {statementMode === 'all' ? (isRtl ? 'كافة المعاملات حتى اليوم' : 'All transactions') : `${statementFromDate || 'البداية'} إلى ${statementToDate || 'اليوم'}`}
+                  </p>
+                </div>
+                <div className="text-end">
+                  <div className="text-[11px] text-[#687386]">{isRtl ? 'الرصيد المستحق الحالي للمورد' : 'Current Due Balance'}</div>
+                  <div className={`text-lg font-black ${statementData.currentBalance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {statementData.currentBalance?.toFixed(2)} {currency}
+                  </div>
+                </div>
+              </div>
+
+              {/* Transactions Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-[#F7F9FC] text-[#687386] border-b">
+                    <tr>
+                      <th className="p-2 text-start">#</th>
+                      <th className="p-2 text-start">{isRtl ? 'التاريخ' : 'Date'}</th>
+                      <th className="p-2 text-start">{isRtl ? 'النوع' : 'Type'}</th>
+                      <th className="p-2 text-start">{isRtl ? 'رقم الإذن / الفاتورة' : 'Reference'}</th>
+                      <th className="p-2 text-end">{isRtl ? 'فواتير ومشتريات (+)' : 'Purchases (+)'}</th>
+                      <th className="p-2 text-end">{isRtl ? 'مدفوعات وسداد (-)' : 'Payments (-)'}</th>
+                      <th className="p-2 text-end">{isRtl ? 'الرصيد التراكمي' : 'Running Balance'}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E5EAF2]">
+                    <tr className="bg-amber-50/50 font-bold">
+                      <td colSpan={6} className="p-2 text-start text-[#B45309]">
+                        {isRtl ? 'الرصيد الافتتاحي السابق' : 'Opening Balance'}
+                      </td>
+                      <td className="p-2 text-end font-mono">
+                        {(statementData.openingBalance || 0).toFixed(2)} {currency}
+                      </td>
+                    </tr>
+                    {statementData.transactions?.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-4 text-center text-[#687386]">
+                          {isRtl ? 'لا توجد حركات مسجلة خلال هذه الفترة' : 'No movements in this period'}
+                        </td>
+                      </tr>
+                    ) : (
+                      statementData.transactions?.map((t: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="p-2 text-[#687386]">{idx + 1}</td>
+                          <td className="p-2 text-[#0B1730] font-mono">{t.created_at?.split('T')[0] || t.created_at}</td>
+                          <td className="p-2 font-semibold">
+                            {t.transaction_type === 'purchase' ? (
+                              <span className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">{isRtl ? 'فاتورة مشتريات' : 'Purchase'}</span>
+                            ) : (
+                              <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">{isRtl ? 'سداد دفعة' : 'Payment'}</span>
+                            )}
+                          </td>
+                          <td className="p-2 font-mono text-[#0B1730]">{t.reference_number}</td>
+                          <td className="p-2 text-end font-mono font-bold text-blue-600">
+                            {t.credit > 0 ? `${t.credit.toFixed(2)}` : '-'}
+                          </td>
+                          <td className="p-2 text-end font-mono font-bold text-emerald-600">
+                            {t.debit > 0 ? `${t.debit.toFixed(2)}` : '-'}
+                          </td>
+                          <td className="p-2 text-end font-mono font-black text-[#0B1730]">
+                            {t.running_balance?.toFixed(2)} {currency}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  <tfoot className="bg-[#F7F9FC] font-bold border-t-2">
+                    <tr>
+                      <td colSpan={4} className="p-2 text-start">{isRtl ? 'إجمالي الحركات' : 'Totals'}</td>
+                      <td className="p-2 text-end text-blue-600 font-mono font-black">
+                        {statementData.totalCredit?.toFixed(2)} {currency}
+                      </td>
+                      <td className="p-2 text-end text-emerald-600 font-mono font-black">
+                        {statementData.totalDebit?.toFixed(2)} {currency}
+                      </td>
+                      <td className="p-2 text-end font-mono font-black">
+                        {statementData.currentBalance?.toFixed(2)} {currency}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex justify-end pt-2 border-t">
+            <button
+              type="button"
+              onClick={() => setStatementModalOpen(false)}
+              className="px-4 py-2 border border-[#E5EAF2] rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50"
+            >
+              {isRtl ? 'إغلاق' : 'Close'}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

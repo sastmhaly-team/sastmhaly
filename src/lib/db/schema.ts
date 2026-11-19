@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS tenant_settings (
   allow_negative_stock INTEGER NOT NULL DEFAULT 0,
   expiry_warning_days INTEGER NOT NULL DEFAULT 30,
   auto_reorder_enabled INTEGER NOT NULL DEFAULT 1,
+  loyalty_enabled INTEGER NOT NULL DEFAULT 1,
+  loyalty_spend_rate REAL NOT NULL DEFAULT 1.0,
+  loyalty_redeem_rate REAL NOT NULL DEFAULT 0.1,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
 
@@ -165,6 +168,8 @@ CREATE TABLE IF NOT EXISTS products (
   is_weighted INTEGER NOT NULL DEFAULT 0,
   has_batch_tracking INTEGER NOT NULL DEFAULT 0,
   image_url TEXT,
+  variants TEXT,
+  custom_unit TEXT,
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
@@ -442,6 +447,7 @@ CREATE TABLE IF NOT EXISTS sales (
   subtotal REAL NOT NULL,
   discount_amount REAL NOT NULL DEFAULT 0.0,
   tax_amount REAL NOT NULL DEFAULT 0.0,
+  delivery_fee REAL NOT NULL DEFAULT 0.0,
   total_amount REAL NOT NULL,
   paid_amount REAL NOT NULL,
   change_amount REAL NOT NULL DEFAULT 0.0,
@@ -650,6 +656,45 @@ CREATE TABLE IF NOT EXISTS employee_payroll (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Quotations (عروض الأسعار)
+CREATE TABLE IF NOT EXISTS quotations (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  branch_id TEXT NOT NULL,
+  quotation_number TEXT UNIQUE NOT NULL,
+  customer_id TEXT,
+  customer_name TEXT,
+  customer_phone TEXT,
+  subtotal REAL NOT NULL DEFAULT 0.0,
+  discount_amount REAL NOT NULL DEFAULT 0.0,
+  tax_amount REAL NOT NULL DEFAULT 0.0,
+  delivery_fee REAL NOT NULL DEFAULT 0.0,
+  total_amount REAL NOT NULL DEFAULT 0.0,
+  status TEXT NOT NULL DEFAULT 'draft', -- draft, sent, accepted, rejected, converted
+  converted_sale_id TEXT,
+  valid_until TEXT,
+  notes TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  FOREIGN KEY (branch_id) REFERENCES branches(id),
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+  FOREIGN KEY (converted_sale_id) REFERENCES sales(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS quotation_items (
+  id TEXT PRIMARY KEY,
+  quotation_id TEXT NOT NULL,
+  product_id TEXT,
+  product_name TEXT NOT NULL,
+  quantity REAL NOT NULL,
+  unit_price REAL NOT NULL,
+  discount_amount REAL NOT NULL DEFAULT 0.0,
+  tax_amount REAL NOT NULL DEFAULT 0.0,
+  line_total REAL NOT NULL,
+  FOREIGN KEY (quotation_id) REFERENCES quotations(id) ON DELETE CASCADE
 );
 
 -- Indexes for maximum query performance across large datasets
