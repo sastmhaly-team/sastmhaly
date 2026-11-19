@@ -148,7 +148,7 @@ export async function printRawViaAgent(
     const base64Data = uint8ArrayToBase64(buffer);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds for spooler
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds for spooler (Windows can be slow to respond)
 
     const res = await fetch(`${baseUrl}/print-raw`, {
       method: 'POST',
@@ -178,7 +178,7 @@ export async function printRawViaAgent(
     if (err.name === 'AbortError') {
       return {
         success: false,
-        error: 'استغرقت الطابعة وقتاً أطول من المتوقع. تأكد من توصيل الكابل وتشغيل الطابعة.',
+        error: 'استغرقت الطابعة وقتاً أطول من المتوقع (30 ثانية). تأكد من توصيل الكابل وتشغيل الطابعة وأنها جاهزة.',
       };
     }
     return {

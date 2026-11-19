@@ -456,16 +456,21 @@ export function createTsplBarcodeBuffer(
 
   // TSPL header:
   //   DIRECTION 0     → landscape orientation (label prints left-to-right as it exits)
+  //   SET REVERT OFF  → prevent inverted (black background / white text) printing.
+  //                     Some Xprinter/Rongta drivers default to REVERT ON which inverts
+  //                     all pixels. Explicitly setting OFF guarantees white bg / black text.
   //   SET CUTTER OFF  → no auto-cut feed
+  //   OFFSET 0        → zero feed offset prevents the phantom blank label that some
+  //                     printers produce before the first label of a job.
   //   CLS             → clear image buffer
   //   BITMAP          → raster image data
-  // NOTE: We deliberately DO NOT include HOME here, because HOME feeds 1 extra blank label
-  // before starting the print job. Removing it ensures 0 wasted blank labels.
   const headerStr = [
     `SIZE ${widthMm} mm, ${heightMm} mm`,
     `GAP 2 mm, 0 mm`,
     `DIRECTION 0`,
+    `SET REVERT OFF`,
     `SET CUTTER OFF`,
+    `OFFSET 0 mm`,
     `CLS`,
     `BITMAP 0,0,${widthBytes},${heightDots},0,`,
   ].join('\r\n');
